@@ -15,7 +15,7 @@ return array(
     'Phone' => 'Tel.',
     'Password' => 'Passwort',
     'Login' => 'Anmelden',
-    'Logout' => 'Abmelden',
+    'Logout' => '.',
 
     'New password' => 'Neues Passwort',
 
@@ -25,7 +25,7 @@ return array(
 
     'Administration' => 'Verwaltung',
 
-    'My bookings' => 'Meine Buchungen',
-    'My account' => 'Meine Daten',
+    'My bookings' => 'Buchungen',
+    'My account' => 'Profil',
 
 );

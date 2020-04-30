@@ -15,7 +15,7 @@ return array(
     'Phone' => 'Tel.',
     'Password' => 'Mot de passe',
     'Login' => 'Connexion',
-    'Logout' => 'Déconnexion',
+    'Logout' => '.',
 
     'New password' => 'Nouveau mot de passe',
 
