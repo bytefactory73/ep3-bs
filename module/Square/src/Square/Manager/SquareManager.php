@@ -457,10 +457,8 @@ class SquareManager extends AbstractManager
         foreach ($this->activeSquares as $square) {
             $cancelRange = $square->get('range_cancel');
 
-            if ($cancelRange) {
-                if (is_null($minCancelRange) || $minCancelRange > $cancelRange) {
-                    $minCancelRange = $cancelRange;
-                }
+            if (is_null($minCancelRange) || $minCancelRange > $cancelRange) {
+                $minCancelRange = $cancelRange;
             }
         }
 

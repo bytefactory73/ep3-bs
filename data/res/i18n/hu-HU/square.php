@@ -82,7 +82,7 @@ return array(
 
     'Book now' => 'Foglalás most',
     'Book more' => 'További foglalás',
-    'You can %slogin%s or %sregister%s, %s to book this %s' => 'Ön %sbejelentkezhet%s vagy %sregisztrálhat%s, %s hogy lefoglalja a következőt %s',
+    'You can %slogin%s, %s to book this %s' => 'Ön %sbejelentkezhet%s, %s hogy lefoglalja a következőt %s',
     'This %s has been %sbooked to you%s.' => 'Ez %s le lett foglalva %sönnek%s.',
     'This %s is already occupied.' => 'Ez már %s foglalt.',
 

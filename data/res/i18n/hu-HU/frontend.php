@@ -15,7 +15,7 @@ return array(
     'Phone' => 'Telefon',
     'Password' => 'Jelszó',
     'Login' => 'Belépés',
-    'Logout' => 'Kilépés',
+    'Logout' => '.',
 
     'New password' => 'Új jelszó',
 

@@ -38,8 +38,8 @@ if ($square->need('status') == 'readonly') {
 
         echo '</p>';
     } else {
-        echo '<p class="gray">' . sprintf($this->t('You can %slogin%s or %sregister%s, %s to book this %s'),
-            '<a href="' . $this->url('user/login') . '">', '</a>', '<a href="' . $this->url('user/registration') . '">', '</a>', '<br>', $squareType) . '.</p>';
+        echo '<p class="gray">' . sprintf($this->t('You can %slogin%s, %s to book this %s'),
+            '<a href="' . $this->url('user/login') . '">', '</a>', '<br>', $squareType) . '.</p>';
     }
 
     echo $this->squarePricingHints($this->dateStart, $this->dateEnd, $square);

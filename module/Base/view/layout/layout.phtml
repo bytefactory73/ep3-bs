@@ -2,7 +2,7 @@
 <html lang="<?= $this->config('i18n.locale') ?>">
     <head>
         <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="viewport" content="width=device-width, initial-scale=0.9">
         <meta name="format-detection" content="telephone=no">
         <meta name="generator" content="<?= $this->option('service.branding.name') ?>">
         <meta name="publisher" content="<?= $this->option('client.name.full') ?>">
@@ -24,11 +24,7 @@
                 <div id="label-client"><?= $this->option('client.name.full') ?></div>
                 <div id="label-service"><?= $this->option('service.name.full') ?></div>
 
-                <?php if ($this->option('service.branding', 'true') == 'true'): ?>
-                    <div id="branding">&raquo; <?= sprintf($this->t('Powered by %s'), '<a href="' . $this->option('service.branding.website') .'" target="_blank">' . $this->option('service.branding.name') . '</a>') ?></div>
-                <?php else: ?>
-                    <style type="text/css"> #label-client { margin-top: 15px; } </style>
-                <?php endif; ?>
+                <style type="text/css"> #label-client { margin-top: 15px; } </style>
             </div>
 
             <div id="topbar">
