@@ -229,13 +229,13 @@ a#logo:active { top: 1px; }
 }
 
 .calendar-time-table td, .calendar-date-table td, .calendar-square-table td {
-    padding: 3px;
+    padding: 1px;
     border-top: solid 1px #BBB;
     border-left: solid 1px #BBB;
 }
 
 .calendar-time-table td,
-.calendar-square-table td { text-align: left; }
+.calendar-square-table td { text-align: center; }
 
 .calendar-date-row td { height: 42px; }
 .calendar-time-row td { height: 42px; }
