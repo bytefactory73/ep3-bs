@@ -139,6 +139,11 @@ class SquareValidator extends AbstractService
         $squareTimeEnd = clone $timeEnd;
         $squareTimeEnd->setTime($squareTimeEndParts[0], $squareTimeEndParts[1], $squareTimeEndParts[2]);
 
+        /* Prevent error when setting bookable start times to 30 mins but 60 mins session time */
+        if ($timeEnd > $squareTimeEnd) {
+            $timeEnd = $squareTimeEnd;
+        }
+
         if ($timeStart < $squareTimeStart || $timeEnd > $squareTimeEnd) {
             throw new RuntimeException('The passed time range is invalid');
         }
