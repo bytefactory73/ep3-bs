@@ -246,10 +246,12 @@ a#logo:active { top: 1px; }
 .cte-label { color: #666; font-size: 10px; }
 
 .calendar-cell {
-    display: block;
+    display: flex;
+    justify-content: center;
+    height: 30px;
     font-size: 10px;
     line-height: 1.0;
-    padding: 10px 0;
+/*    padding: 10px 0;*/
     overflow: hidden;
     text-decoration: none;
 
@@ -261,8 +263,9 @@ a#logo:active { top: 1px; }
 .cc-height-2 { padding: 3px 0 2px 0; }
 
 .cc-label {
-    display: block;
-    height: 10px;
+    display: flex;
+    align-items: center;
+    /*height: 10px;*/
     overflow: visible;
 }
 
