@@ -7,9 +7,6 @@ return array(
     'Time' => 'Idő',
     'Show' => 'Mutasd',
 
-    'To book %s, %splease register first%s' => 'A %s foglalásához, %skérem itt regisztráljon%s',
-    'or simply %s login here' => 'vagy egyszerűen %s lépjen be itt',
-
     'Email address' => 'Email cím',
     'Email' => 'Email',
     'Phone' => 'Telefon',

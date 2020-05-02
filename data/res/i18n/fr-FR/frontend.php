@@ -7,9 +7,6 @@ return array(
     'Time' => 'Heure',
     'Show' => 'Voir',
 
-    'To book %s, %splease register first%s' => 'Pour réserver les %s, %sveuillez vous enregistrer svp%s',
-    'or simply %s login here' => 'ou simplement %s Connectez-vous ici',
-
     'Email address' => 'Adresse E-Mail',
     'Email' => 'E-Mail',
     'Phone' => 'Tel.',

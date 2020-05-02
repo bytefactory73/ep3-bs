@@ -4,15 +4,9 @@
             <td style="padding-right: 12px;">
                 <?php
 
-                echo sprintf($this->t('To book %s, %splease register first%s'),
-                    $this->option('subject.square.type.plural'),
-                    '<br><a href="' . $this->url('user/registration') . '" class="symbolic symbolic-plus-link">', '</a>');
+                echo sprintf($this->t('To book %s<br>login here'), $this->option('subject.square.type.plural'));
 
                 ?>
-            </td>
-
-            <td class="responsive-pass-5" style="padding-left: 12px; padding-right: 12px; border-left: solid 1px #CCC;">
-                <?= sprintf($this->t('or simply %s login here'), '<br>') ?>
             </td>
 
             <td class="responsive-pass-3">
