@@ -83,7 +83,7 @@ return array(
 
     'Book now' => 'Réservez maintenant',
     'Book more' => 'Réservez plus',
-    'You can %slogin%s or %sregister%s, %s to book this %s' => 'Vous pouvez %svous connectez%s ou %svous enregistrer%s, %s pour réserver ce %s',
+    'You can %slogin%s, %s to book this %s' => 'Vous pouvez %svous connectez%s, %s pour réserver ce %s',
     'This %s has been %sbooked to you%s.' => 'Ce %s a été %sréservé pous vous%s.',
     'This %s is already occupied.' => 'Ce %s est déjà occupé.',
 
