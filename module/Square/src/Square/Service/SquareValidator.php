@@ -343,9 +343,11 @@ class SquareValidator extends AbstractService
         $square = $this->squareManager->get($booking->need('sid'));
         $squareCancelRange = $square->get('range_cancel');
 
+/*
         if (! $squareCancelRange) {
             return false;
         }
+*/
 
         $reservations = $this->reservationManager->getBy(array('bid' => $booking->need('bid')), 'date ASC, time_start ASC');
         $reservation = current($reservations);
