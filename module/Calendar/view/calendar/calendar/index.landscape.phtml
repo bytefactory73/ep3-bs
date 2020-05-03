@@ -38,24 +38,66 @@ while ($walkingDate <= $this->dateEnd) {
     echo $this->calendarSquareRow($this->squares, $this->squaresCount);
 
     /* Loop through time rows */
-
+    $output = array();
+    $coljoin = array();
+    $row = 0;
+    /* pass 1 collect all cells */
     for ($walkingTime = $this->timeStart; $walkingTime < $this->timeEnd; $walkingTime += $this->timeBlock) {
-        echo '<tr class="calendar-core-row">';
-
         $walkingDate->modify('+' . $walkingTime . ' sec');
 
         $reservationsForCol = $reservationsForColPlugin($reservations, $walkingDate, $walkingTime, $this->timeBlock);
         $eventsForCol = $eventsForColPlugin($events, $walkingDate, $walkingTime, $this->timeBlock);
 
         /* Loop through square cells */
-
+        $idx = 0;
         foreach ($this->squares as $square) {
-            echo $this->calendarCellLogic($walkingDate, $walkingTime, $this->timeBlock, $this->dateNow,
+            $cell = $this->calendarCellLogic($walkingDate, $walkingTime, $this->timeBlock, $this->dateNow,
                 $square, $this->user, $reservationsForCol, $eventsForCol);
+
+            $matches = null;
+            $key = null;
+            preg_match('/cc-group-\d*/', $cell, $matches);
+            if ($matches) {
+                //echo $matches[0] . '<br>';
+                $key = $matches[0];
+            }
+
+            $coljoin[$row][$idx] = $key;
+            $output[$row][$idx] = $cell;
+            $idx += 1;
         }
 
         $walkingDate->setTime(0, 0, 0);
+        $row += 1;
+    }
 
+    /* pass 1 output and join cells */
+    $collect = array();
+    for ($r = 0; $r < $row; $r += 1) {
+        echo '<tr class="calendar-core-row">';
+        $idx = 0;
+        foreach ($this->squares as $square) {
+            $key = $coljoin[$r][$idx];
+            $cell = $output[$r][$idx];
+            if ($key == null) {
+            } else if ($r > 0 && $collect[$idx] == $key) {
+                $cell = '';
+            } else {
+                // find the cells to merge
+                $cellCount = 1;
+                for ($rr = $r + 1; $rr < $row; $rr += 1) {
+                    if ($coljoin[$rr][$idx] == $key) {
+                        $cellCount += 1;
+                    } else {
+                        break;
+                    }
+                }
+                $cell = str_replace('<td>', '<td rowspan="'.$cellCount.'">', $cell);
+            }
+            $collect[$idx] = $key;
+            echo $cell;
+            $idx += 1;
+        }
         echo '</tr>';
     }
 
