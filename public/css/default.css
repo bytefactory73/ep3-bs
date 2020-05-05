@@ -139,7 +139,7 @@ a#logo:active { top: 1px; }
 
 #topbar-separator { width: 1px; height: 42px; background: #666; }
 #topbar-phone { padding-left: 48px; background: url(../imgs/icons/topbar-phone.png) no-repeat left center; }
-#topbar-infos { padding-left: 48px; background: url(../imgs/icons/topbar-eye.png) no-repeat left center; }
+#topbar-infos { visibility: hidden; padding-left: 48px; background: url(../imgs/icons/topbar-eye.png) no-repeat left center; }
 #topbar-website { padding-left: 42px; background: url(../imgs/icons/topbar-home.png) no-repeat left center; }
 #topbar-contact { padding-left: 50px; background: url(../imgs/icons/topbar-face.png) no-repeat left center; }
 
