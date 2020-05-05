@@ -17,8 +17,10 @@ class CellLogic extends AbstractHelper
     {
         $view = $this->getView();
 
+        $seePastForEveryone = true;
+
         if ($walkingDate <= $now) {
-            if (! ($user && $user->can('calendar.see-past'))) {
+            if (!$seePastForEveryone && !($user && $user->can('calendar.see-past'))) {
                 return $view->calendarCell($this->view->t('Past'), 'cc-over');
             }
         }
@@ -35,7 +37,7 @@ class CellLogic extends AbstractHelper
             }
 
             if ($walkingDate < $minBookingRangeDate) {
-                if (! ($user && $user->can('calendar.see-past'))) {
+                if (!$seePastForEveryone && !($user && $user->can('calendar.see-past'))) {
                     return $view->calendarCell('Zu kurzfristig', 'cc-over');
                 }
             }
@@ -53,7 +55,7 @@ class CellLogic extends AbstractHelper
             }
 
             if ($walkingDate > $bookingRangeDate) {
-                if (! ($user && $user->can('calendar.see-past'))) {
+                if (!$seePastForEveryone && !($user && $user->can('calendar.see-past'))) {
                     return $view->calendarCell($this->view->t('Too far'), 'cc-over');
                 }
             }
