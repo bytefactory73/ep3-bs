@@ -68,6 +68,10 @@ class Cell extends AbstractHelper
         }
 
         if ($cellFree) {
+            $now = new DateTime();
+            if ($walkingDate <= $now) {
+                return $view->calendarCell($this->view->t('Past'), 'cc-over');
+            }
             return $view->calendarCellRenderFree($user, $userBooking, $reservationsForCell, $cellLinkParams, $square);
         } else {
             return $view->calendarCellRenderOccupied($user, $userBooking, $reservationsForCell, $cellLinkParams, $square);
