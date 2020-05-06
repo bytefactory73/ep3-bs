@@ -51,6 +51,8 @@ class SquareValidator extends AbstractService
     {
         /* Validate square */
 
+        $seePastForEveryone = true; 
+
         $square = $this->squareManager->get($square);
 
         if ($square->need('status') == 'disabled') {
@@ -113,7 +115,7 @@ class SquareValidator extends AbstractService
         $dateMax = new DateTime();
         $dateMax->modify('+' . $square->get('range_book', 0) . ' sec');
 
-        if ($timeStart < $dateMin) {
+        if (!$seePastForEveryone && $timeStart < $dateMin) {
             if (! ($this->user && $this->user->can('calendar.see-past'))) {
 
                 // Allow assist users with calendar.see-data privilege to see the entire day

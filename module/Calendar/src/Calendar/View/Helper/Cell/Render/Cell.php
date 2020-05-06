@@ -3,6 +3,7 @@
 namespace Calendar\View\Helper\Cell\Render;
 
 use Zend\View\Helper\AbstractHelper;
+use DateTime;
 
 class Cell extends AbstractHelper
 {
