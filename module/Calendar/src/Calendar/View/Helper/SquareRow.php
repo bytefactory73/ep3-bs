@@ -22,6 +22,7 @@ class SquareRow extends AbstractHelper
                 $colWidth, $view->t($square->need('name')));
         }
 
+        $html .= '<td class="dummyColumn"</td>';
         $html .= '</tr>';
 
         return $html;
