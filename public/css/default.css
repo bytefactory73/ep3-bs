@@ -566,7 +566,7 @@ p.symbolic { display: block; }
 
 a:link, a:visited { opacity: 0.75; color: #334F6A; }
 a:hover { opacity: 1.0; }
-a:active { position: relative; top: 1px; }
+/* a:active { position: relative; top: 1px; } */
 
 .tabs-panel a:link,
 .tabs-panel a:visited {
