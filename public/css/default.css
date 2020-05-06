@@ -138,10 +138,7 @@ a#logo:active { top: 1px; }
 #topbar > div { margin: 16px 0 0 32px; float: right; }
 
 #topbar-separator { width: 1px; height: 42px; background: #666; }
-#topbar-phone { padding-left: 48px; background: url(../imgs/icons/topbar-phone.png) no-repeat left center; }
-#topbar-infos { visibility: hidden; padding-left: 48px; background: url(../imgs/icons/topbar-eye.png) no-repeat left center; }
 #topbar-website { padding-left: 42px; background: url(../imgs/icons/topbar-home.png) no-repeat left center; }
-#topbar-contact { padding-left: 50px; background: url(../imgs/icons/topbar-face.png) no-repeat left center; }
 
 #topbar-i18n a:link,
 #topbar-i18n a:visited { opacity: 0.5; }
@@ -738,8 +735,6 @@ option { padding-right: 16px; }
 
 @media screen and (max-width: 1280px)
 {
-    .responsive-pass-2 { display: none; }
-
     #calendar-toolbar { text-align: center; }
     #calendar-toolbar-datepicker { display: inline-block; margin-left: 8px; margin-right: 8px; float: none; }
     #calendar-toolbar-userpanel { display: inline-block; margin-left: 8px; margin-right: 8px; float: none; }
