@@ -15,7 +15,7 @@ class SquareRow extends AbstractHelper
         $html .= sprintf('<tr class="calendar-square-row %s">',
             $outerClasses);
 
-        $colWidth = floor(100 / $squaresCount);
+        $colWidth = (100 / $squaresCount);
 
         foreach ($squares as $square) {
             $html .= sprintf('<td style="width: %s%%;"><div class="square-label">%s</div></td>',
