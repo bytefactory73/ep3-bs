@@ -332,9 +332,24 @@ class SquareValidator extends AbstractService
                     }
                 }
 
-                if ($activeBookingsCount >= $maxActiveBookings) {
+                if (!$bookable && $activeBookingsCount >= $maxActiveBookings) {
                     $bookable = false;
-                    $notBookableReason = 'Sie können derzeit nur <b>' . $maxActiveBookings . ' aktive Buchung/en</b> gleichzeitig offen haben.';
+
+                    // allow one short term booking within 2 hours
+                    if ($activeBookingsCount >= $maxActiveBookings + 1) {
+                        $shortTermBookingStart = new DateTime();
+                        $shortTermBookingStart->modify('- 30 minutes');
+                        $shortTermBookingEnd = new DateTime();
+                        $shortTermBookingEnd->modify('+ 2 hours');
+                        if ($dateStart >= $shortTermBookingStart && $dateStart <= $shortTermBookingEnd)
+                        {
+                            $bookable = true;
+                        }
+                    }
+
+                    if (!$bookable) {
+                        $notBookableReason = 'Sie können derzeit nur <b>' . $maxActiveBookings . ' aktive Buchung(en)</b> plus eine Spontanbuchung gleichzeitig offen haben.';
+                    }
                 }
             }
         }
