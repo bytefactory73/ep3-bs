@@ -1,0 +1,52 @@
+[
+	{
+		"path": "$ROOTPATH$\\module\\Backend\\src\\Backend\\Controller\\UserController.php",
+		"bookmarks": [
+			{
+				"line": 157,
+				"column": 0,
+				"label": ""
+			}
+		]
+	},
+	{
+		"path": "$ROOTPATH$\\module\\Calendar\\src\\Calendar\\View\\Helper\\Cell\\CellLogic.php",
+		"bookmarks": [
+			{
+				"line": 17,
+				"column": 10,
+				"label": ""
+			}
+		]
+	},
+	{
+		"path": "$ROOTPATH$\\module\\Calendar\\src\\Calendar\\View\\Helper\\Cell\\Render\\Occupied.php",
+		"bookmarks": [
+			{
+				"line": 21,
+				"column": 18,
+				"label": ""
+			}
+		]
+	},
+	{
+		"path": "$ROOTPATH$\\module\\Calendar\\view\\calendar\\calendar\\index.portrait.phtml",
+		"bookmarks": [
+			{
+				"line": 43,
+				"column": 4,
+				"label": ""
+			}
+		]
+	},
+	{
+		"path": "$ROOTPATH$\\module\\Square\\src\\Square\\Service\\SquareValidator.php",
+		"bookmarks": [
+			{
+				"line": 334,
+				"column": 16,
+				"label": ""
+			}
+		]
+	}
+]
