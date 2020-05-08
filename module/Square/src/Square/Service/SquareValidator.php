@@ -355,7 +355,7 @@ class SquareValidator extends AbstractService
                     }
 
                     if (!$bookable) {
-                        $notBookableReason = 'Sie können derzeit nur <b>' . $maxActiveBookings . ' aktive Buchung(en)</b> plus eine Spontanbuchung gleichzeitig offen haben.' . "<br>" . $shortTermBookingStart->format(DateTime::ISO8601) . "<br>" . $shortTermBookingEnd->format(DateTime::ISO8601) . "<br>" . $dateStart->format(DateTime::ISO8601);
+                        $notBookableReason = 'Sie können derzeit nur <b>' . $maxActiveBookings . ' aktive Buchung(en)</b> plus eine Spontanbuchung gleichzeitig offen haben.' . "<br>"; // . $shortTermBookingStart->format(DateTime::ISO8601) . "<br>" . $shortTermBookingEnd->format(DateTime::ISO8601) . "<br>" . $dateStart->format(DateTime::ISO8601);
                     }
                 }
             }
