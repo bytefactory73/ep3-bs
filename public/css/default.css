@@ -247,7 +247,7 @@ a#logo:active { top: 1px; }
     display: flex;
     justify-content: center;
     font-size: 10px;
-    line-height: 1.0;
+    line-height: 1.25;
     padding: 4px;
     overflow: hidden;
     text-decoration: none;
