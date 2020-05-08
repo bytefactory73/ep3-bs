@@ -320,8 +320,8 @@ class SquareValidator extends AbstractService
 
                 $this->reservationManager->getByBookings($activeBookings);
 
-                $activeBookingsCount1 = 0; // total bookings in the future
-                $activeBookingsCount2 = 0; // total bookings in the future without shortterm bookings
+                $activeBookingsCountTotal = 0; // total bookings in the future
+                $activeBookingsCountWithoutShort = 0; // total bookings in the future without shortterm bookings
 
                 $now = new DateTime();
                 $shortTermBookingStart = clone $now;
@@ -334,20 +334,20 @@ class SquareValidator extends AbstractService
                         $activeReservationDate = new DateTime($activeReservation->get('date') . ' ' . $activeReservation->get('time_start'));
 
                         if ($activeReservationDate > $now) {
-                            $activeBookingsCount1++;
+                            $activeBookingsCountTotal++;
                         }
                         if ($activeReservationDate > $shortTermBookingEnd) {
-                            $activeBookingsCount2++;
+                            $activeBookingsCountWithoutShort++;
                         }
                     }
                 }
 
                 // ignore shortterm bookings and use only the active bookings after the shortterm period
-                if ($bookable && $activeBookingsCount2 >= $maxActiveBookings) {
+                if ($bookable && $activeBookingsCountWithoutShort >= $maxActiveBookings) {
                     $bookable = false;
 
                     // allow one short term booking within 2 hours, but use the total booking count
-                    if ($activeBookingsCount1 < $maxActiveBookings + 1) {
+                    if ($activeBookingsCountTotal < $maxActiveBookings + 1) {
                         if ($dateStart >= $shortTermBookingStart && $dateStart <= $shortTermBookingEnd)
                         {
                             $bookable = true;
