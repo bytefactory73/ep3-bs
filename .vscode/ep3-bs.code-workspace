@@ -5,6 +5,7 @@
 		}
 	],
 	"settings": {
-		"bookmarks.saveBookmarksInProject": true
+		"bookmarks.saveBookmarksInProject": true,
+		"minify.minifyExistingOnSave": true
 	}
 }
