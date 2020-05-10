@@ -18,7 +18,7 @@ class TimeRow extends AbstractHelper
 
         $html .= '<tr class="calendar-time-row">';
 
-        $colWidth = floor(100 / $timeBlockCount);
+        $colWidth = (100 / $timeBlockCount);
 
         for ($walkingTime = $timeStart; $walkingTime < $timeEnd; $walkingTime += $timeBlock) {
             $html .= sprintf('<td style="width: %s%%;">', $colWidth);

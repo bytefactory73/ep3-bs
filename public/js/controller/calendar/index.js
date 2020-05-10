@@ -253,78 +253,80 @@
 
     function updateCalendarEvents()
     {
-        $(".calendar-date-col").each(function(dateIndex) {
-            var calendarDateCol = $(this);
+        if (0) {
+            $(".calendar-date-col").each(function(dateIndex) {
+                var calendarDateCol = $(this);
 
-            var eventGroups = [];
+                var eventGroups = [];
 
-            calendarDateCol.find(".cc-event").each(function() {
-                var classes = $(this).attr("class");
-                var eventGroup = classes.match(/cc-group-\d+/);
+                calendarDateCol.find(".cc-event").each(function() {
+                    var classes = $(this).attr("class");
+                    var eventGroup = classes.match(/cc-group-\d+/);
 
-                if (eventGroup) {
-                    if ($.inArray(eventGroup, eventGroups) === -1) {
-                        eventGroups.push(eventGroup);
+                    if (eventGroup) {
+                        if ($.inArray(eventGroup, eventGroups) === -1) {
+                            eventGroups.push(eventGroup);
+                        }
+                    }
+                });
+
+                var eventGroupsLength = eventGroups.length;
+
+                for (var i = 0; i <= eventGroupsLength; i++) {
+                    var eventGroup = eventGroups[i] + "";
+
+                    var eventGroupCellFirst = calendarDateCol.find("." + eventGroup + ":first");
+                    var eventGroupCellLast = calendarDateCol.find("." + eventGroup + ":last");
+
+                    var posFirst = eventGroupCellFirst.position();
+                    var posLast = eventGroupCellLast.position();
+
+                    if (posFirst && posLast) {
+                        var startX = Math.floor(posFirst.left) - 1;
+                        var startY = Math.floor(posFirst.top) - 1;
+
+                        var endX = Math.ceil(posLast.left) + 1;
+                        var endY = Math.ceil(posLast.top) + 1;
+
+                        var eventWidth = Math.round((endX + eventGroupCellLast.outerWidth()) - startX);
+                        var eventHeight = Math.round((endY + eventGroupCellLast.outerHeight()) - startY);
+
+                        /* Create event group overlay */
+
+                        var eventGroupOverlay = $("#" + eventGroup + "-overlay-" + dateIndex);
+
+                        if (! eventGroupOverlay.length) {
+                            eventGroupOverlay = eventGroupCellFirst.clone();
+                            eventGroupOverlay.appendTo( eventGroupCellFirst.closest("td") );
+                            eventGroupOverlay.attr("id", eventGroup + "-overlay-" + dateIndex);
+                            eventGroupOverlay.removeClass(eventGroup);
+                        }
+
+                        var eventGroupOverlayLabel = eventGroupOverlay.find(".cc-label");
+
+                        eventGroupOverlay.css({
+                            "position": "absolute",
+                            "z-index": 128,
+                            "left": startX, "top": startY,
+                            "width": eventWidth,
+                            "height": eventHeight,
+                            "padding": 0
+                        });
+
+                        eventGroupOverlayLabel.css({
+                            "height": "auto",
+                            "font-size": "12px",
+                            "line-height": 1.5
+                        });
+
+                        eventGroupOverlayLabel.css({
+                            "position": "relative",
+                            "top": Math.round((eventHeight / 2) - (eventGroupOverlayLabel.height() / 2))
+                        });
                     }
                 }
             });
-
-            var eventGroupsLength = eventGroups.length;
-
-            for (var i = 0; i <= eventGroupsLength; i++) {
-                var eventGroup = eventGroups[i] + "";
-
-                var eventGroupCellFirst = calendarDateCol.find("." + eventGroup + ":first");
-                var eventGroupCellLast = calendarDateCol.find("." + eventGroup + ":last");
-
-                var posFirst = eventGroupCellFirst.position();
-                var posLast = eventGroupCellLast.position();
-
-                if (posFirst && posLast) {
-                    var startX = Math.floor(posFirst.left) - 1;
-                    var startY = Math.floor(posFirst.top) - 1;
-
-                    var endX = Math.ceil(posLast.left) + 1;
-                    var endY = Math.ceil(posLast.top) + 1;
-
-                    var eventWidth = Math.round((endX + eventGroupCellLast.outerWidth()) - startX);
-                    var eventHeight = Math.round((endY + eventGroupCellLast.outerHeight()) - startY);
-
-                    /* Create event group overlay */
-
-                    var eventGroupOverlay = $("#" + eventGroup + "-overlay-" + dateIndex);
-
-                    if (! eventGroupOverlay.length) {
-                        eventGroupOverlay = eventGroupCellFirst.clone();
-                        eventGroupOverlay.appendTo( eventGroupCellFirst.closest("td") );
-                        eventGroupOverlay.attr("id", eventGroup + "-overlay-" + dateIndex);
-                        eventGroupOverlay.removeClass(eventGroup);
-                    }
-
-                    var eventGroupOverlayLabel = eventGroupOverlay.find(".cc-label");
-
-                    eventGroupOverlay.css({
-                        "position": "absolute",
-                        "z-index": 128,
-                        "left": startX, "top": startY,
-                        "width": eventWidth,
-                        "height": eventHeight,
-                        "padding": 0
-                    });
-
-                    eventGroupOverlayLabel.css({
-                        "height": "auto",
-                        "font-size": "12px",
-                        "line-height": 1.5
-                    });
-
-                    eventGroupOverlayLabel.css({
-                        "position": "relative",
-                        "top": Math.round((eventHeight / 2) - (eventGroupOverlayLabel.height() / 2))
-                    });
-                }
-            }
-        });
+        }
     }
 
 })();
