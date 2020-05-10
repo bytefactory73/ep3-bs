@@ -92,7 +92,22 @@ while ($walkingDate <= $this->dateEnd) {
                         break;
                     }
                 }
-                $cell = str_replace('<td>', '<td rowspan="'.$cellCount.'">', $cell);
+
+                $colspan = 1;
+                for ($c = $idx + 1; $c < count($this->squares); $c++) {
+                    if ($coljoin[$r][$c] == $key) {
+                        $colspan++;
+                        $collect[$c] = $key;
+                    }
+                }
+                
+                if ($colspan > 1) {
+                    $colspan = ' colspan="'.$colspan.'"';
+                } else {
+                    $colspan = '';
+                }
+
+                $cell = str_replace('<td>', '<td rowspan="'.$cellCount.'"'.$colspan.'">', $cell);
             }
             $collect[$idx] = $key;
             echo $cell;
