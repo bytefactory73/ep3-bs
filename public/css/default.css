@@ -234,10 +234,11 @@ a#logo:active { top: 1px; }
 .calendar-time-table td,
 .calendar-square-table td { text-align: center; }
 
-.calendar-date-row td { height: 42px; }
-.calendar-time-row td { height: 42px; }
-.calendar-square-row td { height: 28px; }
-.calendar-core-row td { height: 25px; position: relative; }
+.calendar-date-row { height: 42px; overflow: hidden;}
+.calendar-time-row { height: 42px; overflow: hidden;}
+.calendar-square-row { height: 28px; overflow: hidden;}
+.calendar-core-row { height: 25px; overflow: hidden;}
+.calendar-core-row td { position: relative; }
 
 .cts-label, .day-label, .square-label { font-weight: bold; }
 .cte-label { color: #666; font-size: 10px; }
@@ -246,7 +247,7 @@ a#logo:active { top: 1px; }
     display: flex;
     justify-content: center;
     font-size: 10px;
-    line-height: 1.0;
+    line-height: 1.25;
     padding: 4px;
     overflow: hidden;
     text-decoration: none;
