@@ -329,33 +329,61 @@ class SquareValidator extends AbstractService
                 $shortTermBookingEnd = clone $now;
                 $shortTermBookingEnd->modify('+2 hours');
 
+                $minDiff = 10000000000;
+
                 foreach ($activeBookings as $activeBooking) {
                     foreach ($activeBooking->getExtra('reservations') as $activeReservation) {
-                        $activeReservationDate = new DateTime($activeReservation->get('date') . ' ' . $activeReservation->get('time_start'));
+                        $activeReservationStartDate = new DateTime($activeReservation->get('date') . ' ' . $activeReservation->get('time_start'));
+                        $activeReservationEndDate = new DateTime($activeReservation->get('date') . ' ' . $activeReservation->get('time_end'));
 
-                        if ($activeReservationDate > $now) {
+                        // count active bookings
+                        if ($activeReservationStartDate > $now) {
                             $activeBookingsCountTotal++;
                         }
-                        if ($activeReservationDate > $shortTermBookingEnd) {
+                        if ($activeReservationStartDate > $shortTermBookingEnd) {
                             $activeBookingsCountWithoutShort++;
+                        }
+
+                        // if booking date is before existing booking compare against start date
+                        $compareDate1 = $dateStart < $activeReservationStartDate ? $dateEnd : $dateStart;
+                        $compareDate2 = $dateStart < $activeReservationStartDate ? $activeReservationStartDate : $activeReservationEndDate;
+
+                        $diff = abs($compareDate1->format('U') - $compareDate2->format('U'));
+
+                        if ($diff < $minDiff) {
+                            $minDiff = $diff;
                         }
                     }
                 }
 
-                // ignore shortterm bookings and use only the active bookings after the shortterm period
-                if ($bookable && $activeBookingsCountWithoutShort >= $maxActiveBookings) {
-                    $bookable = false;
+                if ($bookable) {
+                    // check for X hours gap between 2 bookings
+                    $blockedHours = 3;
+                    $minDiffHours = $minDiff / 3600; // seconds to hours
 
-                    // allow one short term booking within 2 hours, but use the total booking count
-                    if ($activeBookingsCountTotal < $maxActiveBookings + 1) {
-                        if ($dateStart >= $shortTermBookingStart && $dateStart <= $shortTermBookingEnd)
-                        {
-                            $bookable = true;
+                    if ($dateStart < $shortTermBookingStart || $dateStart > $shortTermBookingEnd)
+                    {
+                        if ($minDiffHours < $blockedHours) {
+                            $bookable = false;
+                            $notBookableReason = 'Es müssen mindestens ' . $blockedHours . ' Stunden zwischen 2 Buchnungen liegen.';
                         }
                     }
 
-                    if (!$bookable) {
-                        $notBookableReason = 'Sie können derzeit nur <b>' . $maxActiveBookings . ' aktive Buchung(en)</b> plus eine Spontanbuchung gleichzeitig offen haben.' . "<br>"; // . $shortTermBookingStart->format(DateTime::ISO8601) . "<br>" . $shortTermBookingEnd->format(DateTime::ISO8601) . "<br>" . $dateStart->format(DateTime::ISO8601);
+                    // ignore shortterm bookings and use only the active bookings after the shortterm period
+                    if ($bookable && $activeBookingsCountWithoutShort >= $maxActiveBookings) {
+                        $bookable = false;
+
+                        // allow one short term booking within 2 hours, but use the total booking count
+                        if ($activeBookingsCountTotal < $maxActiveBookings + 1) {
+                            if ($dateStart >= $shortTermBookingStart && $dateStart <= $shortTermBookingEnd)
+                            {
+                                $bookable = true;
+                            }
+                        }
+
+                        if (!$bookable) {
+                            $notBookableReason = 'Sie können derzeit nur <b>' . $maxActiveBookings . ' aktive Buchung(en)</b> plus eine Spontanbuchung gleichzeitig offen haben.' . "<br>"; // . $shortTermBookingStart->format(DateTime::ISO8601) . "<br>" . $shortTermBookingEnd->format(DateTime::ISO8601) . "<br>" . $dateStart->format(DateTime::ISO8601);
+                        }
                     }
                 }
             }
