@@ -21,6 +21,7 @@ Options:
 - service.user.activation                   immediate|manual|manual-email|email
 - service.calendar.days                     int
 - service.calendar.day-exceptions           (optional)
+- service.user.hoursBetweenBookings         float
 - service.website                           URL
 - service.meta.description                  (optional)
 - service.maintenance                       (optional) true|false
