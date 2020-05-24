@@ -3,6 +3,7 @@
 namespace Backend\Form\Config;
 
 use Zend\Form\Form;
+use Zend\InputFilter\Factory;
 
 class BehaviourForm extends Form
 {
@@ -125,6 +126,19 @@ class BehaviourForm extends Form
             ),
         ));
 
+        $this->add(array( 
+            'name' => 'cf-hours-between-bookings', 
+            'type' => 'Text', 
+            'attributes' => array( 
+                'id' => 'cf-hours-between-bookings', 
+                'style' => 'width: 96px;', 
+            ), 
+            'options' => array( 
+                'label' => 'Hours between 2 bookings',
+                'notes' => 'Defines how many hours must be between two bookings',
+            ), 
+        ));         
+
         $this->add(array(
             'name' => 'cf-submit',
             'type' => 'Submit',
@@ -134,6 +148,33 @@ class BehaviourForm extends Form
                 'style' => 'width: 200px;',
             ),
         ));
-    }
+
+        /* Input filters */ 
+ 
+        $factory = new Factory(); 
+ 
+        $this->setInputFilter($factory->createInputFilter(array(         
+            'cf-hours-between-bookings' => array( 
+                'filters' => array( 
+                    array('name' => 'StringTrim'), 
+                ), 
+                'validators' => array( 
+                    array( 
+                        'name' => 'NotEmpty', 
+                        'options' => array( 
+                            'message' => 'Please type something here', 
+                        ), 
+                        'break_chain_on_failure' => true, 
+                    ), 
+                    array(
+                        'name' => 'Regex',
+                        'options' => array(
+                            'pattern' => '/^[0-9]*\\.?[0-9]*$/',
+                            'message' => 'Please provide the number',
+                        ),
+                    ),
+                ), 
+            ))));
+        }
 
 }
