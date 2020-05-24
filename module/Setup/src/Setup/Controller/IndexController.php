@@ -106,6 +106,7 @@ class IndexController extends AbstractActionController
 
                 $optionManager->set('service.user.registration', 'true');
                 $optionManager->set('service.user.activation', 'email');
+                $optionManager->set('service.user.hoursBetweenBookings', '0');
                 $optionManager->set('service.calendar.days', '4');
                 $optionManager->set('service.website', $base);
                 $optionManager->set('service.branding', 'true');

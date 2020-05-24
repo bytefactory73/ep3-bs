@@ -351,14 +351,14 @@ class SquareValidator extends AbstractService
 
                 if ($bookable) {
                     // check for X hours gap between 2 bookings
-                    $blockedHours = 3;
+                    $hoursBetweenBookings = $this->optionManager->get('service.user.hoursBetweenBookings', '0');
                     $minDiffHours = $minDiff / 3600; // seconds to hours
 
                     if ($dateStart < $shortTermBookingStart || $dateStart > $shortTermBookingEnd)
                     {
-                        if ($minDiffHours < $blockedHours) {
+                        if ($hoursBetweenBookings && $minDiffHours < $hoursBetweenBookings) {
                             $bookable = false;
-                            $notBookableReason = 'Es müssen mindestens ' . $blockedHours . ' Stunden zwischen 2 Buchnungen liegen.';
+                            $notBookableReason = 'Es müssen mindestens ' . $hoursBetweenBookings . ' Stunden zwischen 2 Buchnungen liegen.';
                         }
                     }
 
