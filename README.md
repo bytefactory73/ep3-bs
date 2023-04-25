@@ -14,9 +14,12 @@ looking nice on mobile devices as well).
 More features may be explored via our website (http://bs.hbsys.de/) or simply by downloading and trying the system
 yourself.
 
-## Documentation and installation
+## Documentation
 
-Documentation and installation instructions can be found in the following directory:
+- Installation instructions can be found in [INSTALL.md](https://github.com/tkrebs/ep3-bs/blob/master/INSTALL.md)
+- Update instructions can be found in [UPDATE.md](https://github.com/tkrebs/ep3-bs/blob/master/UPDATE.md)
+
+Further documentation and technical details can be found in the following directory:
 
 ```
 data/docs/
@@ -24,13 +27,12 @@ data/docs/
 
 ## Architecture
 
-The system is based on the well-known LAMP stack (Linux, Apache 2, MySQL 5+, PHP 5.6+) and the powerful
+The system is based on the well-known LAMP stack (Linux, Apache 2, MySQL 5+, PHP 8.1+) and the powerful
 [Zend Framework 2](http://framework.zend.com/) (2.5).
 
-It is compatible with PHP version up to and including 7.4. We are currently working on an upgrade of the underlying
-Zend Framework to make it compatible with PHP 8.0.
+Since version 1.8.0, it is compatible with (and requires) PHP version 8.1 or higher.
 
-Dependencies are managed with [composer](https://getcomposer.org/).
+Dependencies are managed with [Composer](https://getcomposer.org/).
 
 The source code is version controlled with [Git](http://git-scm.com/) and hosted at [GitHub](https://github.com/).
 
@@ -42,9 +44,14 @@ https://github.com/tkrebs/ep3-bs
 
 where you can find stable and (latest) development releases.
 
-## Version
+## Versions
 
-The current version is 1.7.0 from January, 2021.
+The current version is 1.8.1 from November 2022.
+
+Version 1.8.1 fixes an email sending related bug.
+
+Version 1.8.0 provides compatibility with PHP 8.1 by overriding and fixing the essential Zend Framework 2 components.
+It also fixes some bugs, added a file-storage-only mail option and removes some legacy code (mainly, the file manager).
 
 Version 1.7.0 provides compatibility with PHP 7.4 by overriding and fixing some of the Zend Framework 2 components.
 
