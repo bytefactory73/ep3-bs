@@ -1,12 +1,3 @@
--- phpMyAdmin SQL Dump
--- version 4.1.8
--- http://www.phpmyadmin.net
---
--- Host: 127.0.0.1
--- Erstellungszeit: 23. Jun 2014 um 23:00
--- Server Version: 5.5.27
--- PHP-Version: 5.4.7
-
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 SET time_zone = "+00:00";
 
@@ -166,6 +157,7 @@ CREATE TABLE IF NOT EXISTS `bs_squares` (
   `priority` float NOT NULL DEFAULT '1',
   `capacity` int(10) unsigned NOT NULL,
   `capacity_heterogenic` tinyint(1) NOT NULL,
+  `allow_notes` tinyint(1) NOT NULL DEFAULT 0,
   `time_start` time NOT NULL,
   `time_end` time NOT NULL,
   `time_block` int(10) unsigned NOT NULL,
