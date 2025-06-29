@@ -1,6 +1,6 @@
 <?php
 
-return array(
+return [
 
     'Today' => 'Ma',
     'Date' => 'Dátum',
@@ -25,4 +25,4 @@ return array(
     'My bookings' => 'Foglalásaim',
     'My account' => 'Fiókom',
 
-);
+];

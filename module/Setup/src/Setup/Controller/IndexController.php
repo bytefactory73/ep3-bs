@@ -111,7 +111,7 @@ class IndexController extends AbstractActionController
                 $optionManager->set('service.website', $base);
                 $optionManager->set('service.branding', 'false');
                 $optionManager->set('service.branding.name', $this->t('ep-3 Bookingsystem'));
-                $optionManager->set('service.branding.website', 'http://bs.hbsys.de/');
+                $optionManager->set('service.branding.website', 'https://bs.hbsys.de/');
 
                 /* Setup default squares */
 
@@ -153,13 +153,13 @@ class IndexController extends AbstractActionController
             }
         } else {
             $textForm->setData(array(
-                'cf-service_name_full' => 'Bookingsystem',
+                'cf-service_name_full' => $this->t('Bookingsystem'),
                 'cf-service_name_short' => 'BS',
                 'cf-subject_square_type' => $this->t('Square'),
                 'cf-subject_square_type_plural' => $this->t('Squares'),
                 'cf-subject_square_unit' => $this->t('Player'),
                 'cf-subject_square_unit_plural' => $this->t('Players'),
-                'cf-subject_type' => 'our Facility',
+                'cf-subject_type' => $this->t('our Facility'),
             ));
         }
 
