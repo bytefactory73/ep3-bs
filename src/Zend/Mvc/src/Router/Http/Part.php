@@ -20,6 +20,7 @@ use Zend\Stdlib\RequestInterface as Request;
 /**
  * Part route.
  */
+#[\AllowDynamicProperties]
 class Part extends TreeRouteStack implements RouteInterface
 {
     /**
@@ -49,11 +50,11 @@ class Part extends TreeRouteStack implements RouteInterface
      * @param  mixed              $route
      * @param  bool               $mayTerminate
      * @param  RoutePluginManager $routePlugins
-     * @param  array|null         $childRoutes
-     * @param  ArrayObject|null   $prototypes
+     * @param array|null $childRoutes
+     * @param ArrayObject|null $prototypes
      * @throws Exception\InvalidArgumentException
      */
-    public function __construct($route, $mayTerminate, RoutePluginManager $routePlugins, array $childRoutes = null, ArrayObject $prototypes = null)
+    public function __construct($route, $mayTerminate, RoutePluginManager $routePlugins, ?array $childRoutes = null, ?ArrayObject $prototypes = null)
     {
         $this->routePluginManager = $routePlugins;
 
