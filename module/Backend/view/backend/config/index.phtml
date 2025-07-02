@@ -110,6 +110,19 @@ $this->setup(array(
 
             <tr>
                 <td>
+                    <a href="<?= $this->url('user/manage-drinks') ?>" class="default-button" style="width: 160px; text-align: left;">
+                        <span class="symbolic symbolic-config"><?= $this->t('Drinks') ?></span>
+                    </a>
+                </td>
+                <td>
+                    <p class="gray">
+                        <?= $this->t('Configure the drinks available for ordering with bookings.') ?>
+                    </p>
+                </td>
+            </tr>
+
+            <tr>
+                <td>
                     <a href="<?= $this->url('backend/config/behaviour') ?>" class="default-button" style="width: 160px; text-align: left;">
                         <span class="symbolic symbolic-config"><?= $this->t('Behaviour') ?></span>
                     </a>

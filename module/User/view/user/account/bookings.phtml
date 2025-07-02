@@ -1,5 +1,17 @@
 <?php
 
+// Calculate current balance from bottom up (oldest to newest)
+$currentBalance = 0;
+if (isset($this->drinkHistory) && is_array($this->drinkHistory)) {
+    foreach ($this->drinkHistory as $entry) {
+        if ($entry['type'] === 'deposit') {
+            $currentBalance += $entry['amount'];
+        } else if ($entry['type'] === 'order') {
+            $currentBalance -= $entry['total'];
+        }
+    }
+}
+
 $this->setup(array(
     'title' => 'My bookings',
     'panel' => 'centered-panel',
@@ -10,6 +22,380 @@ $this->setup(array(
 ));
 
 ?>
+
+<style type="text/css">
+#current-balance-display.negative-balance {
+    background: #fff3f3 !important;
+    color: #d32f2f !important;
+    border: 1px solid #d32f2f;
+}
+#current-balance-display.negative-balance #current-balance-value {
+    color: #d32f2f !important;
+}
+.drink-tile {
+    width: 150px;
+    height: 200px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    background: #fff;
+    padding: 4px;
+    position: relative;
+    overflow: visible;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+}
+.drink-tile .drink-controls {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    right: 4px;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 2;
+    pointer-events: none;
+    width: auto;
+}
+.drink-tile .drink-controls button {
+    pointer-events: auto;
+}
+.drink-tile .drink-count-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 2px;
+}
+.drink-tile img {
+    width: 142px;
+    height: 142px;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    margin-bottom: 8px;
+    background: transparent;
+    border-radius: 4px;
+    margin-top: 0;
+    z-index: 1;
+}
+</style>
+
+<?php if (isset($this->drinks)): ?>
+    <div class="separator-small"></div>
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+        <h2 style="margin: 0; flex: 0 0 auto;"><?= $this->t('Order something') ?></h2>
+        <div style="flex: 1 1 auto; display: flex; justify-content: center; align-items: center;">
+            <div id="current-balance-display" class="<?= $currentBalance < 0 ? 'negative-balance' : '' ?>" style="font-size: 1.1em; font-weight: bold; color: #2196f3; background: #f5faff; border-radius: 6px; padding: 8px 18px; display: inline-flex; align-items: center; border: 1px solid #2196f3;">
+                <?= $this->t('New Balance') ?>
+                <span id="current-balance-value" style="margin-left: 8px; color: <?= $currentBalance < 0 ? '#d32f2f' : '#2196f3' ?>; font-size: 1.15em; font-weight: bold;">
+                    <?= $this->priceFormat($currentBalance * 100.0, null, null, null, null, null, true, true, false) ?>
+                </span>
+            </div>
+        </div>
+        <button type="button" id="clear-drink-selection" title="<?= $this->escapeHtmlAttr($this->t('Clear selection')) ?>" style="background: none; border: none; margin-right: 12px; cursor: pointer; padding: 0; display: flex; align-items: center;">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><rect x="3" y="6" width="18" height="14" rx="2" fill="#f5faff" stroke="#888"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="1" y1="6" x2="23" y2="6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        </button>
+        <button type="submit" form="drink-order-form" name="drink_order_submit" value="1" class="default-button" style="font-size: 1.2em; padding: 12px 32px; min-width: 120px; font-weight: bold; display: flex; align-items: center; gap: 12px; flex: 0 0 auto;">
+            <span style="font-weight: bold;"><?= $this->t('Order') ?></span>
+            <span id="drink-order-total" style="font-weight: bold; color: #2196f3; font-size: 1em;"> <?= $this->priceFormat(0) ?> </span>
+        </button>
+    </div>
+    <form method="post" id="drink-order-form">
+        <div style="height: 16px;"></div>
+        <div style="display: flex; flex-wrap: wrap; gap: 24px;">
+            <?php foreach ($this->drinks as $drink): ?>
+                <div class="drink-tile">
+                    <?php
+                    $imgPath = isset($drink['image']) && $drink['image'] ? $this->basePath('imgs/branding/' . $drink['image']) : $this->basePath('imgs/branding/drink-placeholder.png');
+                    ?>
+                    <div class="drink-controls">
+                        <button type="button" class="drink-minus" data-drink-id="<?= (int)$drink['id'] ?>" style="background: #eee; border: none; border-radius: 4px; width: 28px; height: 28px; font-size: 18px; font-weight: bold; color: #2196f3; cursor: pointer; margin-right: 0;">–</button>
+                        <span style="flex: 1 1 auto; display: flex; align-items: center; justify-content: center; min-width: 32px;">
+                            <span class="drink-count-badge" id="badge-<?= (int)$drink['id'] ?>" style="background: #2196f3; color: #fff; border-radius: 50%; padding: 3px 8px; font-size: 13px; font-weight: bold; min-width: 22px; text-align: center; visibility: hidden;">0</span>
+                        </span>
+                        <button type="button" class="drink-plus" data-drink-id="<?= (int)$drink['id'] ?>" style="background: #eee; border: none; border-radius: 4px; width: 28px; height: 28px; font-size: 18px; font-weight: bold; color: #2196f3; cursor: pointer; margin-left: 0;">+</button>
+                    </div>
+                    <img src="<?= $imgPath ?>" alt="<?= $this->escapeHtmlAttr($drink['name']) ?>" />
+                    <div style="font-weight: bold; margin-bottom: 4px; text-align: center;">
+                        <?= $this->escapeHtml($drink['name']) ?>
+                    </div>
+                    <div style="color: #666; text-align: center; margin-bottom: 4px; font-size: 1.1em; font-weight: bold;">
+                        <?= $this->priceFormat($drink['price'] * 100.0, null, null, null, null, null, true, false, false) ?>
+                    </div>
+                    <input type="hidden" name="drink_counts[<?= (int)$drink['id'] ?>]" id="input-<?= (int)$drink['id'] ?>" value="0" data-price="<?= htmlspecialchars($drink['price'], ENT_QUOTES) ?>" />
+                </div>
+            <?php endforeach; ?>
+        </div>
+        <div style="height: 24px;"></div>
+    </form>
+    <script>
+    // Drink order tile logic
+    function updateDrinkOrderTotal() {
+        var total = 0;
+        document.querySelectorAll('input[id^="input-"]').forEach(function(input) {
+            var count = parseInt(input.value) || 0;
+            var price = parseFloat(input.getAttribute('data-price')) || 0;
+            total += count * price;
+        });
+        // Format as currency (EUR, 2 decimals, comma as decimal separator)
+        var formatted = (total).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+        document.getElementById('drink-order-total').textContent = formatted;
+
+        // Update current balance preview
+        var initialBalance = parseFloat("<?= $currentBalance ?>");
+        var newBalance = initialBalance - total;
+        var formattedBalance = newBalance.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+        var balanceElem = document.getElementById('current-balance-value');
+        var balanceBox = document.getElementById('current-balance-display');
+        balanceElem.textContent = formattedBalance;
+        balanceElem.style.color = (newBalance < 0) ? '#d32f2f' : '#2196f3';
+        if (newBalance < 0) {
+            balanceBox.classList.add('negative-balance');
+        } else {
+            balanceBox.classList.remove('negative-balance');
+        }
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.drink-plus').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var id = this.getAttribute('data-drink-id');
+                var input = document.getElementById('input-' + id);
+                var badge = document.getElementById('badge-' + id);
+                var val = parseInt(input.value) || 0;
+                val++;
+                input.value = val;
+                badge.textContent = val;
+                badge.style.visibility = val > 0 ? 'visible' : 'hidden';
+                updateDrinkOrderTotal();
+            });
+        });
+        document.querySelectorAll('.drink-minus').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var id = this.getAttribute('data-drink-id');
+                var input = document.getElementById('input-' + id);
+                var badge = document.getElementById('badge-' + id);
+                var val = parseInt(input.value) || 0;
+                if (val > 0) val--;
+                input.value = val;
+                badge.textContent = val;
+                badge.style.visibility = val > 0 ? 'visible' : 'hidden';
+                updateDrinkOrderTotal();
+            });
+        });
+        document.getElementById('clear-drink-selection').addEventListener('click', function() {
+            document.querySelectorAll('input[id^="input-"]').forEach(function(input) {
+                input.value = 0;
+                var id = input.id.replace('input-', '');
+                var badge = document.getElementById('badge-' + id);
+                badge.textContent = 0;
+                badge.style.visibility = 'hidden';
+            });
+            updateDrinkOrderTotal();
+        });
+        // Initialize all badges to 0 and hidden
+        document.querySelectorAll('input[id^="input-"]').forEach(function(input) {
+            var id = input.id.replace('input-', '');
+            var badge = document.getElementById('badge-' + id);
+            badge.textContent = input.value;
+            badge.style.visibility = (parseInt(input.value) > 0) ? 'visible' : 'hidden';
+        });
+        updateDrinkOrderTotal();
+    });
+    </script>
+<?php endif; ?>
+
+<?php if (isset($this->drinkHistory)): ?>
+    <h2><?= $this->t('My Drink Orders and Payments') ?></h2>
+    <table class="default-table middle-table">
+        <tr>
+            <th style="text-align:left;"></th>
+            <th style="text-align:left;"><?= $this->t('Drink / Payment') ?></th>
+            <th style="text-align:left;"><?= $this->t('Quantity') ?></th>
+            <th style="text-align:left;"><?= $this->t('Price') ?></th>
+            <th style="text-align:left;"><?= $this->t('Total') ?></th>
+            <th style="text-align:left;"><?= $this->t('Date/Time') ?></th>
+            <th style="text-align:left;"><?= $this->t('Balance After') ?></th>
+        </tr>
+        <?php
+        $drinkHistory = array_reverse($this->drinkHistory);
+        $balance = 0;
+        $rows = [];
+        // Calculate balance from bottom up
+        for ($i = count($drinkHistory) - 1; $i >= 0; $i--) {
+            $entry = $drinkHistory[$i];
+            if ($entry['type'] === 'deposit') {
+                $balance += $entry['amount'];
+            } else if ($entry['type'] === 'order') {
+                $balance -= $entry['total'];
+            }
+            $rows[$i] = $balance;
+        }
+        $rows = array_reverse($rows);
+        // Group orders within 5 minutes
+        $grouped = [];
+        $groupKey = null;
+        $groupStartTime = null;
+        foreach ($drinkHistory as $idx => $entry) {
+            if ($entry['type'] !== 'order') {
+                $grouped[] = [ 'type' => 'deposit', 'entry' => $entry, 'idx' => $idx ];
+                $groupKey = null;
+                $groupStartTime = null;
+                continue;
+            }
+            $dt = strtotime($entry['datetime']);
+            if ($groupStartTime === null || $dt - $groupStartTime > 300) {
+                if ($groupKey !== null) {
+                    $grouped[] = $groupKey;
+                }
+                $groupKey = [ 'time' => $dt, 'entries' => [], 'indices' => [] ];
+                $groupStartTime = $dt;
+            }
+            $groupKey['entries'][] = $entry;
+            $groupKey['indices'][] = $idx;
+        }
+        if ($groupKey !== null) {
+            $grouped[] = $groupKey;
+        }
+        // Calculate current balance from bottom up (oldest to newest)
+        $currentBalance = 0;
+        foreach ($this->drinkHistory as $entry) {
+            if ($entry['type'] === 'deposit') {
+                $currentBalance += $entry['amount'];
+            } else if ($entry['type'] === 'order') {
+                $currentBalance -= $entry['total'];
+            }
+        }
+        // Render table
+        ?>
+        <?php
+        $groupIndex = 0;
+        $runningBalance = $currentBalance;
+        foreach (array_reverse($grouped) as $group) {
+            if (isset($group['type']) && $group['type'] === 'deposit') {
+                $entry = $group['entry'];
+                echo '<tr>';
+                echo '<td></td>';
+                echo '<td>' . $this->t('Start Balance') . '</td>';
+                echo '<td></td>';
+                echo '<td>' . $this->priceFormat($entry['amount'] * 100.0, null, null, null, null, null, true, true, false) . '</td>';
+                echo '<td>' . $this->priceFormat($entry['amount'] * 100.0, null, null, null, null, null, true, true, false) . '</td>';
+                echo '<td>' . $this->escapeHtml($entry['datetime']) . '</td>';
+                echo '<td>' . $this->priceFormat($runningBalance * 100.0, null, null, null, null, null, true, true, false) . '</td>';
+                echo '</tr>';
+                $runningBalance -= $entry['amount'];
+            } else if (isset($group['entries'])) {
+                $entries = array_reverse($group['entries']);
+                $groupTime = $entries[0]['datetime'];
+                $collapsedId = 'order-group-' . $groupIndex;
+                $groupTotal = 0;
+                foreach ($entries as $e) {
+                    $groupTotal += $e['total'];
+                }
+                // Calculate total drink count for the group
+                $totalDrinkCount = 0;
+                foreach ($entries as $entry) {
+                    $totalDrinkCount += $entry['quantity'];
+                }
+                // Find the most relevant drink(s) for the group (by quantity, then by total value)
+                $drinkCounts = [];
+                foreach ($entries as $entry) {
+                    if (!isset($drinkCounts[$entry['name']])) {
+                        $drinkCounts[$entry['name']] = ['quantity' => 0, 'total' => 0];
+                    }
+                    $drinkCounts[$entry['name']]['quantity'] += $entry['quantity'];
+                    $drinkCounts[$entry['name']]['total'] += $entry['total'];
+                }
+                // Sort by quantity desc, then by total desc
+                uasort($drinkCounts, function($a, $b) {
+                    if ($a['quantity'] === $b['quantity']) {
+                        return $b['total'] <=> $a['total'];
+                    }
+                    return $b['quantity'] <=> $a['quantity'];
+                });
+                $relevantDrinks = array_keys($drinkCounts);
+                $relevantLabel = $this->t('Order Group');
+                if (count($relevantDrinks) > 0) {
+                    $relevantLabel = $this->escapeHtml($relevantDrinks[0]);
+                    if (count($relevantDrinks) > 1) {
+                        $relevantLabel .= ' <span style="color:#888;font-weight:normal;">...</span>';
+                    }
+                }
+                // Determine if this group should be open (first group only)
+                $isOpen = ($groupIndex === 0);
+                echo '<tr class="order-group-header" style="background:#f5faff; cursor:pointer;" data-group="' . $collapsedId . '">';
+                // 1. Toggle icon
+                echo '<td style="width:24px; text-align:center;">';
+                echo '<span class="collapse-toggle" data-group="' . $collapsedId . '" style="display:inline-block; width:20px; height:20px; line-height:20px; border-radius:50%; background:#2196f3; color:#fff; font-weight:bold; cursor:pointer;">' . ($isOpen ? '–' : '+') . '</span>';
+                echo '</td>';
+                // 2. Type (Order Group) -- REMOVE
+                // echo '<td><strong>' . $this->t('Order Group') . '</strong></td>';
+                // 3. Drink / Payment (Relevant drink label) -- now becomes 2nd column
+                echo '<td><strong>' . $relevantLabel . '</strong></td>';
+                // 4. Quantity (group total count) -- now becomes 3rd column
+                echo '<td><strong>' . $totalDrinkCount . '</strong></td>';
+                // 5. Price / Amount (empty) -- now becomes 4th column
+                echo '<td></td>';
+                // 6. Total (group total) -- now becomes 5th column
+                echo '<td><strong>' . $this->priceFormat($groupTotal * 100.0, null, null, null, null, null, true, true, false) . '</strong></td>';
+                // 7. Date/Time (group time) -- now becomes 6th column
+                echo '<td>' . $this->escapeHtml($groupTime) . '</td>';
+                // 8. Balance After (running balance) -- now becomes 7th column
+                echo '<td><strong>' . $this->priceFormat($runningBalance * 100.0, null, null, null, null, null, true, true, false) . '</strong></td>';
+                echo '</tr>';
+                foreach ($entries as $entry) {
+                    $rowStyle = $isOpen ? '' : 'display:none;';
+                    echo '<tr class="order-group-row" data-group="' . $collapsedId . '" style="background:#fafdff;' . $rowStyle . '">';
+                    echo '<td></td>';
+                    echo '<td>' . $this->escapeHtml($entry['name']) . '</td>';
+                    echo '<td>' . (int)$entry['quantity'] . '</td>';
+                    echo '<td>' . $this->priceFormat($entry['price'] * 100.0, null, null, null, null, null, true, false, false) . '</td>';
+                    echo '<td>' . $this->priceFormat($entry['total'] * 100.0, null, null, null, null, null, true, false, false) . '</td>';
+                    echo '<td>' . $this->escapeHtml($entry['datetime']) . '</td>';
+                    echo '<td></td>';
+                    echo '</tr>';
+                    $runningBalance += $entry['total'];
+                }
+                $groupIndex++;
+            }
+        }
+        ?>
+    </table>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.order-group-header').forEach(function(header) {
+            header.addEventListener('click', function(e) {
+                // Only toggle if not clicking the collapse icon
+                if (!e.target.classList.contains('collapse-toggle')) {
+                    var group = this.getAttribute('data-group');
+                    var rows = document.querySelectorAll('.order-group-row[data-group="' + group + '"]');
+                    var toggle = this.querySelector('.collapse-toggle');
+                    var isOpen = rows.length > 0 && rows[0].style.display !== 'none';
+                    rows.forEach(function(row) {
+                        row.style.display = isOpen ? 'none' : '';
+                    });
+                    if (toggle) toggle.textContent = isOpen ? '+' : '–';
+                }
+            });
+        });
+        document.querySelectorAll('.collapse-toggle').forEach(function(toggle) {
+            toggle.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var group = this.getAttribute('data-group');
+                var rows = document.querySelectorAll('.order-group-row[data-group="' + group + '"]');
+                var isOpen = rows.length > 0 && rows[0].style.display !== 'none';
+                rows.forEach(function(row) {
+                    row.style.display = isOpen ? 'none' : '';
+                });
+                this.textContent = isOpen ? '+' : '–';
+            });
+        });
+    });
+    </script>
+    <div class="separator-small"></div>
+<?php endif; ?>
 
 <div>
     <h1><?= $this->t('My bookings') ?></h1>
@@ -120,4 +506,7 @@ $this->setup(array(
 
     <?php endif; ?>
 
+    <?php if (isset($this->orderMessage) && $this->orderMessage): ?>
+        <div class="info-message"> <?= $this->escapeHtml($this->orderMessage) ?> </div>
+    <?php endif; ?>
 </div>

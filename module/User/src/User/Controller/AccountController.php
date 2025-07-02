@@ -349,18 +349,72 @@ class AccountController extends AbstractActionController
         $squareValidator = $serviceManager->get('Square\Service\SquareValidator');
         $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
 
+        // Drinks managers
+        $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
+        $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
+        $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
+
         $user = $userSessionManager->getSessionUser();
 
         if (! $user) {
             $this->redirectBack()->setOrigin('user/bookings');
-
             return $this->redirect()->toRoute('user/login');
+        }
+
+        // Handle drink order form submission
+        $orderMessage = null;
+        if ($this->getRequest()->isPost() && $this->params()->fromPost('drink_order_submit')) {
+            $drinkCounts = $this->params()->fromPost('drink_counts', []);
+            $anyOrdered = false;
+            if (is_array($drinkCounts)) {
+                foreach ($drinkCounts as $drinkId => $quantity) {
+                    $drinkId = (int)$drinkId;
+                    $quantity = (int)$quantity;
+                    if ($drinkId > 0 && $quantity > 0) {
+                        $drinkOrderManager->addOrder($user->need('uid'), $drinkId, $quantity);
+                        $anyOrdered = true;
+                    }
+                }
+            }
+            if ($anyOrdered) {
+                $orderMessage = 'Drink order(s) placed!';
+                // PRG pattern: redirect after POST to avoid resubmission
+                return $this->redirect()->toRoute('user/bookings');
+            } else {
+                $orderMessage = 'Please select at least one drink.';
+            }
         }
 
         $bookings = $bookingManager->getByValidity(array('uid' => $user->need('uid')));
         $reservations = $reservationManager->getByBookings($bookings, 'date DESC, time_start DESC');
-
         $bookingBillManager->getByBookings($bookings);
+
+        // Fetch drinks and drink orders for this user
+        $drinks = $drinkManager->getAll();
+        $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($user->need('uid')));
+        $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($user->need('uid')));
+        // Merge and sort by date descending
+        $drinkHistory = [];
+        foreach ($drinkOrders as $order) {
+            $drinkHistory[] = [
+                'type' => 'order',
+                'name' => $order['name'],
+                'quantity' => $order['quantity'],
+                'price' => $order['price'],
+                'total' => $order['quantity'] * $order['price'],
+                'datetime' => $order['order_time'],
+            ];
+        }
+        foreach ($drinkDeposits as $deposit) {
+            $drinkHistory[] = [
+                'type' => 'deposit',
+                'amount' => $deposit['amount'],
+                'datetime' => $deposit['deposit_time'],
+            ];
+        }
+        usort($drinkHistory, function($a, $b) {
+            return strcmp($b['datetime'], $a['datetime']);
+        });
 
         return array(
             'now' => new DateTime(),
@@ -368,6 +422,10 @@ class AccountController extends AbstractActionController
             'reservations' => $reservations,
             'squareManager' => $squareManager,
             'squareValidator' => $squareValidator,
+            'drinks' => $drinks,
+            'drinkOrders' => $drinkOrders,
+            'drinkHistory' => $drinkHistory,
+            'orderMessage' => $orderMessage,
         );
     }
 
@@ -442,8 +500,7 @@ class AccountController extends AbstractActionController
                 $user->setMeta('phone', $phone);
                 $userManager->save($user);
 
-                $this->flashMessenger()->addSuccessMessage(sprintf($this->t('Your %sphone number%s has been updated'),
-                    '<b>', '</b>'));
+                $this->flashMessenger()->addSuccessMessage(sprintf($this->t('Your %sphone number%s has been updated'), '<b>', '</b>'));
 
                 return $this->redirect()->toRoute('user/settings');
             }
@@ -489,8 +546,7 @@ class AccountController extends AbstractActionController
 
                 $userManager->save($user);
 
-                $this->flashMessenger()->addSuccessMessage(sprintf($this->t('Your %semail address%s has been updated'),
-                    '<b>', '</b>'));
+                $this->flashMessenger()->addSuccessMessage(sprintf($this->t('Your %semail address%s has been updated'), '<b>', '</b>'));
 
                 return $this->redirect()->toRoute('user/settings');
             }
@@ -515,8 +571,7 @@ class AccountController extends AbstractActionController
 
                 $userManager->save($user);
 
-                $this->flashMessenger()->addSuccessMessage(sprintf($this->t('Your %snotification settings%s have been updated'),
-                    '<b>', '</b>'));
+                $this->flashMessenger()->addSuccessMessage(sprintf($this->t('Your %snotification settings%s have been updated'), '<b>', '</b>'));
 
                 return $this->redirect()->toRoute('user/settings');
             }
@@ -545,8 +600,7 @@ class AccountController extends AbstractActionController
                     $user->set('pw', $bcrypt->create($passwordNew));
                     $userManager->save($user);
 
-                    $this->flashMessenger()->addSuccessMessage(sprintf($this->t('Your %spassword%s has been updated'),
-                        '<b>', '</b>'));
+                    $this->flashMessenger()->addSuccessMessage(sprintf($this->t('Your %spassword%s has been updated'), '<b>', '</b>'));
 
                     return $this->redirect()->toRoute('user/settings');
                 } else {
@@ -585,8 +639,7 @@ class AccountController extends AbstractActionController
                     $userManager->save($user);
                     $userSessionManager->logout();
 
-                    $deleteAccountMessage = sprintf($this->t('Your %suser account has been deleted%s. Good bye!'),
-                        '<b>', '</b>');
+                    $deleteAccountMessage = sprintf($this->t('Your %suser account has been deleted%s. Good bye!'), '<b>', '</b>');
                 } else {
                     $editPasswordForm->get('epf-pw-current')->setMessages(array('This is not your correct password'));
                 }
@@ -602,6 +655,77 @@ class AccountController extends AbstractActionController
             'deleteAccountForm' => $deleteAccountForm,
             'deleteAccountMessage' => $deleteAccountMessage,
         );
+    }
+
+    public function manageDrinksAction()
+    {
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $user = $userSessionManager->getSessionUser();
+        if (!$user || $user->get('status') !== 'admin') {
+            return $this->redirect()->toRoute('user/settings');
+        }
+        $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+        $userManager = $serviceManager->get('User\Manager\UserManager');
+        $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
+        $users = $userManager->getAll('alias ASC');
+        $message = null;
+        $uploadDir = realpath(__DIR__ . '/../../../../../public/imgs/branding');
+        // Handle add/edit/delete/deposit
+        if ($this->getRequest()->isPost()) {
+            $post = $this->params()->fromPost();
+            $files = $this->getRequest()->getFiles()->toArray();
+            if (isset($post['add_drink'])) {
+                $name = trim($post['name']);
+                $price = floatval($post['price']);
+                $imageName = null;
+                if (!empty($files['image']['tmp_name']) && is_uploaded_file($files['image']['tmp_name'])) {
+                    $ext = pathinfo($files['image']['name'], PATHINFO_EXTENSION);
+                    $imageName = uniqid('drink_', true) . '.' . $ext;
+                    move_uploaded_file($files['image']['tmp_name'], $uploadDir . DIRECTORY_SEPARATOR . $imageName);
+                }
+                if ($name && $price > 0) {
+                    $dbAdapter->query('INSERT INTO drinks (name, price, image) VALUES (?, ?, ?)', [$name, $price, $imageName]);
+                    $message = 'Drink added.';
+                }
+            } elseif (isset($post['edit_drink'])) {
+                $id = intval($post['id']);
+                $name = trim($post['name']);
+                $price = floatval($post['price']);
+                $imageName = $post['existing_image'] ?? null;
+                if (!empty($files['image']['tmp_name']) && is_uploaded_file($files['image']['tmp_name'])) {
+                    $ext = pathinfo($files['image']['name'], PATHINFO_EXTENSION);
+                    $imageName = uniqid('drink_', true) . '.' . $ext;
+                    move_uploaded_file($files['image']['tmp_name'], $uploadDir . DIRECTORY_SEPARATOR . $imageName);
+                }
+                if ($id && $name && $price > 0) {
+                    $dbAdapter->query('UPDATE drinks SET name = ?, price = ?, image = ? WHERE id = ?', [$name, $price, $imageName, $id]);
+                    $message = 'Drink updated.';
+                }
+            } elseif (isset($post['delete_drink'])) {
+                $id = intval($post['id']);
+                if ($id) {
+                    $dbAdapter->query('DELETE FROM drinks WHERE id = ?', [$id]);
+                    $message = 'Drink deleted.';
+                }
+            } elseif (isset($post['add_deposit'])) {
+                $depositUserId = intval($post['deposit_user_id']);
+                $depositAmount = floatval($post['deposit_amount']);
+                if ($depositUserId > 0 && $depositAmount > 0) {
+                    $drinkDepositManager->addDeposit($depositUserId, $depositAmount);
+                    $message = 'Deposit added.';
+                } else {
+                    $message = 'Invalid deposit data.';
+                }
+            }
+        }
+        $drinks = $drinkManager->getAll();
+        return [
+            'drinks' => $drinks,
+            'users' => $users,
+            'message' => $message,
+        ];
     }
 
 }

@@ -1,0 +1,85 @@
+<?php
+// Admin-only Manage Drinks page
+$this->setup([
+    'title' => 'Manage Drinks',
+    'panel' => 'centered-panel',
+    'back' => true,
+    'links' => [
+        'Settings' => $this->url('user/settings'),
+    ],
+]);
+?>
+
+<h1><?= $this->t('Manage Drinks') ?></h1>
+<?php if (!empty($this->message)): ?>
+    <div class="info-message"> <?= $this->escapeHtml($this->message) ?> </div>
+<?php endif; ?>
+
+<h2><?= $this->t('Add New Drink') ?></h2>
+<form method="post" enctype="multipart/form-data">
+    <input type="text" name="name" placeholder="<?= $this->t('Drink Name') ?>" required />
+    <input type="number" name="price" min="0.01" step="0.01" placeholder="<?= $this->t('Price') ?>" required />
+    <input type="file" name="image" accept="image/*" style="margin-top:8px;" />
+    <button type="submit" name="add_drink" class="default-button mini-button">
+        <?= $this->t('Add Drink') ?>
+    </button>
+</form>
+
+<h2><?= $this->t('All Drinks') ?></h2>
+<table class="default-table middle-table">
+    <tr>
+        <th><?= $this->t('Image') ?></th>
+        <th><?= $this->t('Name') ?></th>
+        <th><?= $this->t('Price') ?></th>
+        <th><?= $this->t('Actions') ?></th>
+    </tr>
+    <?php foreach ($this->drinks as $drink): ?>
+        <tr>
+            <form method="post" enctype="multipart/form-data" style="display:inline;">
+                <td>
+                    <?php
+                    $imgPath = isset($drink['image']) && $drink['image'] ? $this->basePath('imgs/branding/' . $drink['image']) : $this->basePath('imgs/branding/drink-placeholder.png');
+                    ?>
+                    <img src="<?= $imgPath ?>" alt="<?= $this->escapeHtmlAttr($drink['name']) ?>" style="width: 40px; height: 40px; object-fit: contain; background: #f8f8f8; border-radius: 4px;" />
+                    <input type="file" name="image" accept="image/*" style="display:block; margin-top:4px;" />
+                    <?php if (isset($drink['image']) && $drink['image']): ?>
+                        <input type="hidden" name="existing_image" value="<?= $this->escapeHtmlAttr($drink['image']) ?>" />
+                    <?php endif; ?>
+                </td>
+                <td>
+                    <input type="hidden" name="id" value="<?= (int)$drink['id'] ?>" />
+                    <input type="text" name="name" value="<?= $this->escapeHtml($drink['name']) ?>" required />
+                </td>
+                <td>
+                    <input type="number" name="price" min="0.01" step="0.01" value="<?= $this->escapeHtml($drink['price']) ?>" required />
+                </td>
+                <td>
+                    <button type="submit" name="edit_drink" class="default-button mini-button">
+                        <?= $this->t('Save') ?>
+                    </button>
+                    <button type="submit" name="delete_drink" class="default-button mini-button" onclick="return confirm('<?= $this->t('Delete this drink?') ?>');">
+                        <?= $this->t('Delete') ?>
+                    </button>
+                </td>
+            </form>
+        </tr>
+    <?php endforeach; ?>
+</table>
+
+<h2><?= $this->t('Add Deposit to User') ?></h2>
+<form method="post" style="margin-bottom:2em;">
+    <label for="deposit_user_id">User:</label>
+    <select name="deposit_user_id" id="deposit_user_id" required>
+        <option value="">-- <?= $this->t('Select User') ?> --</option>
+        <?php foreach ($this->users as $user): ?>
+            <option value="<?= (int)$user->get('uid') ?>">
+                <?= $this->escapeHtml($user->get('alias')) ?> (<?= $this->escapeHtml($user->get('email')) ?>)
+            </option>
+        <?php endforeach; ?>
+    </select>
+    <label for="deposit_amount">Amount:</label>
+    <input type="number" name="deposit_amount" id="deposit_amount" min="0.01" step="0.01" placeholder="<?= $this->t('Amount') ?>" required />
+    <button type="submit" name="add_deposit" class="default-button mini-button">
+        <?= $this->t('Add Deposit') ?>
+    </button>
+</form>

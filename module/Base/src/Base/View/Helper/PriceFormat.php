@@ -15,14 +15,20 @@ class PriceFormat extends AbstractHelper
         $this->optionManager = $optionManager;
     }
 
-    public function __invoke($price, $rate = null, $gross = null, $perTime = null, $perQuantity = null, $perText = null, $break = true)
+    public function __invoke($price, $rate = null, $gross = null, $perTime = null, $perQuantity = null, $perText = null, $break = true, $bold = true, $symbolic = true)
     {
         $view = $this->getView();
         $html = '';
 
-        $html .= '<span class="symbolic symbolic-tag">';
+        if ($symbolic) {
+            $html .= '<span class="symbolic symbolic-tag">';
+        }
 
-        $html .= '<b>' . $view->currencyFormat($price / 100) . '</b>';
+        if ($bold) {
+            $html .= '<b>' . $view->currencyFormat($price / 100) . '</b>';
+        } else {
+            $html .= $view->currencyFormat($price / 100);
+        }
 
         if ($perText) {
             $html .= ' ' . $view->t($perText);
@@ -62,7 +68,9 @@ class PriceFormat extends AbstractHelper
                 $grossFormulation, $rate, $view->t('VAT'));
         }
 
-        $html .= '</span>';
+        if ($symbolic) {
+            $html .= '</span>';
+        }
 
         return $html;
     }

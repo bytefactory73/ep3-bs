@@ -290,4 +290,15 @@ $this->headScript()->appendFile($this->basePath('js/controller/user/settings.min
             </div>
         </div>
     </div>
+
+    <?php if ($this->user->get('status') === 'admin'): ?>
+        <div class="sandbox">
+            <div class="symbolic symbolic-config">
+                <a href="<?= $this->url('user/manage-drinks') ?>" class="default-button">
+                    <?= $this->t('Manage Drinks') ?>
+                </a>
+            </div>
+        </div>
+        <div class="separator-small"></div>
+    <?php endif; ?>
 </div>

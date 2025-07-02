@@ -35,6 +35,7 @@ return array(
         'Service',
         'Square',
         'User',
+        'Drinks',
 
         /**
          * Custom modules

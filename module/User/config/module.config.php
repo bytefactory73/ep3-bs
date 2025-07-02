@@ -126,6 +126,16 @@ return array(
                             ),
                         ),
                     ),
+                    'manage-drinks' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/manage-drinks',
+                            'defaults' => array(
+                                'controller' => 'User\Controller\Account',
+                                'action' => 'manageDrinks',
+                            ),
+                        ),
+                    ),
                 ),
             ),
         ),
