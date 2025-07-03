@@ -33,8 +33,8 @@ $this->setup(array(
     color: #d32f2f !important;
 }
 .drink-tile {
-    width: 150px;
-    height: 200px;
+    width: 155px;
+    height: 210px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -81,12 +81,75 @@ $this->setup(array(
     margin-top: 0;
     z-index: 1;
 }
+/* Responsive top bar for drink ordering */
+@media (max-width: 900px) {
+    .drink-order-top-bar {
+        flex-wrap: wrap;
+        gap: 0 !important;
+    }
+    .drink-order-top-bar > * {
+        flex: 1 1 100%;
+        justify-content: center !important;
+        margin-bottom: 4px !important;
+        margin-top: 0 !important;
+    }
+    .drink-order-top-bar h2 {
+        text-align: center;
+        margin-bottom: 0;
+        margin-top: 0;
+    }
+    .drink-order-top-bar .order-actions {
+        flex: 0 0 100%;
+        display: flex;
+        flex-direction: row;
+        justify-content: center !important;
+        align-items: center;
+        gap: 0 8px;
+        margin-bottom: 4px !important;
+    }
+    .drink-order-top-bar button,
+    .drink-order-top-bar #clear-drink-selection {
+        margin: 0 !important;
+    }
+}
+.drink-tiles-wrapper {
+    justify-content: center;
+    align-items: flex-start;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+}
+@media (max-width: 700px) {
+    .drink-tiles-wrapper {
+        gap: 24px;
+        justify-content: center;
+    }
+    .drink-tile {
+        width: calc(50% - 12px) !important;
+        flex: 0 0 calc(50% - 12px) !important;
+        height: auto;
+        margin: 0 !important;
+        box-sizing: border-box;
+    }
+}
+@media (max-width: 500px) {
+    .drink-tiles-wrapper {
+        gap: 8px;
+        justify-content: center !important;
+    }
+    .drink-tile {
+        width: calc(50% - 4px) !important;
+        flex: 0 0 calc(50% - 4px) !important;
+        margin: 0 !important;
+        box-sizing: border-box;
+    }
+}
 </style>
 
 <?php if (isset($this->drinks)): ?>
     <div class="separator-small"></div>
-    <div style="display: flex; align-items: center; justify-content: space-between;">
-        <h2 style="margin: 0; flex: 0 0 auto;"><?= $this->t('Order something') ?></h2>
+    <div class="drink-order-top-bar" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0 8px;">
+        <h2 style="margin: 0; flex: 0 0 auto;"><?= $this->t('STC SB-Theke') ?></h2>
         <div style="flex: 1 1 auto; display: flex; justify-content: center; align-items: center;">
             <div id="current-balance-display" class="<?= $currentBalance < 0 ? 'negative-balance' : '' ?>" style="font-size: 1.1em; font-weight: bold; color: #2196f3; background: #f5faff; border-radius: 6px; padding: 8px 18px; display: inline-flex; align-items: center; border: 1px solid #2196f3;">
                 <?= $this->t('New Balance') ?>
@@ -95,17 +158,43 @@ $this->setup(array(
                 </span>
             </div>
         </div>
-        <button type="button" id="clear-drink-selection" title="<?= $this->escapeHtmlAttr($this->t('Clear selection')) ?>" style="background: none; border: none; margin-right: 12px; cursor: pointer; padding: 0; display: flex; align-items: center;">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><rect x="3" y="6" width="18" height="14" rx="2" fill="#f5faff" stroke="#888"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="1" y1="6" x2="23" y2="6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-        </button>
-        <button type="submit" form="drink-order-form" name="drink_order_submit" value="1" class="default-button" style="font-size: 1.2em; padding: 12px 32px; min-width: 120px; font-weight: bold; display: flex; align-items: center; gap: 12px; flex: 0 0 auto;">
-            <span style="font-weight: bold;"><?= $this->t('Order') ?></span>
-            <span id="drink-order-total" style="font-weight: bold; color: #2196f3; font-size: 1em;"> <?= $this->priceFormat(0) ?> </span>
-        </button>
+        <div class="order-actions" style="display: flex; align-items: center; gap: 0 8px; flex: 0 0 auto;">
+            <button type="button" id="clear-drink-selection" title="<?= $this->escapeHtmlAttr($this->t('Clear selection')) ?>" style="background: none; border: none; margin-right: 0; cursor: pointer; padding: 0; display: flex; align-items: center;">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><rect x="3" y="6" width="18" height="14" rx="2" fill="#f5faff" stroke="#888"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="1" y1="6" x2="23" y2="6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+            </button>
+            <button type="submit" form="drink-order-form" name="drink_order_submit" value="1" class="default-button" style="font-size: 1.2em; padding: 12px 32px; min-width: 120px; font-weight: bold; display: flex; align-items: center; gap: 12px; flex: 0 0 auto;">
+                <span style="font-weight: bold;"><?= $this->t('Order') ?></span>
+                <span id="drink-order-total" style="font-weight: bold; color: #2196f3; font-size: 1em;"> <?= $this->priceFormat(0) ?> </span>
+            </button>
+        </div>
     </div>
+    <style>
+    @media (max-width: 900px) {
+        .order-top-bar {
+            flex-direction: column;
+            align-items: stretch !important;
+            gap: 10px 0 !important;
+        }
+        .order-top-bar > * {
+            width: 100% !important;
+            min-width: 0 !important;
+            justify-content: center !important;
+            margin-right: 0 !important;
+        }
+        .order-top-bar h2 {
+            text-align: center;
+        }
+        #current-balance-display {
+            justify-content: center;
+        }
+        .order-top-bar button.default-button {
+            justify-content: center;
+        }
+    }
+    </style>
     <form method="post" id="drink-order-form">
         <div style="height: 16px;"></div>
-        <div style="display: flex; flex-wrap: wrap; gap: 24px;">
+        <div class="drink-tiles-wrapper">
             <?php foreach ($this->drinks as $drink): ?>
                 <div class="drink-tile">
                     <?php
