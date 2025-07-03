@@ -714,7 +714,8 @@ class AccountController extends AbstractActionController
                 $depositAmount = floatval($post['deposit_amount']);
                 if ($depositUserId > 0 && $depositAmount > 0) {
                     $drinkDepositManager->addDeposit($depositUserId, $depositAmount);
-                    $message = 'Deposit added.';
+                    // Redirect to avoid duplicate deposit on reload (PRG pattern)
+                    return $this->redirect()->toRoute(null, [], ['query' => ['message' => 'Deposit added.']], true);
                 } else {
                     $message = 'Invalid deposit data.';
                 }
@@ -725,6 +726,7 @@ class AccountController extends AbstractActionController
             'drinks' => $drinks,
             'users' => $users,
             'message' => $message,
+            'dbAdapter' => $dbAdapter,
         ];
     }
 

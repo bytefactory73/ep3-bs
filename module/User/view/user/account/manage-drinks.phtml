@@ -11,62 +11,154 @@ $this->setup([
 ?>
 
 <h1><?= $this->t('Manage Drinks') ?></h1>
-<?php if (!empty($this->message)): ?>
-    <div class="info-message"> <?= $this->escapeHtml($this->message) ?> </div>
+<?php if (!empty($this->message) || !empty($_GET['message'])): ?>
+    <div class="info-message"> <?= $this->escapeHtml($this->message ?? $_GET['message']) ?> </div>
 <?php endif; ?>
 
-<h2><?= $this->t('Add New Drink') ?></h2>
-<form method="post" enctype="multipart/form-data">
-    <input type="text" name="name" placeholder="<?= $this->t('Drink Name') ?>" required />
-    <input type="number" name="price" min="0.01" step="0.01" placeholder="<?= $this->t('Price') ?>" required />
-    <input type="file" name="image" accept="image/*" style="margin-top:8px;" />
-    <button type="submit" name="add_drink" class="default-button mini-button">
-        <?= $this->t('Add Drink') ?>
-    </button>
-</form>
+<style>
+#manage-drinks-table th {
+    background: #e3ecfa;
+    color: #1a355b;
+    border: none;
+    padding: 12px 8px;
+    font-size: 1.08em;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+}
+#manage-drinks-table {
+    width: 100%;
+}
+#manage-drinks-table tr.separator-row td {
+    border-bottom: 1px solid #b3c6e6;
+    padding: 0;
+    height: 0;
+    background: transparent;
+}
+#manage-drinks-table > tbody > tr:not(.separator-row) > td {
+    padding-top: 16px;
+}
+#manage-drinks-table > tr:not(.separator-row) > td {
+    padding-top: 16px;
+}
+#manage-drinks-table > tr:not(.separator-row) > form > td {
+    padding-top: 16px;
+}
+#add-deposit-section {
+    margin-top: 20px;
+    margin-bottom: 20px;
+    padding: 16px 14px 14px 14px;
+    background: #f7faff;
+    border-radius: 8px;
+    box-shadow: 0 1px 6px rgba(30,60,120,0.06);
+}
+#add-deposit-section h2 {
+    margin-top: 0;
+    margin-bottom: 12px;
+}
+.section-block {
+    margin-top: 20px;
+    margin-bottom: 20px;
+    padding: 16px 14px 14px 14px;
+    background: #fafdff;
+    border-radius: 8px;
+    box-shadow: 0 1px 6px rgba(30,60,120,0.04);
+}
+.section-block h2 {
+    margin-top: 0;
+    margin-bottom: 12px;
+}
+.section-block + .section-block {
+    margin-top: 0;
+}
+</style>
 
-<h2><?= $this->t('All Drinks') ?></h2>
-<table class="default-table middle-table">
-    <tr>
-        <th><?= $this->t('Image') ?></th>
-        <th><?= $this->t('Name') ?></th>
-        <th><?= $this->t('Price') ?></th>
-        <th><?= $this->t('Actions') ?></th>
-    </tr>
-    <?php foreach ($this->drinks as $drink): ?>
+<div class="section-block" style="margin-top: 0;">
+    <h2><?= $this->t('Add New Drink') ?></h2>
+    <form method="post" enctype="multipart/form-data">
+        <input type="text" name="name" placeholder="<?= $this->t('Drink Name') ?>" required />
+        <input type="number" name="price" min="0.01" step="0.01" placeholder="<?= $this->t('Price') ?>" required />
+        <input type="file" name="image" accept="image/*" style="margin-top:8px;" />
+        <button type="submit" name="add_drink" class="default-button mini-button">
+            <?= $this->t('Add Drink') ?>
+        </button>
+    </form>
+</div>
+
+<div class="section-block">
+    <h2><?= $this->t('All Drinks') ?></h2>
+    <table id="manage-drinks-table" class="default-table middle-table" style="border-collapse: separate; border-spacing: 0 0;">
         <tr>
-            <form method="post" enctype="multipart/form-data" style="display:inline;">
-                <td>
-                    <?php
-                    $imgPath = isset($drink['image']) && $drink['image'] ? $this->basePath('imgs/branding/' . $drink['image']) : $this->basePath('imgs/branding/drink-placeholder.png');
-                    ?>
-                    <img src="<?= $imgPath ?>" alt="<?= $this->escapeHtmlAttr($drink['name']) ?>" style="width: 40px; height: 40px; object-fit: contain; background: #f8f8f8; border-radius: 4px;" />
-                    <input type="file" name="image" accept="image/*" style="display:block; margin-top:4px;" />
-                    <?php if (isset($drink['image']) && $drink['image']): ?>
-                        <input type="hidden" name="existing_image" value="<?= $this->escapeHtmlAttr($drink['image']) ?>" />
-                    <?php endif; ?>
-                </td>
-                <td>
-                    <input type="hidden" name="id" value="<?= (int)$drink['id'] ?>" />
-                    <input type="text" name="name" value="<?= $this->escapeHtml($drink['name']) ?>" required />
-                </td>
-                <td>
-                    <input type="number" name="price" min="0.01" step="0.01" value="<?= $this->escapeHtml($drink['price']) ?>" required />
-                </td>
-                <td>
-                    <button type="submit" name="edit_drink" class="default-button mini-button">
-                        <?= $this->t('Save') ?>
-                    </button>
-                    <button type="submit" name="delete_drink" class="default-button mini-button" onclick="return confirm('<?= $this->t('Delete this drink?') ?>');">
-                        <?= $this->t('Delete') ?>
-                    </button>
-                </td>
-            </form>
+            <th><?= $this->t('Image') ?></th>
+            <th><?= $this->t('Name/Price') ?></th>
+            <th><?= $this->t('Barcodes') ?></th>
+            <th><?= $this->t('Actions') ?></th>
         </tr>
-    <?php endforeach; ?>
-</table>
+        <?php $drinkCount = count($this->drinks); $i = 0; foreach ($this->drinks as $drink): $i++; ?>
+            <tr style="background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.04);">
+                <form method="post" enctype="multipart/form-data" style="display:inline;">
+                    <td>
+                        <?php
+                        $imgPath = isset($drink['image']) && $drink['image'] ? $this->basePath('imgs/branding/' . $drink['image']) : $this->basePath('imgs/branding/drink-placeholder.png');
+                        ?>
+                        <img src="<?= $imgPath ?>" alt="<?= $this->escapeHtmlAttr($drink['name']) ?>" style="width: 40px; height: 40px; object-fit: contain; background: #f8f8f8; border-radius: 4px;" />
+                        <input type="file" name="image" accept="image/*" style="display:block; margin-top:4px; max-width:120px; font-size:0.92em; padding:2px 4px; height:28px;" />
+                        <?php if (isset($drink['image']) && $drink['image']): ?>
+                            <input type="hidden" name="existing_image" value="<?= $this->escapeHtmlAttr($drink['image']) ?>" />
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <input type="hidden" name="id" value="<?= (int)$drink['id'] ?>" />
+                        <input type="text" name="name" value="<?= $this->escapeHtml($drink['name']) ?>" required style="display:block; width:100%; margin-bottom:6px;" />
+                        <input type="number" name="price" min="0.01" step="0.01" value="<?= $this->escapeHtml($drink['price']) ?>" required style="display:block; width:100%; margin-bottom:6px;" />
+                    </td>
+                    <td style="vertical-align:top;">
+                        <div style="display: flex; flex-direction: column; gap: 3px; max-height: 120px; flex-wrap: wrap; min-width: 80px;">
+                            <?php
+                            // Fetch barcodes for this drink
+                            $barcodes = [];
+                            if (isset($this->dbAdapter)) {
+                                $result = $this->dbAdapter->query('SELECT barcode FROM drink_barcodes WHERE drink_id = ?', [(int)$drink['id']])->toArray();
+                                foreach ($result as $row) {
+                                    $barcodes[] = $row['barcode'];
+                                }
+                            }
+                            ?>
+                            <?php if ($barcodes): ?>
+                                <?php foreach ($barcodes as $barcode): ?>
+                                    <span class="barcode-item" style="display:block; background:#f8f8f8; border-radius:3px; padding:2px 6px; white-space:nowrap; margin-bottom:2px;">
+                                        <?= htmlspecialchars($barcode) ?>
+                                        <a href="#" class="remove-barcode-x" data-drink-id="<?= (int)$drink['id'] ?>" data-barcode="<?= htmlspecialchars($barcode) ?>" title="Remove barcode" style="color:#d32f2f; margin-left:4px; text-decoration:none; font-weight:bold; cursor:pointer;">&times;</a>
+                                    </span>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <span style="color:#bbb">-</span>
+                            <?php endif; ?>
+                        </div>
+                    </td>
+                    <td>
+                        <div style="display: flex; flex-direction: column; gap: 6px; align-items: stretch;">
+                            <button type="button" class="default-button mini-button scan-barcode-btn" data-drink-id="<?= (int)$drink['id'] ?>">
+                                <?= $this->t('Scan Barcode') ?>
+                            </button>
+                            <button type="submit" name="edit_drink" class="default-button mini-button">
+                                <?= $this->t('Save') ?>
+                            </button>
+                            <button type="submit" name="delete_drink" class="default-button mini-button" onclick="return confirm('<?= $this->t('Delete this drink?') ?>');">
+                                <?= $this->t('Delete') ?>
+                            </button>
+                        </div>
+                    </td>
+                </form>
+            </tr>
+            <?php if ($i < $drinkCount): ?>
+            <tr class="separator-row"><td colspan="4"></td></tr>
+            <?php endif; ?>
+        <?php endforeach; ?>
+    </table>
+</div>
 
-<h2><?= $this->t('Add Deposit to User') ?></h2>
+<h2 id="add-deposit-section-title"><?= $this->t('Add Deposit to User') ?></h2>
+<div id="add-deposit-section">
 <form method="post" style="margin-bottom:2em;">
     <label for="deposit_user_id">User:</label>
     <select name="deposit_user_id" id="deposit_user_id" required>
@@ -83,3 +175,110 @@ $this->setup([
         <?= $this->t('Add Deposit') ?>
     </button>
 </form>
+</div>
+
+<!-- ZXing barcode scanner (if not already included globally) -->
+<script src="<?= $this->basePath('js/jquery/jquery.min.js') ?>"></script>
+<script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
+<script>
+$(function() {
+    function showBarcodeScanner(drinkId) {
+        // Create modal
+        let modal = $('<div id="barcode-modal" style="position:fixed;z-index:9999;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;"></div>');
+        let inner = $('<div style="background:#fff;padding:24px 16px 16px 16px;border-radius:8px;box-shadow:0 2px 16px #0002;display:flex;flex-direction:column;align-items:center;max-width:95vw;max-height:95vh;"></div>');
+        let video = $('<video style="width:320px;max-width:90vw;max-height:60vh;"></video>');
+        let closeBtn = $('<button class="default-button mini-button" style="margin-top:12px;">Close</button>');
+        inner.append('<div style="font-weight:bold;margin-bottom:8px;">Scan a barcode</div>');
+        inner.append(video);
+        inner.append(closeBtn);
+        modal.append(inner);
+        $(document.body).append(modal);
+        closeBtn.on('click', function() {
+            if (window.codeReader) window.codeReader.reset();
+            modal.remove();
+        });
+        // ZXing
+        const ZXing = window.ZXing;
+        if (!ZXing || !ZXing.BrowserMultiFormatReader) {
+            alert('Barcode scanner library not loaded.');
+            modal.remove();
+            return;
+        }
+        // Only allow linear barcode formats (no QR codes)
+        const allowedFormats = [
+            ZXing.BarcodeFormat.CODE_128,
+            ZXing.BarcodeFormat.CODE_39,
+            ZXing.BarcodeFormat.CODE_93,
+            ZXing.BarcodeFormat.EAN_13,
+            ZXing.BarcodeFormat.EAN_8,
+            ZXing.BarcodeFormat.UPC_A,
+            ZXing.BarcodeFormat.UPC_E,
+            ZXing.BarcodeFormat.ITF,
+            ZXing.BarcodeFormat.CODABAR
+        ];
+        window.codeReader = new ZXing.BrowserMultiFormatReader();
+        const hints = new Map();
+        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, allowedFormats);
+        window.codeReader.decodeOnceFromVideoDevice(undefined, video[0], hints)
+            .then(result => {
+                window.codeReader.reset();
+                modal.remove();
+                assignBarcodeToDrink(drinkId, result.text);
+            })
+            .catch(err => {
+                alert('Barcode scan failed: ' + err);
+                window.codeReader.reset();
+                modal.remove();
+            });
+    }
+    function assignBarcodeToDrink(drinkId, barcode) {
+        $.ajax({
+            url: 'account/barcode-assign',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ drink_id: drinkId, barcode: barcode }),
+            success: function(resp) {
+                if (resp.success) {
+                    location.reload();
+                } else {
+                    alert('Failed to assign barcode: ' + (resp.error || 'Unknown error'));
+                }
+            },
+            error: function() {
+                alert('Failed to assign barcode (AJAX error)');
+            }
+        });
+    }
+    $(document).on('click', '.scan-barcode-btn', function() {
+        let drinkId = $(this).data('drink-id');
+        // Simulation mode: if ?simulate_barcode=1 is in the URL, feed test code directly and do NOT open scanner UI
+        if (window.location.search.indexOf('simulate_barcode=1') !== -1) {
+            assignBarcodeToDrink(drinkId, '4002798021294');
+            return;
+        }
+        showBarcodeScanner(drinkId);
+    });
+    $(document).on('click', '.remove-barcode-x', function(e) {
+        e.preventDefault();
+        var drinkId = $(this).data('drink-id');
+        var barcode = $(this).data('barcode');
+        if (!confirm('Remove barcode ' + barcode + '?')) return;
+        $.ajax({
+            url: 'account/barcode-remove',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ drink_id: drinkId, barcode: barcode }),
+            success: function(resp) {
+                if (resp.success) {
+                    location.reload();
+                } else {
+                    alert('Failed to remove barcode: ' + (resp.error || 'Unknown error'));
+                }
+            },
+            error: function() {
+                alert('Failed to remove barcode (AJAX error)');
+            }
+        });
+    });
+});
+</script>

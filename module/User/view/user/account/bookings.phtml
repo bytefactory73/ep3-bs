@@ -238,14 +238,29 @@ $this->setup(array(
             scannerContainer.innerHTML = '<div style="color:red;">Barcode scanner library not loaded.</div>';
             return;
         }
+        // Only allow linear barcode formats (no QR codes)
+        const allowedFormats = [
+            ZXing.BarcodeFormat.CODE_128,
+            ZXing.BarcodeFormat.CODE_39,
+            ZXing.BarcodeFormat.CODE_93,
+            ZXing.BarcodeFormat.EAN_13,
+            ZXing.BarcodeFormat.EAN_8,
+            ZXing.BarcodeFormat.UPC_A,
+            ZXing.BarcodeFormat.UPC_E,
+            ZXing.BarcodeFormat.ITF,
+            ZXing.BarcodeFormat.CODABAR
+        ];
         codeReader = new ZXing.BrowserMultiFormatReader();
+        const hints = new Map();
+        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, allowedFormats);
         try {
             const videoElem = document.createElement('video');
             videoElem.setAttribute('autoplay', 'true');
             videoElem.setAttribute('playsinline', 'true');
             videoElem.style.width = '100%';
             document.getElementById('barcode-video').appendChild(videoElem);
-            const result = await codeReader.decodeOnceFromVideoDevice(undefined, videoElem);
+            // Pass hints as the third argument
+            const result = await codeReader.decodeOnceFromVideoDevice(undefined, videoElem, hints);
             if (result && result.text) {
                 handleBarcodeResult(result.text);
             }

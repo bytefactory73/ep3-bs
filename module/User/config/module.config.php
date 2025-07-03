@@ -156,6 +156,16 @@ return array(
                             ),
                         ),
                     ),
+                    'account/barcode-remove' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/account/barcode-remove',
+                            'defaults' => array(
+                                'controller' => 'User\\Controller\\Barcode',
+                                'action' => 'remove',
+                            ),
+                        ),
+                    ),
                 ),
             ),
         ),

@@ -51,4 +51,22 @@ class BarcodeController extends AbstractActionController
         $adapter->query('INSERT INTO drink_barcodes (barcode, drink_id) VALUES (?, ?)', [$barcode, $drinkId]);
         return new JsonModel(['success' => true]);
     }
+
+    // POST /user/account/barcode-remove { barcode, drink_id }
+    public function removeAction()
+    {
+        $request = $this->getRequest();
+        if (!$request->isPost()) {
+            return new JsonModel(['success' => false, 'error' => 'Not POST']);
+        }
+        $data = json_decode($request->getContent(), true);
+        $barcode = isset($data['barcode']) ? trim($data['barcode']) : null;
+        $drinkId = isset($data['drink_id']) ? (int)$data['drink_id'] : null;
+        if (!$barcode || !$drinkId) {
+            return new JsonModel(['success' => false, 'error' => 'Missing data']);
+        }
+        $adapter = $this->adapter;
+        $result = $adapter->query('DELETE FROM drink_barcodes WHERE barcode = ? AND drink_id = ?', [$barcode, $drinkId]);
+        return new JsonModel(['success' => true]);
+    }
 }
