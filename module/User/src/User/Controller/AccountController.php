@@ -351,6 +351,7 @@ class AccountController extends AbstractActionController
 
         // Drinks managers
         $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
+        $drinkCategoryManager = $serviceManager->get('Drinks\Manager\DrinkCategoryManager');
         $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
         $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
 
@@ -389,8 +390,9 @@ class AccountController extends AbstractActionController
         $reservations = $reservationManager->getByBookings($bookings, 'date DESC, time_start DESC');
         $bookingBillManager->getByBookings($bookings);
 
-        // Fetch drinks and drink orders for this user
+        // Fetch drinks, drink categories, and drink orders for this user
         $drinks = $drinkManager->getAll();
+        $drinkCategories = $drinkCategoryManager->getAll();
         $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($user->need('uid')));
         $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($user->need('uid')));
         // Merge and sort by date descending
@@ -423,6 +425,7 @@ class AccountController extends AbstractActionController
             'squareManager' => $squareManager,
             'squareValidator' => $squareValidator,
             'drinks' => $drinks,
+            'drinkCategories' => $drinkCategories,
             'drinkOrders' => $drinkOrders,
             'drinkHistory' => $drinkHistory,
             'orderMessage' => $orderMessage,
@@ -666,12 +669,14 @@ class AccountController extends AbstractActionController
             return $this->redirect()->toRoute('user/settings');
         }
         $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
+        $drinkCategoryManager = $serviceManager->get('Drinks\Manager\DrinkCategoryManager');
         $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
         $userManager = $serviceManager->get('User\Manager\UserManager');
         $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
         $users = $userManager->getAll('alias ASC');
         $message = null;
         $uploadDir = realpath(__DIR__ . '/../../../../../public/imgs/branding');
+        $drinkCategories = iterator_to_array($drinkCategoryManager->getAll());
         // Handle add/edit/delete/deposit
         if ($this->getRequest()->isPost()) {
             $post = $this->params()->fromPost();
@@ -679,6 +684,7 @@ class AccountController extends AbstractActionController
             if (isset($post['add_drink'])) {
                 $name = trim($post['name']);
                 $price = floatval($post['price']);
+                $category = isset($post['category']) ? (int)$post['category'] : null;
                 $imageName = null;
                 if (!empty($files['image']['tmp_name']) && is_uploaded_file($files['image']['tmp_name'])) {
                     $ext = pathinfo($files['image']['name'], PATHINFO_EXTENSION);
@@ -686,13 +692,14 @@ class AccountController extends AbstractActionController
                     move_uploaded_file($files['image']['tmp_name'], $uploadDir . DIRECTORY_SEPARATOR . $imageName);
                 }
                 if ($name && $price > 0) {
-                    $dbAdapter->query('INSERT INTO drinks (name, price, image) VALUES (?, ?, ?)', [$name, $price, $imageName]);
+                    $dbAdapter->query('INSERT INTO drinks (name, price, image, category) VALUES (?, ?, ?, ?)', [$name, $price, $imageName, $category]);
                     $message = 'Drink added.';
                 }
             } elseif (isset($post['edit_drink'])) {
                 $id = intval($post['id']);
                 $name = trim($post['name']);
                 $price = floatval($post['price']);
+                $category = isset($post['category']) ? (int)$post['category'] : null;
                 $imageName = $post['existing_image'] ?? null;
                 if (!empty($files['image']['tmp_name']) && is_uploaded_file($files['image']['tmp_name'])) {
                     $ext = pathinfo($files['image']['name'], PATHINFO_EXTENSION);
@@ -700,7 +707,7 @@ class AccountController extends AbstractActionController
                     move_uploaded_file($files['image']['tmp_name'], $uploadDir . DIRECTORY_SEPARATOR . $imageName);
                 }
                 if ($id && $name && $price > 0) {
-                    $dbAdapter->query('UPDATE drinks SET name = ?, price = ?, image = ? WHERE id = ?', [$name, $price, $imageName, $id]);
+                    $dbAdapter->query('UPDATE drinks SET name = ?, price = ?, image = ?, category = ? WHERE id = ?', [$name, $price, $imageName, $category, $id]);
                     $message = 'Drink updated.';
                 }
             } elseif (isset($post['delete_drink'])) {
@@ -727,6 +734,7 @@ class AccountController extends AbstractActionController
             'users' => $users,
             'message' => $message,
             'dbAdapter' => $dbAdapter,
+            'drinkCategories' => $drinkCategories,
         ];
     }
 

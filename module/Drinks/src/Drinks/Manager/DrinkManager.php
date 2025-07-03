@@ -16,7 +16,9 @@ class DrinkManager
 
     public function getAll()
     {
-        $sql = 'SELECT * FROM drinks ORDER BY name';
+        $sql = 'SELECT d.* FROM drinks d '
+            . 'LEFT JOIN drink_categories c ON d.category = c.id '
+            . 'ORDER BY c.sort_priority ASC, c.name ASC, d.name ASC';
         $statement = $this->dbAdapter->query($sql);
         return $statement->execute();
     }

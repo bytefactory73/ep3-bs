@@ -110,6 +110,29 @@ $this->setup([
                         <input type="hidden" name="id" value="<?= (int)$drink['id'] ?>" />
                         <input type="text" name="name" value="<?= $this->escapeHtml($drink['name']) ?>" required style="display:block; width:100%; margin-bottom:6px;" />
                         <input type="number" name="price" min="0.01" step="0.01" value="<?= $this->escapeHtml($drink['price']) ?>" required style="display:block; width:100%; margin-bottom:6px;" />
+                        <select name="category" style="display:block; width:100%; margin-bottom:6px;">
+                            <option value="">-- <?= $this->t('No Category') ?> --</option>
+                            <?php if (isset($this->drinkCategories)) foreach ($this->drinkCategories as $cat): ?>
+                                <option value="<?= (int)$cat['id'] ?>" <?= (isset($drink['category']) && $drink['category'] == $cat['id']) ? 'selected' : '' ?>>
+                                    <?= $this->escapeHtml($cat['name']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <?php if (isset($drink['category']) && $drink['category']): ?>
+                            <div style="font-size:0.95em; color:#888; margin-bottom:2px;">
+                                <?= $this->t('Category:') ?>
+                                <?php
+                                if (isset($this->drinkCategories)) {
+                                    foreach ($this->drinkCategories as $cat) {
+                                        if ($cat['id'] == $drink['category']) {
+                                            echo $this->escapeHtml($cat['name']);
+                                            break;
+                                        }
+                                    }
+                                }
+                                ?>
+                            </div>
+                        <?php endif; ?>
                     </td>
                     <td style="vertical-align:top;">
                         <div style="display: flex; flex-direction: column; gap: 3px; max-height: 120px; flex-wrap: wrap; min-width: 80px;">

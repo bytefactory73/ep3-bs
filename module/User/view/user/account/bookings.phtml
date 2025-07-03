@@ -340,6 +340,38 @@ $this->setup(array(
         }
     }
     </style>
+    <?php if (isset($this->drinkCategories) && count($this->drinkCategories) > 0): ?>
+    <div style="height: 18px;"></div>
+    <div style="display: flex; justify-content: center; width: 100%;">
+        <div id="drink-category-selection" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;">
+            <button type="button" class="category-btn" data-category="all" style="padding: 6px 18px; border-radius: 6px; border: 1px solid #2196f3; background: #e3f0fa; color: #2196f3; font-weight: bold; cursor: pointer;">All</button>
+            <?php foreach ($this->drinkCategories as $cat): ?>
+                <button type="button" class="category-btn" data-category="<?= (int)$cat['id'] ?>" style="padding: 6px 18px; border-radius: 6px; border: 1px solid #2196f3; background: #fff; color: #2196f3; font-weight: bold; cursor: pointer;">
+                    <?= $this->escapeHtml($cat['name']) ?>
+                </button>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var catBtns = document.querySelectorAll('.category-btn');
+        catBtns.forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                catBtns.forEach(function(b) { b.style.background = '#fff'; });
+                this.style.background = '#e3f0fa';
+                var cat = this.getAttribute('data-category');
+                document.querySelectorAll('.drink-tile').forEach(function(tile) {
+                    if (cat === 'all' || tile.getAttribute('data-category') === cat) {
+                        tile.style.display = '';
+                    } else {
+                        tile.style.display = 'none';
+                    }
+                });
+            });
+        });
+    });
+    </script>
+    <?php endif; ?>
     <form method="post" id="drink-order-form">
         <div style="height: 16px;"></div>
         <div class="drink-tiles-wrapper">
@@ -364,7 +396,7 @@ $this->setup(array(
                 });
             }
             foreach ($this->drinks as $drink): ?>
-                <div class="drink-tile">
+                <div class="drink-tile" data-category="<?= (int)($drink['category'] ?? 0) ?>">
                     <?php
                     $imgPath = isset($drink['image']) && $drink['image'] ? $this->basePath('imgs/branding/' . $drink['image']) : $this->basePath('imgs/branding/drink-placeholder.png');
                     ?>
