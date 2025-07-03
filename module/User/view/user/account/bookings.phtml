@@ -186,7 +186,13 @@ $this->setup(array(
 <?php if (isset($this->drinks)): ?>
     <div class="separator-small"></div>
     <div class="drink-order-top-bar" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0 8px;">
-        <h2 style="margin: 0; flex: 0 0 auto;"><?= $this->t('STC SB-Theke') ?></h2>
+        <div style="display: flex; align-items: center; gap: 10px; flex: 0 0 auto;">
+            <h2 style="margin: 0; flex: 0 0 auto;"><?= $this->t('STC SB-Theke') ?></h2>
+            <button id="scan-barcode-btn" type="button" class="default-button" style="font-size: 1.1em; font-weight: bold; background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; padding: 10px 24px; display: flex; align-items: center; gap: 10px; margin-left: 10px;">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2196f3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><rect x="2" y="2" width="20" height="20" rx="3"/><path d="M7 2v4M17 2v4M7 18v4M17 18v4"/></svg>
+                <?= $this->t('Scan Barcode') ?>
+            </button>
+        </div>
         <div style="flex: 1 1 auto; display: flex; justify-content: center; align-items: center;">
             <div id="current-balance-display" class="<?= $currentBalance < 0 ? 'negative-balance' : '' ?>" style="font-size: 1.1em; font-weight: bold; color: #2196f3; background: #f5faff; border-radius: 6px; padding: 8px 18px; display: inline-flex; align-items: center; border: 1px solid #2196f3;">
                 <?= $this->t('New Balance') ?>
@@ -205,6 +211,85 @@ $this->setup(array(
             </button>
         </div>
     </div>
+    <div id="barcode-scanner-container" style="display:none; position:relative; z-index:1000; background:#fff; border:2px solid #2196f3; border-radius:8px; padding:12px; margin-bottom:16px; max-width:400px;"></div>
+    <script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
+    <script>
+    // Barcode scan logic
+    const scanBtn = document.getElementById('scan-barcode-btn');
+    const scannerContainer = document.getElementById('barcode-scanner-container');
+    let codeReader = null;
+
+    scanBtn.addEventListener('click', async function() {
+        // Simulation mode: if ?simulate_barcode=1 is in the URL, feed test code directly and do NOT open scanner UI
+        if (window.location.search.indexOf('simulate_barcode=1') !== -1) {
+            handleBarcodeResult('4002798021294');
+            return;
+        }
+        if (scannerContainer.style.display === 'block') {
+            stopBarcodeScanner();
+            return;
+        }
+        scannerContainer.style.display = 'block';
+        scannerContainer.innerHTML = '<div id="barcode-video"></div><div style="margin-top:8px;"><button id="close-barcode-scanner" type="button" style="font-size:1em;">'+
+            '<?= $this->t('Close') ?>'+
+            '</button></div>';
+        const ZXing = window.ZXing;
+        if (!ZXing || !ZXing.BrowserMultiFormatReader) {
+            scannerContainer.innerHTML = '<div style="color:red;">Barcode scanner library not loaded.</div>';
+            return;
+        }
+        codeReader = new ZXing.BrowserMultiFormatReader();
+        try {
+            const videoElem = document.createElement('video');
+            videoElem.setAttribute('autoplay', 'true');
+            videoElem.setAttribute('playsinline', 'true');
+            videoElem.style.width = '100%';
+            document.getElementById('barcode-video').appendChild(videoElem);
+            const result = await codeReader.decodeOnceFromVideoDevice(undefined, videoElem);
+            if (result && result.text) {
+                handleBarcodeResult(result.text);
+            }
+        } catch (e) {
+            scannerContainer.innerHTML = '<div style="color:red;"><?= $this->t('Camera error or permission denied.') ?></div>';
+        }
+    });
+    function stopBarcodeScanner() {
+        scannerContainer.style.display = 'none';
+        scannerContainer.innerHTML = '';
+        if (codeReader) {
+            codeReader.reset();
+            codeReader = null;
+        }
+    }
+    document.addEventListener('click', function(e) {
+        if (e.target && e.target.id === 'close-barcode-scanner') {
+            stopBarcodeScanner();
+        }
+    });
+    function handleBarcodeResult(barcode) {
+        stopBarcodeScanner();
+        fetch('account/barcode-lookup?barcode=' + encodeURIComponent(barcode))
+            .then(response => response.json())
+            .then(data => {
+                if (data && data.drink_id) {
+                    var input = document.getElementById('input-' + data.drink_id);
+                    var badge = document.getElementById('badge-' + data.drink_id);
+                    var val = parseInt(input.value) || 0;
+                    val++;
+                    input.value = val;
+                    badge.textContent = val;
+                    badge.style.visibility = val > 0 ? 'visible' : 'hidden';
+                    if (typeof updateDrinkOrderTotal === 'function') updateDrinkOrderTotal();
+                    sortDrinkTiles(); // Only sort after barcode scan
+                } else {
+                    alert('<?= $this->t('Unknown barcode:') ?> ' + barcode);
+                }
+            })
+            .catch(() => {
+                alert('<?= $this->t('Unknown barcode:') ?> ' + barcode);
+            });
+    }
+    </script>
     <style>
     @media (max-width: 900px) {
         .order-top-bar {
@@ -232,7 +317,27 @@ $this->setup(array(
     <form method="post" id="drink-order-form">
         <div style="height: 16px;"></div>
         <div class="drink-tiles-wrapper">
-            <?php foreach ($this->drinks as $drink): ?>
+            <?php
+            // Sort drinks by total ordered count descending for the order form
+            if (isset($this->drinks) && isset($this->drinkHistory) && is_array($this->drinks) && is_array($this->drinkHistory)) {
+                $drinkOrderCounts = array();
+                foreach ($this->drinkHistory as $entry) {
+                    if ($entry['type'] === 'order' && isset($entry['drink_id'])) {
+                        $drinkId = $entry['drink_id'];
+                        $qty = isset($entry['quantity']) ? (int)$entry['quantity'] : 1;
+                        if (!isset($drinkOrderCounts[$drinkId])) $drinkOrderCounts[$drinkId] = 0;
+                        $drinkOrderCounts[$drinkId] += $qty;
+                    }
+                }
+                usort($this->drinks, function($a, $b) use ($drinkOrderCounts) {
+                    $countA = isset($drinkOrderCounts[$a['id']]) ? $drinkOrderCounts[$a['id']] : 0;
+                    $countB = isset($drinkOrderCounts[$b['id']]) ? $drinkOrderCounts[$b['id']] : 0;
+                    // Descending order
+                    if ($countA === $countB) return strcasecmp($a['name'], $b['name']); // fallback: name
+                    return $countB - $countA;
+                });
+            }
+            foreach ($this->drinks as $drink): ?>
                 <div class="drink-tile">
                     <?php
                     $imgPath = isset($drink['image']) && $drink['image'] ? $this->basePath('imgs/branding/' . $drink['image']) : $this->basePath('imgs/branding/drink-placeholder.png');
@@ -263,6 +368,26 @@ $this->setup(array(
     </form>
     <script>
     // Drink order tile logic
+    // --- Dynamic sorting of drink tiles by count (JS) ---
+    function sortDrinkTiles() {
+        var wrapper = document.querySelector('.drink-tiles-wrapper');
+        if (!wrapper) return;
+        var tiles = Array.from(wrapper.querySelectorAll('.drink-tile'));
+        tiles.sort(function(a, b) {
+            var inputA = a.querySelector('input[type="hidden"]');
+            var inputB = b.querySelector('input[type="hidden"]');
+            var countA = parseInt(inputA.value) || 0;
+            var countB = parseInt(inputB.value) || 0;
+            if (countA === countB) {
+                var nameA = a.querySelector('.drink-name').textContent.trim().toLowerCase();
+                var nameB = b.querySelector('.drink-name').textContent.trim().toLowerCase();
+                return nameA.localeCompare(nameB);
+            }
+            return countB - countA;
+        });
+        tiles.forEach(function(tile) { wrapper.appendChild(tile); });
+    }
+    // Call after every count change
     function updateDrinkOrderTotal() {
         var total = 0;
         document.querySelectorAll('input[id^="input-"]').forEach(function(input) {

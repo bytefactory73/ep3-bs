@@ -136,6 +136,26 @@ return array(
                             ),
                         ),
                     ),
+                    'account/barcode-lookup' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/account/barcode-lookup',
+                            'defaults' => array(
+                                'controller' => 'User\\Controller\\Barcode',
+                                'action' => 'lookup',
+                            ),
+                        ),
+                    ),
+                    'account/barcode-assign' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/account/barcode-assign',
+                            'defaults' => array(
+                                'controller' => 'User\\Controller\\Barcode',
+                                'action' => 'assign',
+                            ),
+                        ),
+                    ),
                 ),
             ),
         ),
@@ -145,6 +165,15 @@ return array(
         'invokables' => array(
             'User\Controller\Session' => 'User\Controller\SessionController',
             'User\Controller\Account' => 'User\Controller\AccountController',
+        ),
+        'factories' => array(
+            'User\\Controller\\Barcode' => function($controllerManager) {
+                $controller = new \User\Controller\BarcodeController();
+                $serviceLocator = $controllerManager->getServiceLocator();
+                $adapter = $serviceLocator->get('Zend\\Db\\Adapter\\Adapter');
+                $controller->setDbAdapter($adapter);
+                return $controller;
+            },
         ),
     ),
 

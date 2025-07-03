@@ -26,3 +26,10 @@ CREATE TABLE IF NOT EXISTS drink_deposits (
     deposit_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES bs_users(uid)
 );
+
+-- Create drink_barcodes table for mapping barcode to drink_id
+CREATE TABLE IF NOT EXISTS drink_barcodes (
+    drink_id INT NOT NULL,
+    barcode VARCHAR(64) PRIMARY KEY,
+    FOREIGN KEY (drink_id) REFERENCES drinks(id) ON DELETE CASCADE
+);
