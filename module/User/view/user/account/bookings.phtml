@@ -47,6 +47,25 @@ $this->setup(array(
     border: 1px solid #ccc;
     border-radius: 8px;
 }
+.drink-info {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    width: 100%;
+}
+.drink-info .drink-name {
+    font-weight: bold;
+    margin-bottom: 4px;
+    text-align: center;
+}
+.drink-info .drink-price {
+    color: #666;
+    text-align: center;
+    margin-bottom: 4px;
+    font-size: 1.1em;
+    font-weight: bold;
+}
 .drink-tile .drink-controls {
     position: absolute;
     top: 4px;
@@ -69,13 +88,20 @@ $this->setup(array(
     justify-content: center;
     margin: 0 2px;
 }
-.drink-tile img {
+.drink-image-frame {
     width: 142px;
     height: 142px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    margin: 0 auto;
+    padding: 0;
+}
+.drink-tile img {
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
-    margin-bottom: 8px;
+    margin: 0;
     background: transparent;
     border-radius: 4px;
     margin-top: 0;
@@ -207,12 +233,16 @@ $this->setup(array(
                         </span>
                         <button type="button" class="drink-plus" data-drink-id="<?= (int)$drink['id'] ?>" style="background: #eee; border: none; border-radius: 4px; width: 28px; height: 28px; font-size: 18px; font-weight: bold; color: #2196f3; cursor: pointer; margin-left: 0;">+</button>
                     </div>
-                    <img src="<?= $imgPath ?>" alt="<?= $this->escapeHtmlAttr($drink['name']) ?>" />
-                    <div style="font-weight: bold; margin-bottom: 4px; text-align: center;">
-                        <?= $this->escapeHtml($drink['name']) ?>
+                    <div class="drink-image-frame">
+                        <img src="<?= $imgPath ?>" alt="<?= $this->escapeHtmlAttr($drink['name']) ?>" />
                     </div>
-                    <div style="color: #666; text-align: center; margin-bottom: 4px; font-size: 1.1em; font-weight: bold;">
-                        <?= $this->priceFormat($drink['price'] * 100.0, null, null, null, null, null, true, false, false) ?>
+                    <div class="drink-info">
+                        <div class="drink-name">
+                            <?= $this->escapeHtml($drink['name']) ?>
+                        </div>
+                        <div class="drink-price">
+                            <?= $this->priceFormat($drink['price'] * 100.0, null, null, null, null, null, true, false, false) ?>
+                        </div>
                     </div>
                     <input type="hidden" name="drink_counts[<?= (int)$drink['id'] ?>]" id="input-<?= (int)$drink['id'] ?>" value="0" data-price="<?= htmlspecialchars($drink['price'], ENT_QUOTES) ?>" />
                 </div>
