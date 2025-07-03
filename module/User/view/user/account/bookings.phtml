@@ -98,7 +98,7 @@ $this->setup(array(
     text-align: center;
     box-shadow: 0 1px 2px rgba(0,0,0,0.04);
     transition: background 0.2s, color 0.2s;
-    opacity: 0.8;
+    opacity: 0.9;
 }
 .drink-image-frame {
     width: 142px;
@@ -150,6 +150,31 @@ $this->setup(array(
         margin: 0 !important;
     }
 }
+.drink-order-top-bar > div:first-child,
+.drink-order-top-bar .order-actions {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
+    gap: 8px;
+    height: 100%;
+}
+.drink-order-top-bar > div:first-child > *,
+.drink-order-top-bar .order-actions > * {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.drink-order-top-bar > div:first-child > button,
+.drink-order-top-bar .order-actions > button {
+    flex: 0 0 auto;
+}
+.drink-order-top-bar > div:first-child > #current-balance-display,
+.drink-order-top-bar .order-actions > .default-button:not([type="button"]) {
+    flex: 1 1 0;
+}
 .drink-tiles-wrapper {
     justify-content: center;
     align-items: flex-start;
@@ -193,19 +218,25 @@ $this->setup(array(
     padding-bottom: 4px;
     height: 20px;
 }
+.order-actions {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+}
+.drink-order-top-bar .order-actions > .default-button[type="submit"] {
+    flex: 1 1 0;
+    min-width: 0;
+}
+.order-actions > .default-button:not([type="submit"]) {
+    flex: 0 0 auto;
+}
 </style>
 
 <?php if (isset($this->drinks)): ?>
     <div class="separator-small"></div>
     <div class="drink-order-top-bar" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0 8px;">
         <div style="flex: 1 1 auto; display: flex; justify-content: center; align-items: center;">
-            <div id="current-balance-display" class="<?= $currentBalance < 0 ? 'negative-balance' : '' ?>" style="font-size: 1.1em; font-weight: bold; color: #2196f3; background: #f5faff; border-radius: 6px; padding: 4px 14px; display: inline-flex; align-items: center; border: 1px solid #2196f3; height: 36px; min-height: 36px;">
-                <?= $this->t('STC SB-Theke - Guthaben:') ?>
-                <span id="current-balance-value" style="margin-left: 8px; color: <?= $currentBalance < 0 ? '#d32f2f' : '#2196f3' ?>; font-size: 1.15em; font-weight: bold;">
-                    <?= $this->priceFormat($currentBalance * 100.0, null, null, null, null, null, true, true, false) ?>
-                </span>
-            </div>
-            <span style="display:inline-block; width:18px;"></span>
             <button id="scan-barcode-btn" type="button" class="default-button" title="<?= $this->t('Scan Barcode') ?>" style="font-size: 1.1em; font-weight: bold; background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; padding: 4px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 0; width: 52px; height: 44px; justify-content: center;">
                 <svg width="36" height="28" viewBox="0 0 28 22" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                     <rect x="1" y="1" width="26" height="20" rx="3" stroke="#2196f3" stroke-width="2" fill="#e3f0fa"/>
@@ -218,9 +249,15 @@ $this->setup(array(
                 </svg>
                 <span class="sr-only" style="position:absolute;left:-9999px;"> <?= $this->t('Scan Barcode') ?> </span>
             </button>
+            <div id="current-balance-display" class="<?= $currentBalance < 0 ? 'negative-balance' : '' ?>" style="font-size: 1.1em; font-weight: bold; color: #2196f3; background: #f5faff; border-radius: 6px; padding: 4px 14px; display: inline-flex; align-items: center; border: 1px solid #2196f3; height: 36px; min-height: 36px;">
+                <?= $this->t('STC SB-Theke - Guthaben:') ?>
+                <span id="current-balance-value" style="margin-left: 8px; color: <?= $currentBalance < 0 ? '#d32f2f' : '#2196f3' ?>; font-size: 1.15em; font-weight: bold;">
+                    <?= $this->priceFormat($currentBalance * 100.0, null, null, null, null, null, true, true, false) ?>
+                </span>
+            </div>
         </div>
-        <div class="order-actions" style="display: flex; align-items: center; gap: 0 8px; flex: 0 0 auto;">
-            <button type="submit" form="drink-order-form" name="drink_order_submit" value="1" class="default-button" style="font-size: 1.2em; padding: 12px 32px; min-width: 120px; font-weight: bold; display: flex; align-items: center; gap: 12px; flex: 0 0 auto; height: 44px; min-height: 44px;">
+        <div class="order-actions" style="flex: 1 1 auto; display: flex; justify-content: center; align-items: center;">
+            <button type="submit" form="drink-order-form" name="drink_order_submit" value="1" class="default-button" style="font-size: 1.2em; padding: 12px 32px; min-width: 120px; font-weight: bold; display: flex; align-items: center; gap: 12px; flex: 1 1 0; height: 44px; min-height: 44px;">
                 <span style="font-weight: bold;"><?= $this->t('Buchen') ?></span>
                 <span id="drink-order-total" style="font-weight: bold; color: #2196f3; font-size: 1em;"> <?= $this->priceFormat(0) ?> </span>
             </button>
@@ -230,7 +267,6 @@ $this->setup(array(
                     <line x1="6" y1="6" x2="16" y2="16" stroke="#2196f3" stroke-width="2.2" stroke-linecap="round"/>
                     <line x1="16" y1="6" x2="6" y2="16" stroke="#2196f3" stroke-width="2.2" stroke-linecap="round"/>
                 </svg>
-                <span class="sr-only" style="position:absolute;left:-9999px;"> <?= $this->t('Clear selection') ?> </span>
             </button>
         </div>
     </div>
