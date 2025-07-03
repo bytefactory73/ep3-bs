@@ -87,6 +87,18 @@ $this->setup(array(
     align-items: center;
     justify-content: center;
     margin: 0 2px;
+    background: #2196f3;
+    color: #fff;
+    border-radius: 10px;
+    padding: 5px 16px;
+    font-size: 16px;
+    font-weight: bold;
+    min-width: 32px;
+    min-height: 28px;
+    text-align: center;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    transition: background 0.2s, color 0.2s;
+    opacity: 0.8;
 }
 .drink-image-frame {
     width: 142px;
@@ -372,7 +384,7 @@ $this->setup(array(
     });
     </script>
     <?php endif; ?>
-    <form method="post" id="drink-order-form">
+    <form method="post" id="drink-order-form" onsubmit="return confirmDrinkOrder();">
         <div style="height: 16px;"></div>
         <div class="drink-tiles-wrapper">
             <?php
@@ -403,7 +415,7 @@ $this->setup(array(
                     <div class="drink-controls">
                         <button type="button" class="drink-minus" data-drink-id="<?= (int)$drink['id'] ?>" style="background: #eee; border: none; border-radius: 4px; width: 28px; height: 28px; font-size: 18px; font-weight: bold; color: #2196f3; cursor: pointer; margin-right: 0;">–</button>
                         <span style="flex: 1 1 auto; display: flex; align-items: center; justify-content: center; min-width: 32px;">
-                            <span class="drink-count-badge" id="badge-<?= (int)$drink['id'] ?>" style="background: #2196f3; color: #fff; border-radius: 50%; padding: 3px 8px; font-size: 13px; font-weight: bold; min-width: 22px; text-align: center; visibility: hidden;">0</span>
+                            <span class="drink-count-badge" id="badge-<?= (int)$drink['id'] ?>" style="background: #2196f3; color: #fff; border-radius: 10px; padding: 5px 16px; font-size: 16px; font-weight: bold; min-width: 32px; min-height: 28px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.04); transition: background 0.2s, color 0.2s; visibility: hidden;">0</span>
                         </span>
                         <button type="button" class="drink-plus" data-drink-id="<?= (int)$drink['id'] ?>" style="background: #eee; border: none; border-radius: 4px; width: 28px; height: 28px; font-size: 18px; font-weight: bold; color: #2196f3; cursor: pointer; margin-left: 0;">+</button>
                     </div>
@@ -448,14 +460,20 @@ $this->setup(array(
     // Call after every count change
     function updateDrinkOrderTotal() {
         var total = 0;
+        var anySelected = false;
         document.querySelectorAll('input[id^="input-"]').forEach(function(input) {
             var count = parseInt(input.value) || 0;
             var price = parseFloat(input.getAttribute('data-price')) || 0;
             total += count * price;
+            if (count > 0) anySelected = true;
         });
         // Format as currency (EUR, 2 decimals, comma as decimal separator)
         var formatted = (total).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
         document.getElementById('drink-order-total').textContent = formatted;
+
+        // Enable/disable booking button
+        var bookBtn = document.querySelector('button[type="submit"][form="drink-order-form"]');
+        if (bookBtn) bookBtn.disabled = !anySelected;
 
         // Update current balance preview
         var initialBalance = parseFloat("<?= $currentBalance ?>");
@@ -520,6 +538,27 @@ $this->setup(array(
         });
         updateDrinkOrderTotal();
     });
+    function confirmDrinkOrder() {
+        var items = [];
+        var total = 0;
+        document.querySelectorAll('input[id^="input-"]').forEach(function(input) {
+            var count = parseInt(input.value) || 0;
+            if (count > 0) {
+                var id = input.id.replace('input-', '');
+                var nameElem = document.querySelector('.drink-tile [id="input-' + id + '"]').closest('.drink-tile').querySelector('.drink-name');
+                var name = nameElem ? nameElem.textContent.trim() : id;
+                var price = parseFloat(input.getAttribute('data-price')) || 0;
+                var itemTotal = count * price;
+                total += itemTotal;
+                items.push(name + ' x ' + count + ' = ' + itemTotal.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }));
+            }
+        });
+        if (items.length === 0) {
+            return confirm('<?= $this->t('Keine Getränke ausgewählt') ?>');
+        }
+        var msg = '<?= $this->t('Buchung bestätigen:') ?>\n\n' + items.join('\n') + '\n---------------------\n<?= $this->t('Gesamt:') ?> ' + total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+        return confirm(msg);
+    }
     </script>
 <?php endif; ?>
 
@@ -811,3 +850,13 @@ $this->setup(array(
         <div class="info-message"> <?= $this->escapeHtml($this->orderMessage) ?> </div>
     <?php endif; ?>
 </div>
+
+<style>
+button.default-button[disabled], button.default-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed !important;
+    background: #e3f0fa !important;
+    color: #b0b0b0 !important;
+    border-color: #b0b0b0 !important;
+}
+</style>
