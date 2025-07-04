@@ -11,6 +11,9 @@ class SimpleLoginController extends AbstractActionController
     {
         $request = $this->getRequest();
         $error = null;
+        // Ensure session manager is started
+        $sessionManager = $this->getServiceLocator()->get('Zend\Session\SessionManager');
+        $sessionManager->start();
         if ($request->isPost()) {
             $alias = trim($request->getPost('alias'));
             if ($alias) {
@@ -54,17 +57,31 @@ class SimpleLoginController extends AbstractActionController
         $error = null;
         $success = false;
         if ($this->getRequest()->isPost()) {
-            $drinkId = (int)$this->getRequest()->getPost('drink_id');
-            $qty = (int)$this->getRequest()->getPost('qty');
-            if ($drinkId && $qty > 0) {
-                // Insert order (customize table/fields as needed)
-                $db->query('INSERT INTO drink_orders (user_id, drink_id, qty, created_at) VALUES (?, ?, ?, NOW())', [$userId, $drinkId, $qty]);
+            $drinkCounts = $this->getRequest()->getPost('drink_counts', []);
+            $anyOrdered = false;
+            if (is_array($drinkCounts)) {
+                // Build a map of drink_id => price for quick lookup
+                $drinkPriceMap = [];
+                foreach ($drinks as $drink) {
+                    $drinkPriceMap[$drink['id']] = $drink['price'];
+                }
+                foreach ($drinkCounts as $drinkId => $qty) {
+                    $drinkId = (int)$drinkId;
+                    $qty = (int)$qty;
+                    if ($drinkId && $qty > 0 && isset($drinkPriceMap[$drinkId])) {
+                        $price = $drinkPriceMap[$drinkId];
+                        $db->query('INSERT INTO drink_orders (user_id, drink_id, quantity, price, order_time) VALUES (?, ?, ?, ?, NOW())', [$userId, $drinkId, $qty, $price]);
+                        $anyOrdered = true;
+                    }
+                }
+            }
+            if ($anyOrdered) {
                 $success = true;
-                // After order, clear session and redirect to login
+                // Only clear session and redirect to login if booking was successful
                 $session->getManager()->getStorage()->clear('SimpleLogin');
                 return $this->redirect()->toRoute('user/simple-login');
             } else {
-                $error = 'Please select a drink and quantity.';
+                $error = 'Bitte mindestens ein Getränk auswählen.';
             }
         }
         $userManager = $this->getServiceLocator()->get('User\Manager\UserManager');
