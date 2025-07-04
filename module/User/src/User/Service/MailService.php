@@ -22,7 +22,7 @@ class MailService extends AbstractService
         $this->optionManager = $optionManager;
     }
 
-    public function send(User $recipient, $subject, $text, array $attachments = array())
+    public function send(User $recipient, $subject, $text, $optionsOrAttachments = array())
     {
         $fromAddress = $this->configManager->need('mail.address');
         $fromName = $this->optionManager->need('client.name.short') . ' ' . $this->optionManager->need('service.name.full');
@@ -33,10 +33,27 @@ class MailService extends AbstractService
         $toAddress = $recipient->need('email');
         $toName = $recipient->need('alias');
 
-        $text = sprintf("%s %s,\r\n\r\n%s\r\n\r\n%s,\r\n%s %s\r\n%s",
-            $this->t('Dear'), $toName, $text, $this->t('Sincerely'), $this->t("Your"), $fromName, $this->optionManager->need('service.website'));
+        // Compatibility: if 4th argument is not an array or is a numerically indexed array, treat as attachments (old usage)
+        $isHtml = false;
+        $attachments = array();
+        if (is_array($optionsOrAttachments) && (array_keys($optionsOrAttachments) === range(0, count($optionsOrAttachments) - 1))) {
+            // Old usage: attachments array
+            $attachments = $optionsOrAttachments;
+        } elseif (is_array($optionsOrAttachments)) {
+            // New usage: options array
+            $isHtml = isset($optionsOrAttachments['isHtml']) && $optionsOrAttachments['isHtml'];
+            $attachments = isset($optionsOrAttachments['attachments']) ? $optionsOrAttachments['attachments'] : array();
+        }
 
-        $this->baseMailService->sendPlain($fromAddress, $fromName, $replyToAddress, $replyToName, $toAddress, $toName, $subject, $text, $attachments);
+        if ($isHtml) {
+            $body = sprintf("%s %s,<br><br>%s<br><br>%s,<br>%s %s<br>%s",
+                $this->t('Hello'), $toName, $text, $this->t('Sincerely'), $this->t("Your"), $fromName, $this->optionManager->need('service.website'));
+            $this->baseMailService->sendHtml($fromAddress, $fromName, $replyToAddress, $replyToName, $toAddress, $toName, $subject, $body, $attachments);
+        } else {
+            $body = sprintf("%s %s,\r\n\r\n%s\r\n\r\n%s,\r\n%s %s\r\n%s",
+                $this->t('Hello'), $toName, $text, $this->t('Sincerely'), $this->t("Your"), $fromName, $this->optionManager->need('service.website'));
+            $this->baseMailService->sendPlain($fromAddress, $fromName, $replyToAddress, $replyToName, $toAddress, $toName, $subject, $body, $attachments);
+        }
     }
 
 }

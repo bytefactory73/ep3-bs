@@ -389,9 +389,19 @@ class AccountController extends AbstractActionController
                 }
             }
             if ($anyOrdered) {
+                // Calculate new balance after order
+                $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($user->need('uid')));
+                $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($user->need('uid')));
+                $balance = 0;
+                foreach ($drinkDeposits as $deposit) {
+                    $balance += $deposit['amount'];
+                }
+                foreach ($drinkOrders as $order) {
+                    $balance -= $order['quantity'] * $order['price'];
+                }
                 // Send confirmation email
-                $userMailService = $serviceManager->get('User\Service\MailService');
-                $subject = $this->t('Your drink order confirmation');
+                $userMailService = $serviceManager->get('User\\Service\\MailService');
+                $subject = $this->t('Bestätigung Deiner Getränkebestellung');
                 $lines = [];
                 $totalSum = 0;
                 foreach ($orderedDrinks as $item) {
@@ -399,14 +409,21 @@ class AccountController extends AbstractActionController
                     $totalSum += $item['total'];
                 }
                 $lines[] = '---------------------';
-                $lines[] = sprintf($this->t('Total:') . ' %.2f EUR', $totalSum);
-                $text = $this->t('Thank you for your drink order!') . "\r\n\r\n" . implode("\r\n", $lines);
-                $userMailService->send($user, $subject, $text);
+                $lines[] = sprintf($this->t('Gesamt:') . ' %.2f EUR', $totalSum);
+                $lines[] = '';
+                $lines[] = sprintf($this->t('Saldo nach Bestellung:') . '<b> %.2f EUR </b>', $balance);
+                $text = $this->t('Vielen Dank für Deine Getränkebestellung!') . "<br><br>" . implode("<br>", $lines);
+                if ($balance < 0) {
+                    $text .= "<br><br>";
+                    $text .= '<span style="color:#d32f2f;font-weight:bold;">' . $this->t('Warnung: Dein Saldo ist negativ! Bitte überweise Geld auf das STC Paypal-Konto.') . '</span>';
+                }
+                // Send as HTML email
+                $userMailService->send($user, $subject, $text, array('isHtml' => true));
                 $orderMessage = 'Drink order(s) placed!';
                 // PRG pattern: redirect after POST to avoid resubmission
                 return $this->redirect()->toRoute('user/bookings');
             } else {
-                $orderMessage = 'Please select at least one drink.';
+                $orderMessage = 'Bitte wähle mindestens ein Getränk aus.';
             }
         }
 
