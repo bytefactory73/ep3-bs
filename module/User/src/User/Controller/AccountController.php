@@ -367,6 +367,7 @@ class AccountController extends AbstractActionController
         if ($this->getRequest()->isPost() && $this->params()->fromPost('drink_order_submit')) {
             $drinkCounts = $this->params()->fromPost('drink_counts', []);
             $anyOrdered = false;
+            $orderedDrinks = [];
             if (is_array($drinkCounts)) {
                 foreach ($drinkCounts as $drinkId => $quantity) {
                     $drinkId = (int)$drinkId;
@@ -374,10 +375,33 @@ class AccountController extends AbstractActionController
                     if ($drinkId > 0 && $quantity > 0) {
                         $drinkOrderManager->addOrder($user->need('uid'), $drinkId, $quantity);
                         $anyOrdered = true;
+                        // Fetch drink info for email
+                        $drink = $drinkManager->get($drinkId);
+                        if ($drink) {
+                            $orderedDrinks[] = [
+                                'name' => $drink['name'],
+                                'quantity' => $quantity,
+                                'price' => $drink['price'],
+                                'total' => $quantity * $drink['price'],
+                            ];
+                        }
                     }
                 }
             }
             if ($anyOrdered) {
+                // Send confirmation email
+                $userMailService = $serviceManager->get('User\Service\MailService');
+                $subject = $this->t('Your drink order confirmation');
+                $lines = [];
+                $totalSum = 0;
+                foreach ($orderedDrinks as $item) {
+                    $lines[] = sprintf('%s x %d = %.2f EUR', $item['name'], $item['quantity'], $item['total']);
+                    $totalSum += $item['total'];
+                }
+                $lines[] = '---------------------';
+                $lines[] = sprintf($this->t('Total:') . ' %.2f EUR', $totalSum);
+                $text = $this->t('Thank you for your drink order!') . "\r\n\r\n" . implode("\r\n", $lines);
+                $userMailService->send($user, $subject, $text);
                 $orderMessage = 'Drink order(s) placed!';
                 // PRG pattern: redirect after POST to avoid resubmission
                 return $this->redirect()->toRoute('user/bookings');
