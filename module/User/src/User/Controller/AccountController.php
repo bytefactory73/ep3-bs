@@ -391,7 +391,7 @@ class AccountController extends AbstractActionController
         $bookingBillManager->getByBookings($bookings);
 
         // Fetch drinks, drink categories, and drink orders for this user
-        $drinks = $drinkManager->getAll();
+        $drinks = $drinkManager->getAll($user->need('uid'));
         $drinkCategories = $drinkCategoryManager->getAll();
         $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($user->need('uid')));
         $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($user->need('uid')));
@@ -427,6 +427,7 @@ class AccountController extends AbstractActionController
                 $statsResult = $drinkOrderManager->getDrinkStatsByUser($userId);
                 foreach ($statsResult as $row) {
                     $drinkStats[] = [
+                        'id' => isset($row['id']) ? (int)$row['id'] : null,
                         'name' => $row['name'],
                         'total_count' => $row['total_count'],
                     ];

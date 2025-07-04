@@ -43,12 +43,12 @@ class DrinkOrderManager
      */
     public function getDrinkStatsByUser($userId)
     {
-        $sql = 'SELECT d.name, SUM(do.quantity) AS total_count
+        $sql = 'SELECT d.id, d.name, SUM(do.quantity) AS total_count
                 FROM drink_orders do
                 JOIN drinks d ON do.drink_id = d.id
                 WHERE do.user_id = ?
-                GROUP BY d.name
-                ORDER BY d.name ASC';
+                GROUP BY d.id, d.name
+                ORDER BY total_count DESC, d.name ASC';
         $statement = $this->dbAdapter->createStatement($sql, [$userId]);
         return $statement->execute();
     }
