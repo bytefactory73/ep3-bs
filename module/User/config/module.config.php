@@ -176,6 +176,26 @@ return array(
                             ),
                         ),
                     ),
+                    'simple-login' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/simple-login',
+                            'defaults' => array(
+                                'controller' => 'User\\Controller\\SimpleLogin',
+                                'action' => 'login',
+                            ),
+                        ),
+                    ),
+                    'simple-order' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/simple-order',
+                            'defaults' => array(
+                                'controller' => 'User\\Controller\\SimpleLogin',
+                                'action' => 'order',
+                            ),
+                        ),
+                    ),
                 ),
             ),
         ),
@@ -185,6 +205,7 @@ return array(
         'invokables' => array(
             'User\Controller\Session' => 'User\Controller\SessionController',
             'User\Controller\Account' => 'User\Controller\AccountController',
+            'User\Controller\SimpleLogin' => 'User\Controller\SimpleLoginController',
         ),
         'factories' => array(
             'User\\Controller\\Barcode' => function($controllerManager) {

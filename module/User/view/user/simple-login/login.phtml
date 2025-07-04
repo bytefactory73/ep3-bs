@@ -1,0 +1,9 @@
+<h1>Simple Login</h1>
+<?php if (!empty($this->error)): ?>
+    <div style="color:red;"> <?= $this->escapeHtml($this->error) ?> </div>
+<?php endif; ?>
+<form method="post">
+    <label for="alias">Drink Alias:</label>
+    <input type="text" name="alias" id="alias" required autofocus>
+    <button type="submit">Login</button>
+</form>
