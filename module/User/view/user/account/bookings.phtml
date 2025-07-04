@@ -263,8 +263,12 @@ $this->setup(array(
             </button>
             <div id="current-balance-display" class="<?= $currentBalance < 0 ? 'negative-balance' : '' ?>" style="font-size: 1.1em; font-weight: bold; color: #2196f3; background: #f5faff; border-radius: 6px; padding: 4px 14px; display: inline-flex; align-items: center; border: 1px solid #2196f3; height: 36px; min-height: 36px;">
                 <?= $this->t('STC SB-Theke - Guthaben:') ?>
-                <span id="current-balance-value" style="margin-left: 8px; color: <?= $currentBalance < 0 ? '#d32f2f' : '#2196f3' ?>; font-size: 1.15em; font-weight: bold;">
-                    <?= $this->priceFormat($currentBalance * 100.0, null, null, null, null, null, true, true, false) ?>
+                <span id="current-balance-value" style="margin-left: 8px; color: <?php if ($currentBalance < 0) { echo '#d32f2f'; } else { echo $currentBalance < 0 ? '#d32f2f' : '#2196f3'; } ?>; font-size: 1.15em; font-weight: bold;">
+                    <?php if ($simpleOrderMode): ?>
+                        <?= $currentBalance > 0 ? '> 0 €' : '< 0 €' ?>
+                    <?php else: ?>
+                        <?= $this->priceFormat($currentBalance * 100.0, null, null, null, null, null, true, true, false) ?>
+                    <?php endif; ?>
                 </span>
             </div>
         </div>
@@ -594,7 +598,12 @@ $this->setup(array(
         // Update current balance preview
         var initialBalance = parseFloat("<?= $currentBalance ?>");
         var newBalance = initialBalance - total;
-        var formattedBalance = newBalance.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+        var formattedBalance = "";
+        if (window.SIMPLE_ORDER_MODE) {
+            formattedBalance = newBalance > 0 ? " > 0 €" : " < 0 €";
+        } else {
+            formattedBalance = newBalance.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+        }
         var balanceElem = document.getElementById('current-balance-value');
         var balanceBox = document.getElementById('current-balance-display');
         balanceElem.textContent = formattedBalance;
