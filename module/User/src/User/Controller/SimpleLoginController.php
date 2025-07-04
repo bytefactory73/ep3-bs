@@ -194,7 +194,8 @@ class SimpleLoginController extends AbstractActionController
             'success' => $success,
             'drinkOrderCancelWindow' => $drinkOrderCancelWindow,
             'drinkCategories' => $drinkCategories,
-            'drinkStats' => $drinkStats
+            'drinkStats' => $drinkStats,
+            'simpleOrderMode' => true // Add this line to enable simple-order mode in the view
         ]);
     }
 

@@ -682,7 +682,12 @@ $this->setup(array(
     </script>
 <?php endif; ?>
 
-<?php if (isset($this->drinkHistory)): ?>
+<?php
+$simpleOrderMode = isset($this->simpleOrderMode) ? $this->simpleOrderMode : false;
+?>
+
+<?php if (isset($this->drinkHistory) && !$simpleOrderMode): ?>
+<div id="order-history-section">
     <h2><?= $this->t('Käufe und Einzahlungen') ?></h2>
     <div style="margin-bottom: 18px;"></div>
     <table class="default-table middle-table">
@@ -918,8 +923,11 @@ $this->setup(array(
     });
     </script>
     <div class="separator-small"></div>
+</div>
 <?php endif; ?>
 
+<?php if (!$simpleOrderMode): ?>
+<div id="drink-stats-section">
 <h2><?= $this->t('Getränke-Statistik') ?></h2>
 <?php if (!isset($drinkStats) || empty($drinkStats)): ?>
     <div style="color: #888; margin-bottom: 16px;">Keine Getränke-Statistik verfügbar.</div>
@@ -937,8 +945,14 @@ $this->setup(array(
         <?php endforeach; ?>
     </table>
 <?php endif; ?>
+</div>
+<?php endif; ?>
 
-<div>
+<?php 
+// Only show the Buchungen section if not in simple-order mode
+?>
+<?php if (!$simpleOrderMode): ?>
+<div id="buchungen-section">
     <h1><?= $this->t('My bookings') ?></h1>
 
     <div class="separator-small"></div>
@@ -1051,6 +1065,7 @@ $this->setup(array(
         <div class="info-message"> <?= $this->escapeHtml($this->orderMessage) ?> </div>
     <?php endif; ?>
 </div>
+<?php endif; ?>
 
 <style>
 button.default-button[disabled], button.default-button:disabled {
@@ -1114,4 +1129,25 @@ document.addEventListener('DOMContentLoaded', function() {
             }, { passive: false });
         });
     });
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.SIMPLE_ORDER_MODE) {
+        var navTexts = [
+            'Verwandte Seiten',
+            'Profil',
+            'Zurück zu: Kalender'
+        ];
+        // Only check nav, ul, li, a, and nav-like classes
+        var selector = 'nav, ul, li, a, .nav, .menu, .sidebar, .links';
+        document.querySelectorAll(selector).forEach(function(el) {
+            var text = (el.textContent || '').toLowerCase();
+            navTexts.forEach(function(target) {
+                if (text.indexOf(target.toLowerCase()) !== -1) {
+                    el.style.display = 'none';
+                }
+            });
+        });
+    }
+});
 </script>
