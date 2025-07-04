@@ -641,6 +641,10 @@ $this->setup(array(
                 badge.style.visibility = 'hidden';
             });
             updateDrinkOrderTotal();
+            // In simple-order mode, log out (redirect to login)
+            if (window.SIMPLE_ORDER_MODE) {
+                window.location.href = '<?= $this->url("user/simple-login") ?>';
+            }
         });
         // Initialize all badges to 0 and hidden
         document.querySelectorAll('input[id^="input-"]').forEach(function(input) {
