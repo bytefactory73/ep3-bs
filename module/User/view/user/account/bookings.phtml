@@ -275,11 +275,16 @@ $this->setup(array(
             </button>
         </div>
     </div>
-    <div id="barcode-scanner-container" style="display:none; position:relative; z-index:1000; background:#fff; border:2px solid #2196f3; border-radius:8px; padding:12px; margin-bottom:16px; max-width:400px;"></div>
+    <div id="barcode-scanner-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.45); z-index:2000; align-items:center; justify-content:center;">
+        <div id="barcode-scanner-container" style="background:#fff; border:2px solid #2196f3; border-radius:8px; padding:12px; max-width:400px; width:90vw; margin:auto; position:relative; box-shadow:0 8px 32px rgba(0,0,0,0.18);">
+            <!-- Scanner UI will be injected here -->
+        </div>
+    </div>
     <script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
     <script>
     // Barcode scan logic
     const scanBtn = document.getElementById('scan-barcode-btn');
+    const scannerModal = document.getElementById('barcode-scanner-modal');
     const scannerContainer = document.getElementById('barcode-scanner-container');
     let codeReader = null;
 
@@ -289,12 +294,12 @@ $this->setup(array(
             handleBarcodeResult('4002798021294');
             return;
         }
-        if (scannerContainer.style.display === 'block') {
+        if (scannerModal.style.display === 'flex') {
             stopBarcodeScanner();
             return;
         }
-        scannerContainer.style.display = 'block';
-        scannerContainer.innerHTML = '<div id="barcode-video"></div><div style="margin-top:8px;"><button id="close-barcode-scanner" type="button" style="font-size:1em;">'+
+        scannerModal.style.display = 'flex';
+        scannerContainer.innerHTML = '<div id="barcode-video"></div><div style="margin-top:8px; text-align:center;"><button id="close-barcode-scanner" type="button" style="font-size:1em;">'+
             '<?= $this->t('Close') ?>'+
             '</button></div>';
         const ZXing = window.ZXing;
@@ -329,11 +334,13 @@ $this->setup(array(
                 handleBarcodeResult(result.text);
             }
         } catch (e) {
-            scannerContainer.innerHTML = '<div style="color:red;"><?= $this->t('Camera error or permission denied.') ?></div>';
+            scannerContainer.innerHTML = '<div style="color:red; margin:16px;">'+
+                '<?= $this->t('Camera error or permission denied.') ?>'+
+                '</div>';
         }
     });
     function stopBarcodeScanner() {
-        scannerContainer.style.display = 'none';
+        scannerModal.style.display = 'none';
         scannerContainer.innerHTML = '';
         if (codeReader) {
             codeReader.reset();
@@ -342,6 +349,10 @@ $this->setup(array(
     }
     document.addEventListener('click', function(e) {
         if (e.target && e.target.id === 'close-barcode-scanner') {
+            stopBarcodeScanner();
+        }
+        // Also close modal if user clicks outside the scanner box
+        if (e.target && e.target.id === 'barcode-scanner-modal') {
             stopBarcodeScanner();
         }
     });
@@ -353,6 +364,18 @@ $this->setup(array(
                 if (data && data.drink_id) {
                     var input = document.getElementById('input-' + data.drink_id);
                     var badge = document.getElementById('badge-' + data.drink_id);
+                    var tile = input ? input.closest('.drink-tile') : null;
+                    // If tile is hidden, switch to 'All' group
+                    if (tile && tile.style.display === 'none') {
+                        var allBtn = document.querySelector('.category-btn[data-category="all"]');
+                        if (allBtn) allBtn.click();
+                        // After switching, reselect elements (DOM may have changed)
+                        input = document.getElementById('input-' + data.drink_id);
+                        badge = document.getElementById('badge-' + data.drink_id);
+                        tile = input ? input.closest('.drink-tile') : null;
+                        // Sort by order count after switching group
+                        sortDrinkTiles();
+                    }
                     var val = parseInt(input.value) || 0;
                     val++;
                     input.value = val;
@@ -456,6 +479,8 @@ $this->setup(array(
                         }
                         wrapper.appendChild(tile);
                     });
+                    // Sort by order count after switching group
+                    sortDrinkTiles();
                 }
             });
         });
@@ -529,11 +554,11 @@ $this->setup(array(
             var inputB = b.querySelector('input[type="hidden"]');
             var countA = parseInt(inputA.value) || 0;
             var countB = parseInt(inputB.value) || 0;
-            if (countA === countB) {
-                var nameA = a.querySelector('.drink-name').textContent.trim().toLowerCase();
-                var nameB = b.querySelector('.drink-name').textContent.trim().toLowerCase();
-                return nameA.localeCompare(nameB);
-            }
+//            if (countA === countB) {
+//                var nameA = a.querySelector('.drink-name').textContent.trim().toLowerCase();
+//                var nameB = b.querySelector('.drink-name').textContent.trim().toLowerCase();
+//                return nameA.localeCompare(nameB);
+//            }
             return countB - countA;
         });
         tiles.forEach(function(tile) { wrapper.appendChild(tile); });
