@@ -46,6 +46,10 @@ class SimpleLoginController extends AbstractActionController
         $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
         // Example: fetch available drinks (customize as needed)
         $drinks = $db->query('SELECT id, name, price FROM drinks', [])->toArray();
+        // Provide dummy or minimal data for booking.phtml compatibility
+        $drinkHistory = [];
+        $userName = 'Gast';
+        $currentBalance = 0;
         $error = null;
         $success = false;
         if ($this->getRequest()->isPost()) {
@@ -64,6 +68,9 @@ class SimpleLoginController extends AbstractActionController
         }
         return new ViewModel([
             'drinks' => $drinks,
+            'drinkHistory' => $drinkHistory,
+            'userName' => $userName,
+            'currentBalance' => $currentBalance,
             'error' => $error,
             'success' => $success
         ]);

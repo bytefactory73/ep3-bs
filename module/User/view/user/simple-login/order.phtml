@@ -1,18 +1,5 @@
-<h1>Place Drink Order</h1>
+<h1>Getränke bestellen</h1>
 <?php if (!empty($this->error)): ?>
     <div style="color:red;"> <?= $this->escapeHtml($this->error) ?> </div>
 <?php endif; ?>
-<form method="post">
-    <label for="drink_id">Drink:</label>
-    <select name="drink_id" id="drink_id" required>
-        <option value="">-- Select --</option>
-        <?php foreach ($this->drinks as $drink): ?>
-            <option value="<?= (int)$drink['id'] ?>">
-                <?= $this->escapeHtml($drink['name']) ?> (<?= number_format($drink['price']/100, 2) ?> €)
-            </option>
-        <?php endforeach; ?>
-    </select>
-    <label for="qty">Quantity:</label>
-    <input type="number" name="qty" id="qty" min="1" value="1" required>
-    <button type="submit">Order</button>
-</form>
+<?= $this->render('user/account/bookings') ?>
