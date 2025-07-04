@@ -243,6 +243,9 @@ $this->setup(array(
 .order-actions > .default-button:not([type="submit"]) {
     flex: 0 0 auto;
 }
+#logout-timer {
+    cursor: pointer;
+}
 </style>
 
 <?php if (isset($drinks)): ?>
@@ -641,23 +644,30 @@ $this->setup(array(
                 updateDrinkOrderTotal();
             });
         });
-        document.getElementById('clear-drink-selection').addEventListener('click', function() {
-            if (!confirm('<?= $this->t('Are you sure you want to clear your drink selection? This will reset your current order.') ?>')) {
-                return;
-            }
-            document.querySelectorAll('input[id^="input-"]').forEach(function(input) {
-                input.value = 0;
-                var id = input.id.replace('input-', '');
-                var badge = document.getElementById('badge-' + id);
-                badge.textContent = 0;
-                badge.style.visibility = 'hidden';
-            });
-            updateDrinkOrderTotal();
-            // In simple-order mode, log out (redirect to login)
-            if (window.SIMPLE_ORDER_MODE) {
-                window.location.href = '<?= $this->url("user/simple-login") ?>';
-            }
+    });
+    // --- Shared clear selection and logout logic (global scope) ---
+    function clearSelectionAndLogout() {
+        if (!confirm('<?= $this->t('Bist Du sicher, dass Du Deine Getränkeauswahl löschen möchtest? Dadurch wird Deine aktuelle Bestellung zurückgesetzt.') ?>')) {
+            return;
+        }
+        document.querySelectorAll('input[id^="input-"]').forEach(function(input) {
+            input.value = 0;
+            var id = input.id.replace('input-', '');
+            var badge = document.getElementById('badge-' + id);
+            badge.textContent = 0;
+            badge.style.visibility = 'hidden';
         });
+        if (typeof updateDrinkOrderTotal === 'function') updateDrinkOrderTotal();
+        // In simple-order mode, log out (redirect to login)
+        if (window.SIMPLE_ORDER_MODE) {
+            window.location.href = '<?= $this->url("user/simple-login") ?>';
+        }
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+        var clearBtn = document.getElementById('clear-drink-selection');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', clearSelectionAndLogout);
+        }
         // Initialize all badges to 0 and hidden
         document.querySelectorAll('input[id^="input-"]').forEach(function(input) {
             var id = input.id.replace('input-', '');
@@ -1137,6 +1147,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     resetLogoutTimer();
                 }, true);
             });
+            if (timerElem) {
+                timerElem.addEventListener('click', function(e) {
+                    clearSelectionAndLogout();
+                });
+            }
             resetLogoutTimer();
         }
     });
