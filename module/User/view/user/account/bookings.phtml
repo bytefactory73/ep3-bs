@@ -511,7 +511,7 @@ $this->setup(array(
                         $drinkOrderCounts[$drinkId] += $qty;
                     }
                 }
-                usort($this->drinks, function($a, $b) use ($drinkOrderCounts) {
+                usort($drinks, function($a, $b) use ($drinkOrderCounts) {
                     $countA = isset($drinkOrderCounts[$a['id']]) ? $drinkOrderCounts[$a['id']] : 0;
                     $countB = isset($drinkOrderCounts[$b['id']]) ? $drinkOrderCounts[$b['id']] : 0;
                     // Descending order
@@ -519,7 +519,7 @@ $this->setup(array(
                     return $countB - $countA;
                 });
             }
-            foreach ($this->drinks as $drink): ?>
+            foreach ($drinks as $drink): ?>
                 <div class="drink-tile" data-category="<?= (int)($drink['category'] ?? 0) ?>" favourite-count="<?= (int)($drink['user_total_count'] ?? 0) ?>">
                     <?php
                     $imgFile = isset($drink['image']) && $drink['image'] ? $drink['image'] : 'drink-placeholder.png';

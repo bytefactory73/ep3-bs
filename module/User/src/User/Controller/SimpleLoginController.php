@@ -111,13 +111,15 @@ class SimpleLoginController extends AbstractActionController
         usort($drinkHistory, function($a, $b) {
             return strtotime($b['created_at']) - strtotime($a['created_at']);
         });
+        $drinkOrderCancelWindow = \Drinks\Manager\DrinkOrderManager::CANCEL_WINDOW_SECONDS;
         return new ViewModel([
             'drinks' => $drinks,
             'drinkHistory' => $drinkHistory,
             'userName' => $userName,
             'currentBalance' => $currentBalance,
             'error' => $error,
-            'success' => $success
+            'success' => $success,
+            'drinkOrderCancelWindow' => $drinkOrderCancelWindow
         ]);
     }
 }
