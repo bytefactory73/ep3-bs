@@ -723,8 +723,36 @@ class AccountController extends AbstractActionController
             }
         }
 
+        /* Drinks Alias form */
+        $editDrinksAliasForm = $formElementManager->get('User\Form\EditDrinksAliasForm');
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+        $userId = $user->need('uid');
+        // Load current alias
+        $aliasRow = $dbAdapter->query('SELECT alias FROM drink_aliases WHERE user_id = ?', [$userId])->current();
+        $currentAlias = $aliasRow ? $aliasRow['alias'] : '';
+        if ($this->getRequest()->isPost() && $editParam == 'drinks-alias') {
+            $editDrinksAliasForm->setData($this->params()->fromPost());
+            if ($editDrinksAliasForm->isValid()) {
+                $data = $editDrinksAliasForm->getData();
+                $alias = $data['edaf-alias'];
+                // Check uniqueness again in controller (defense-in-depth)
+                $existing = $dbAdapter->query('SELECT user_id FROM drink_aliases WHERE alias = ? AND user_id != ?', [$alias, $userId])->current();
+                if ($existing) {
+                    $editDrinksAliasForm->get('edaf-alias')->setMessages([$this->t('Dieser Alias ist bereits vergeben.')]);
+                } else {
+                    // Upsert alias
+                    $dbAdapter->query('INSERT INTO drink_aliases (user_id, alias) VALUES (?, ?) ON DUPLICATE KEY UPDATE alias = VALUES(alias)', [$userId, $alias]);
+                    $this->flashMessenger()->addSuccessMessage($this->t('Theken Alias wurde gespeichert.'));
+                    return $this->redirect()->toRoute('user/settings');
+                }
+            }
+        } else {
+            $editDrinksAliasForm->get('edaf-alias')->setValue($currentAlias);
+        }
+
         return array(
             'user' => $user,
+            'editDrinksAliasForm' => $editDrinksAliasForm,
             'editPhoneForm' => $editPhoneForm,
             'editEmailForm' => $editEmailForm,
             'editNotificationsForm' => $editNotificationsForm,

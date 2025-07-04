@@ -43,3 +43,10 @@ CREATE TABLE IF NOT EXISTS drink_categories (
     name VARCHAR(100) NOT NULL,
     sort_priority INT NOT NULL DEFAULT 0
 );
+
+-- Table for user drinks aliases
+CREATE TABLE IF NOT EXISTS drink_aliases (
+    user_id INT UNSIGNED NOT NULL PRIMARY KEY,
+    alias VARCHAR(50) NOT NULL UNIQUE,
+    FOREIGN KEY (user_id) REFERENCES bs_users(uid) ON DELETE CASCADE
+);

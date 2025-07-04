@@ -76,6 +76,37 @@ $this->headScript()->appendFile($this->basePath('js/controller/user/settings.min
     <div class="separator-small"></div>
 
     <div class="sandbox">
+        <div class="symbolic symbolic-user">
+            <div class="edit-label dark-gray">Theken Alias</div>
+            <div class="edit-panel">
+                <div class="separator-small"></div>
+                <?php
+                $form = $this->editDrinksAliasForm;
+                $form->setAttribute('method', 'post');
+                $form->setAttribute('action', $this->url('user/settings', array(), array('query' => array('edit' => 'drinks-alias'))));
+                $form->prepare();
+                echo $this->form()->openTag($form);
+                ?>
+                <table class="default-table" style="margin: 0px;">
+                    <tr>
+                        <td>
+                            <?= $this->formElement($form->get('edaf-alias')) ?>
+                            <?= $this->formElementErrors($form->get('edaf-alias')) ?>
+                            <?= $this->formElementNotes($form->get('edaf-alias')) ?>
+                        </td>
+                        <td>
+                            <?= $this->formElement($form->get('edaf-submit')) ?>
+                        </td>
+                    </tr>
+                </table>
+                <?= $this->form()->closeTag() ?>
+            </div>
+        </div>
+    </div>
+
+    <div class="separator-small"></div>
+
+    <div class="sandbox">
         <div class="symbolic symbolic-phone">
             <div class="edit-label dark-gray"><?= $this->t('Update phone number') ?></div>
 

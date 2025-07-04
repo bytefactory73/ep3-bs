@@ -222,6 +222,11 @@ return array(
         'factories' => array(
             'User\Form\EditEmailForm' => 'User\Form\EditEmailFormFactory',
             'User\Form\RegistrationForm' => 'User\Form\RegistrationFormFactory',
+            'User\Form\EditDrinksAliasForm' => function($formElementManager) {
+                $form = new \User\Form\EditDrinksAliasForm();
+                $form->init();
+                return $form;
+            },
         ),
     ),
 
@@ -234,6 +239,24 @@ return array(
     'view_manager' => array(
         'template_path_stack' => array(
             __DIR__ . '/../view',
+        ),
+    ),
+
+    'validators' => array(
+        'factories' => array(
+            'User\Validator\UniqueDrinksAlias' => function($sm) {
+                $validator = new \User\Validator\UniqueDrinksAlias();
+                // Try to get the DB adapter from the service manager
+                if (method_exists($sm, 'getServiceLocator')) {
+                    $serviceLocator = $sm->getServiceLocator();
+                } else {
+                    $serviceLocator = $sm;
+                }
+                if ($serviceLocator->has('Zend\Db\Adapter\Adapter')) {
+                    $validator->setDbAdapter($serviceLocator->get('Zend\Db\Adapter\Adapter'));
+                }
+                return $validator;
+            },
         ),
     ),
 );
