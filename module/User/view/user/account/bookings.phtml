@@ -445,20 +445,22 @@ $this->setup(array(
                 var cat = this.getAttribute('data-category');
                 var allTiles = Array.from(wrapper.querySelectorAll('.drink-tile'));
                 if (cat === 'favourites') {
-                    // Show only favourites, sort by favourite-count descending
+                    // Show only favourites, sort by current order count, then favourite-count, then name
                     var favTiles = allTiles.filter(function(tile) {
                         return parseInt(tile.getAttribute('favourite-count')) > 0;
                     });
                     favTiles.sort(function(a, b) {
+                        var inputA = a.querySelector('input[type="hidden"]');
+                        var inputB = b.querySelector('input[type="hidden"]');
+                        var countA = parseInt(inputA.value) || 0;
+                        var countB = parseInt(inputB.value) || 0;
+                        if (countA !== countB) return countB - countA;
                         var fa = parseInt(a.getAttribute('favourite-count')) || 0;
                         var fb = parseInt(b.getAttribute('favourite-count')) || 0;
-                        if (fa === fb) {
-                            // fallback: name
-                            var na = a.querySelector('.drink-name').textContent.trim().toLowerCase();
-                            var nb = b.querySelector('.drink-name').textContent.trim().toLowerCase();
-                            return na.localeCompare(nb);
-                        }
-                        return fb - fa;
+                        if (fa !== fb) return fb - fa;
+                        var na = a.querySelector('.drink-name').textContent.trim().toLowerCase();
+                        var nb = b.querySelector('.drink-name').textContent.trim().toLowerCase();
+                        return na.localeCompare(nb);
                     });
                     // Hide all, then show and append sorted favs
                     allTiles.forEach(function(tile) { tile.style.display = 'none'; });
