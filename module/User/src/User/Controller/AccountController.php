@@ -392,16 +392,8 @@ class AccountController extends AbstractActionController
                 // Calculate new balance after order
                 $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($user->need('uid')));
                 $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($user->need('uid')));
-                $balance = 0;
-                foreach ($drinkDeposits as $deposit) {
-                    $balance += $deposit['amount'];
-                }
-                foreach ($drinkOrders as $order) {
-                    if (!empty($order['deleted'])) continue; // skip deleted orders
-                    $balance -= $order['quantity'] * $order['price'];
-                }
+                $balance = $this->calculateDrinkBalance($drinkDeposits, $drinkOrders);
                 // Send confirmation email
-                $userMailService = $serviceManager->get('User\\Service\\MailService');
                 $subject = $this->t('Bestätigung Deiner Getränkebestellung');
                 $lines = [];
                 $totalSum = 0;
@@ -419,6 +411,7 @@ class AccountController extends AbstractActionController
                     $text .= '<span style="color:#d32f2f;font-weight:bold;">' . $this->t('Warnung: Dein Saldo ist negativ! Bitte überweise Geld auf das STC Paypal-Konto.') . '</span>';
                 }
                 // Send as HTML email
+                $userMailService = $serviceManager->get('User\Service\MailService');
                 $userMailService->send($user, $subject, $text, array('isHtml' => true));
                 $orderMessage = 'Drink order(s) placed!';
                 // PRG pattern: redirect after POST to avoid resubmission
@@ -844,16 +837,8 @@ class AccountController extends AbstractActionController
             $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($user->need('uid')));
             $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
             $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($user->need('uid')));
-            $balance = 0;
-            foreach ($drinkDeposits as $deposit) {
-                $balance += $deposit['amount'];
-            }
-            foreach ($drinkOrders as $o) {
-                if (!empty($o['deleted'])) continue;
-                $balance -= $o['quantity'] * $o['price'];
-            }
+            $balance = $this->calculateDrinkBalance($drinkDeposits, $drinkOrders);
             // Send cancellation email
-            $userMailService = $serviceManager->get('User\Service\MailService');
             $subject = $this->t('Stornierung Deiner Getränkebestellung');
             $lines = [];
             $lines[] = sprintf('%s x %d = %.2f EUR', $order['drink_name'], $order['quantity'], $order['quantity'] * $order['price']);
@@ -865,11 +850,31 @@ class AccountController extends AbstractActionController
                 $text .= "<br><br>";
                 $text .= '<span style="color:#d32f2f;font-weight:bold;">' . $this->t('Warnung: Dein Saldo ist negativ! Bitte überweise Geld auf das STC Paypal-Konto.') . '</span>';
             }
+            $userMailService = $serviceManager->get('User\Service\MailService');
             $userMailService->send($user, $subject, $text, array('isHtml' => true));
             return $this->getResponse()->setContent(json_encode(['success' => true]))->setStatusCode(200);
         } else {
             return $this->getResponse()->setContent(json_encode(['success' => false]))->setStatusCode(404);
         }
+    }
+
+    /**
+     * Calculate drink balance for a user
+     * @param array $drinkDeposits
+     * @param array $drinkOrders
+     * @return float
+     */
+    private function calculateDrinkBalance($drinkDeposits, $drinkOrders)
+    {
+        $balance = 0;
+        foreach ($drinkDeposits as $deposit) {
+            $balance += $deposit['amount'];
+        }
+        foreach ($drinkOrders as $order) {
+            if (!empty($order['deleted'])) continue;
+            $balance -= $order['quantity'] * $order['price'];
+        }
+        return $balance;
     }
 
 }

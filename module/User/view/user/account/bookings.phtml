@@ -880,169 +880,29 @@ $this->setup(array(
                 .then(function(response) { return response.json(); })
                 .then(function(data) {
                     if (data && data.success) {
-                        // Mark the row as deleted visually
-                        var row = button.closest('tr');
-                        if (row) {
-                            row.classList.add('order-deleted-row');
-                            row.style.opacity = 0.4;
-                            // Add strikethrough to all cells except the first (time/cancel)
-                            var tds = row.querySelectorAll('td');
-                            for (var i = 1; i < tds.length; ++i) {
-                                tds[i].innerHTML = '<span style="text-decoration:line-through; color:#b0b0b0;">' + tds[i].textContent + '</span>';
-                            }
-                        }
-                        button.remove();
-                        // Update balances and counts in the table
-                        updateOrderHistoryBalances();
-                        // Update top Guthaben field
-                        updateTopBalance();
-                        // Update drink statistics table
-                        updateDrinkStatsTable();
+                        // Refresh the page after successful cancellation, like after confirming an order
+                        window.location.reload();
                     } else {
-                        alert('<?= $this->t('Stornierung fehlgeschlagen.') ?>');
+                        var msg = '<?= $this->t('Stornierung fehlgeschlagen.') ?>';
+                        if (data && data.error_message) {
+                            msg += '\n' + data.error_message;
+                        }
+                        alert(msg);
                         button.disabled = false;
                     }
                 })
-                .catch(function() {
-                    alert('<?= $this->t('Stornierung fehlgeschlagen.') ?>');
+                .catch(function(err) {
+                    var msg = '<?= $this->t('Stornierung fehlgeschlagen.') ?>';
+                    if (err && err.message) {
+                        msg += '\n' + err.message;
+                    } else if (err) {
+                        msg += '\n' + String(err);
+                    }
+                    alert(msg);
                     button.disabled = false;
                 });
             });
         });
-        // Update order history balances and counts after deletion
-        function updateOrderHistoryBalances() {
-            // Recalculate running balance and drink counts for visible (non-deleted) orders
-            var table = document.querySelector('table.default-table.middle-table');
-            if (!table) return;
-            var rows = table.querySelectorAll('tr.order-day-row');
-            var balance = 0;
-            // Find the initial balance (from the last Kontostand cell in the table)
-            var balanceCells = table.querySelectorAll('td[style*="Kontostand"], td:last-child');
-            // Not robust, so recalculate from scratch:
-            var drinkHistoryRows = [];
-            rows.forEach(function(row) {
-                if (!row.classList.contains('order-deleted-row')) {
-                    var tds = row.querySelectorAll('td');
-                    if (tds.length >= 5) {
-                        var totalCell = tds[4];
-                        var totalText = totalCell.textContent.replace(/[^0-9,.-]/g, '').replace(',', '.');
-                        var total = parseFloat(totalText) || 0;
-                        balance -= total;
-                    }
-                }
-            });
-            // Update all Kontostand cells (last cell in each row)
-            var groupRows = table.querySelectorAll('tr.order-day-header');
-            var runningBalance = balance;
-            groupRows.forEach(function(headerRow) {
-                var tds = headerRow.querySelectorAll('td');
-                if (tds.length >= 6) {
-                    var balCell = tds[5];
-                    balCell.innerHTML = balCell.innerHTML.replace(/<span.*?>|<\/span>/g, '');
-                    balCell.textContent = runningBalance.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
-                    if (runningBalance < 0) {
-                        balCell.style.color = '#d32f2f';
-                    } else {
-                        balCell.style.color = '';
-                    }
-                }
-            });
-        }
-        // Update the top Guthaben (balance) field after deletion
-        function updateTopBalance() {
-            // Recalculate from visible (non-deleted) orders and deposits in the history table
-            var table = document.querySelector('table.default-table.middle-table');
-            if (!table) return;
-            var rows = table.querySelectorAll('tr.order-day-row, tr[style*="font-weight:bold;"]');
-            var balance = 0;
-            rows.forEach(function(row) {
-                if (row.classList.contains('order-day-row') && row.classList.contains('order-deleted-row')) return;
-                var tds = row.querySelectorAll('td');
-                // For deposit rows (font-weight:bold), amount is in 5th cell
-                if (row.classList.contains('order-day-row')) {
-                    if (tds.length >= 5) {
-                        var totalCell = tds[4];
-                        var totalText = totalCell.textContent.replace(/[^0-9,.-]/g, '').replace(',', '.');
-                        var total = parseFloat(totalText) || 0;
-                        balance -= total;
-                    }
-                } else if (tds.length >= 5 && tds[4].textContent.trim() !== '') {
-                    var depositText = tds[4].textContent.replace(/[^0-9,.-]/g, '').replace(',', '.');
-                    var deposit = parseFloat(depositText) || 0;
-                    balance += deposit;
-                }
-            });
-            // Update the top Guthaben field
-            var balanceElem = document.getElementById('current-balance-value');
-            var balanceBox = document.getElementById('current-balance-display');
-            balanceElem.textContent = balance.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
-            balanceElem.style.color = (balance < 0) ? '#d32f2f' : '#2196f3';
-            if (balance < 0) {
-                balanceBox.classList.add('negative-balance');
-            } else {
-                balanceBox.classList.remove('negative-balance');
-            }
-        }
-        // Update the drink statistics table after deletion
-        function updateDrinkStatsTable() {
-            var statsTable = document.querySelector('table.default-table.middle-table');
-            var statsSection = null;
-            // Find the stats table by looking for the header 'Getränk'
-            var tables = document.querySelectorAll('table.default-table.middle-table');
-            for (var i = 0; i < tables.length; ++i) {
-                var ths = tables[i].querySelectorAll('th');
-                for (var j = 0; j < ths.length; ++j) {
-                    if (ths[j].textContent.indexOf('Getränk') !== -1) {
-                        statsSection = tables[i];
-                        break;
-                    }
-                }
-                if (statsSection) break;
-            }
-            if (!statsSection) return;
-            // Recalculate stats from visible (non-deleted) orders in the order history table
-            var orderRows = document.querySelectorAll('tr.order-day-row');
-            var drinkCounts = {};
-            orderRows.forEach(function(row) {
-                if (row.classList.contains('order-deleted-row')) return;
-                var tds = row.querySelectorAll('td');
-                if (tds.length >= 3) {
-                    var drinkName = tds[1].textContent.trim();
-                    var qty = parseInt(tds[2].textContent) || 0;
-                    if (!drinkCounts[drinkName]) drinkCounts[drinkName] = 0;
-                    drinkCounts[drinkName] += qty;
-                }
-            });
-            // Remove all rows except the header
-            var trs = statsSection.querySelectorAll('tr');
-            for (var i = trs.length - 1; i > 0; --i) {
-                statsSection.removeChild(trs[i]);
-            }
-            // Add new rows
-            var names = Object.keys(drinkCounts);
-            names.sort();
-            names.forEach(function(name) {
-                var tr = document.createElement('tr');
-                var td1 = document.createElement('td');
-                td1.textContent = name;
-                var td2 = document.createElement('td');
-                td2.textContent = drinkCounts[name];
-                tr.appendChild(td1);
-                tr.appendChild(td2);
-                statsSection.appendChild(tr);
-            });
-            // If no stats, show the empty message
-            if (names.length === 0) {
-                var tr = document.createElement('tr');
-                var td = document.createElement('td');
-                td.colSpan = 2;
-                td.style.color = '#888';
-                td.style.marginBottom = '16px';
-                td.textContent = 'Keine Getränke-Statistik verfügbar.';
-                tr.appendChild(td);
-                statsSection.appendChild(tr);
-            }
-        }
     });
     </script>
     <div class="separator-small"></div>
