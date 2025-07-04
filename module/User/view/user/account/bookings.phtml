@@ -1,5 +1,10 @@
 <?php
 
+// Display user name at the top if available
+if (isset($this->userName) && $this->userName) {
+    echo '<div style="font-size:1.3em; color:#2196f3; font-weight:bold; margin-bottom:12px; text-align:center;">' . $this->escapeHtml($this->userName) . '</div>';
+}
+
 // Calculate current balance from bottom up (oldest to newest)
 $currentBalance = 0;
 if (isset($this->drinkHistory) && is_array($this->drinkHistory)) {
@@ -771,6 +776,24 @@ $this->setup(array(
     });
     </script>
     <div class="separator-small"></div>
+<?php endif; ?>
+
+<h2><?= $this->t('Getränke-Statistik') ?></h2>
+<?php if (!isset($drinkStats) || empty($drinkStats)): ?>
+    <div style="color: #888; margin-bottom: 16px;">Keine Getränke-Statistik verfügbar.</div>
+<?php else: ?>
+    <table class="default-table middle-table" style="margin-bottom:24px;">
+        <tr style="background: #e3f0fa;">
+            <th><?= $this->t('Getränk') ?></th>
+            <th><?= $this->t('Gesamt konsumiert') ?></th>
+        </tr>
+        <?php foreach ($drinkStats as $row): ?>
+            <tr>
+                <td><?= $this->escapeHtml($row['name']) ?></td>
+                <td><?= (int)$row['total_count'] ?></td>
+            </tr>
+        <?php endforeach; ?>
+    </table>
 <?php endif; ?>
 
 <div>

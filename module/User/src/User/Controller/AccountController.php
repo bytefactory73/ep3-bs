@@ -418,6 +418,25 @@ class AccountController extends AbstractActionController
             return strcmp($b['datetime'], $a['datetime']);
         });
 
+        $drinkStats = [];
+        $userId = null;
+        $userName = null;
+        try {
+            $userId = $user ? $user->need('uid') : null;
+            if ($userId) {
+                $statsResult = $drinkOrderManager->getDrinkStatsByUser($userId);
+                foreach ($statsResult as $row) {
+                    $drinkStats[] = [
+                        'name' => $row['name'],
+                        'total_count' => $row['total_count'],
+                    ];
+                }
+                $userName = $user->get('alias') ?: $user->get('name');
+            }
+        } catch (\Exception $e) {
+            // In case of DB error, leave $drinkStats empty
+        }
+
         return array(
             'now' => new DateTime(),
             'bookings' => $bookings,
@@ -429,6 +448,9 @@ class AccountController extends AbstractActionController
             'drinkOrders' => $drinkOrders,
             'drinkHistory' => $drinkHistory,
             'orderMessage' => $orderMessage,
+            'drinkStats' => $drinkStats,
+            'userId' => $userId,
+            'userName' => $userName,
         );
     }
 
