@@ -441,6 +441,7 @@ class AccountController extends AbstractActionController
         foreach ($drinkOrders as $order) {
             $drinkHistory[] = [
                 'type' => 'order',
+                'id' => $order['id'],
                 'name' => $order['name'],
                 'quantity' => $order['quantity'],
                 'price' => $order['price'],
