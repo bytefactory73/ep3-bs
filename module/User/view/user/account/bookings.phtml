@@ -1100,3 +1100,18 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 </script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+        // Prevent double-tap zoom on iOS for drink plus/minus buttons
+        var plusMinusBtns = document.querySelectorAll('.drink-plus, .drink-minus');
+        plusMinusBtns.forEach(function(btn) {
+            btn.addEventListener('touchstart', function(e) {
+                // Prevent double-tap zoom
+                if (e.touches.length > 1) return;
+                e.preventDefault();
+                // Manually trigger click for accessibility
+                btn.click();
+            }, { passive: false });
+        });
+    });
+</script>
