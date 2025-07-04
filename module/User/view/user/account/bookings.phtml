@@ -873,7 +873,8 @@ $this->setup(array(
                 if (!confirm('<?= $this->t('Bestellung wirklich stornieren?') ?>')) return;
                 var button = this;
                 button.disabled = true;
-                fetch('bookings/drop-order', {
+                var dropOrderUrl = (window.SIMPLE_ORDER_MODE ? 'simple-order/drop-order' : 'bookings/drop-order');
+                fetch(dropOrderUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded',

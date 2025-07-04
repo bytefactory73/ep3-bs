@@ -56,6 +56,8 @@ class SimpleLoginController extends AbstractActionController
         $currentBalance = 0;
         $error = null;
         $success = false;
+        $drinkOrderManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkOrderManager');
+        $drinkDepositManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkDepositManager');
         if ($this->getRequest()->isPost()) {
             $drinkCounts = $this->getRequest()->getPost('drink_counts', []);
             $anyOrdered = false;
@@ -77,6 +79,44 @@ class SimpleLoginController extends AbstractActionController
             }
             if ($anyOrdered) {
                 $success = true;
+                // Send confirmation email (copied from AccountController)
+                $userManager = $this->getServiceLocator()->get('User\Manager\UserManager');
+                $user = $userManager->get($userId);
+                $userMailService = $this->getServiceLocator()->get('User\Service\MailService');
+                $drinkManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkManager');
+                $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($userId));
+                $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($userId));
+                $balance = $currentBalance;
+                // Recalculate balance after order
+                $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($userId));
+                $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($userId));
+                $balance = 0;
+                foreach ($drinkDeposits as $deposit) $balance += $deposit['amount'];
+                foreach ($drinkOrders as $order) if (empty($order['deleted'])) $balance -= $order['quantity'] * $order['price'];
+                $subject = $this->t('Bestätigung Deiner Getränkebestellung');
+                $lines = [];
+                $totalSum = 0;
+                foreach ($drinkCounts as $drinkId => $quantity) {
+                    $drinkId = (int)$drinkId;
+                    $quantity = (int)$quantity;
+                    if ($drinkId > 0 && $quantity > 0) {
+                        $drink = $drinkManager->get($drinkId);
+                        if ($drink) {
+                            $lines[] = sprintf('%s x %d = %.2f EUR', $drink['name'], $quantity, $quantity * $drink['price']);
+                            $totalSum += $quantity * $drink['price'];
+                        }
+                    }
+                }
+                $lines[] = '---------------------';
+                $lines[] = sprintf($this->t('Gesamt:') . ' %.2f EUR', $totalSum);
+                $lines[] = '';
+                $lines[] = sprintf($this->t('Saldo nach Bestellung:') . '<b> %.2f EUR </b>', $balance);
+                $text = $this->t('Vielen Dank für Deine Getränkebestellung!') . "<br><br>" . implode("<br>", $lines);
+                if ($balance < 0) {
+                    $text .= "<br><br>";
+                    $text .= '<span style="color:#d32f2f;font-weight:bold;">' . $this->t('Warnung: Dein Saldo ist negativ! Bitte überweise Geld auf das STC Paypal-Konto.') . '</span>';
+                }
+                $userMailService->send($user, $subject, $text, array('isHtml' => true));
                 // Only clear session and redirect to login if booking was successful
                 $session->getManager()->getStorage()->clear('SimpleLogin');
                 return $this->redirect()->toRoute('user/simple-login');
@@ -87,8 +127,6 @@ class SimpleLoginController extends AbstractActionController
         $userManager = $this->getServiceLocator()->get('User\Manager\UserManager');
         $user = $userManager->get($userId);
         $userName = $user ? $user->get('alias') : 'Gast';
-        $drinkOrderManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkOrderManager');
-        $drinkDepositManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkDepositManager');
         // Fetch drink categories for category buttons in simple order UI
         $drinkCategoryManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkCategoryManager');
         $drinkCategories = iterator_to_array($drinkCategoryManager->getAll());
@@ -158,5 +196,61 @@ class SimpleLoginController extends AbstractActionController
             'drinkCategories' => $drinkCategories,
             'drinkStats' => $drinkStats
         ]);
+    }
+
+    public function dropOrderAction()
+    {
+        $sessionManager = $this->getServiceLocator()->get('Zend\Session\SessionManager');
+        $sessionManager->start();
+        $session = new \Zend\Session\Container('SimpleLogin');
+        if (empty($session->user_id)) {
+            return $this->getResponse()->setStatusCode(403);
+        }
+        $userId = $session->user_id;
+        $orderId = (int)$this->params()->fromPost('order_id');
+        if (!$orderId) {
+            return $this->getResponse()->setStatusCode(400);
+        }
+        $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
+        // Only allow deleting orders belonging to this user
+        $order = $db->query('SELECT * FROM drink_orders WHERE id = ? AND user_id = ?', [$orderId, $userId])->current();
+        if (!$order) {
+            return $this->getResponse()->setStatusCode(404);
+        }
+        // Mark as deleted
+        $result = $db->query('UPDATE drink_orders SET deleted = 1 WHERE id = ? AND user_id = ?', [$orderId, $userId]);
+        if ($result->getAffectedRows() > 0) {
+            // Send cancellation email (copied from AccountController)
+            $userManager = $this->getServiceLocator()->get('User\Manager\UserManager');
+            $user = $userManager->get($userId);
+            $userMailService = $this->getServiceLocator()->get('User\Service\MailService');
+            $drinkOrderManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkOrderManager');
+            $drinkDepositManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkDepositManager');
+            $dbAdapter = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
+            // Fetch order details before deletion
+            $sql = 'SELECT do.*, d.name as drink_name FROM drink_orders do JOIN drinks d ON do.drink_id = d.id WHERE do.id = ? AND do.user_id = ?';
+            $statement = $dbAdapter->createStatement($sql, [$orderId, $userId]);
+            $order = $statement->execute()->current();
+            $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($userId));
+            $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($userId));
+            $balance = 0;
+            foreach ($drinkDeposits as $deposit) $balance += $deposit['amount'];
+            foreach ($drinkOrders as $o) if (empty($o['deleted'])) $balance -= $o['quantity'] * $o['price'];
+            $subject = $this->t('Stornierung Deiner Getränkebestellung');
+            $lines = [];
+            if ($order) {
+                $lines[] = sprintf('%s x %d = %.2f EUR', $order['drink_name'], $order['quantity'], $order['quantity'] * $order['price']);
+            }
+            $lines[] = '---------------------';
+            $lines[] = sprintf($this->t('Storniert am:') . ' %s', date('d.m.Y H:i'));
+            $lines[] = sprintf($this->t('Saldo nach Stornierung:') . '<b> %.2f EUR </b>', $balance);
+            $text = $this->t('Deine Getränkebestellung wurde erfolgreich storniert.') . "<br><br>" . implode("<br>", $lines);
+            $userMailService->send($user, $subject, $text, array('isHtml' => true));
+            // Log out user after cancellation in simple-order mode
+            $session->getManager()->getStorage()->clear('SimpleLogin');
+            return $this->getResponse()->setContent(json_encode(['success' => true]))->setStatusCode(200);
+        } else {
+            return $this->getResponse()->setContent(json_encode(['success' => false, 'error_message' => 'Update failed.']))->setStatusCode(500);
+        }
     }
 }

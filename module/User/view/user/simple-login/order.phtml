@@ -2,4 +2,5 @@
 <?php if (!empty($this->error)): ?>
     <div style="color:red;"> <?= $this->escapeHtml($this->error) ?> </div>
 <?php endif; ?>
+<script>window.SIMPLE_ORDER_MODE = true;</script>
 <?= $this->render('user/account/bookings') ?>

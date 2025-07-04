@@ -195,6 +195,19 @@ return array(
                                 'action' => 'order',
                             ),
                         ),
+                        'may_terminate' => true,
+                        'child_routes' => array(
+                            'drop-order' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/drop-order',
+                                    'defaults' => array(
+                                        'controller' => 'User\\Controller\\SimpleLogin',
+                                        'action' => 'dropOrder',
+                                    ),
+                                ),
+                            ),
+                        ),
                     ),
                 ),
             ),
