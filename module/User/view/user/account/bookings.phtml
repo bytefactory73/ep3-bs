@@ -693,9 +693,9 @@ $this->setup(array(
 
 <?php
 $simpleOrderMode = isset($this->simpleOrderMode) ? $this->simpleOrderMode : false;
+$showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
 ?>
-
-<?php if (isset($this->drinkHistory) && !$simpleOrderMode): ?>
+<?php if ($showHistory && (!$simpleOrderMode || $simpleOrderMode)) : ?>
 <div id="order-history-section">
     <h2><?= $this->t('Käufe und Einzahlungen') ?></h2>
     <div style="margin-bottom: 18px;"></div>
@@ -714,9 +714,11 @@ $simpleOrderMode = isset($this->simpleOrderMode) ? $this->simpleOrderMode : fals
             <th style="text-align:left;">
                 <?= $this->t('Total') ?>
             </th>
+            <?php if (!$simpleOrderMode): ?>
             <th style="text-align:left;">
                 <?= $this->t('Kontostand') ?>
             </th>
+            <?php endif; ?>
         </tr>
         <?php
         $drinkHistory = array_reverse($this->drinkHistory);
@@ -750,11 +752,25 @@ $simpleOrderMode = isset($this->simpleOrderMode) ? $this->simpleOrderMode : fals
         }
         // Build a flat list of top-level items (date group or deposit), sorted oldest to newest for math
         $topLevel = [];
-        foreach ($entriesByDay as $date => $orders) {
-            $topLevel[] = [ 'type' => 'day', 'date' => $date, 'orders' => $orders ];
-        }
-        foreach ($deposits as $deposit) {
-            $topLevel[] = [ 'type' => 'deposit', 'datetime' => $deposit['datetime'], 'entry' => $deposit ];
+        if ($simpleOrderMode) {
+            $now = time();
+            $cutoff = $now - 18 * 3600; // 18 hours ago
+            foreach ($entriesByDay as $date => $orders) {
+                // Filter orders in this group to only those within last 18 hours
+                $recentOrders = array_filter($orders, function($entry) use ($cutoff) {
+                    return strtotime($entry['datetime']) >= $cutoff;
+                });
+                if (count($recentOrders) > 0) {
+                    $topLevel[] = [ 'type' => 'day', 'date' => $date, 'orders' => $recentOrders ];
+                }
+            }
+        } else {
+            foreach ($entriesByDay as $date => $orders) {
+                $topLevel[] = [ 'type' => 'day', 'date' => $date, 'orders' => $orders ];
+            }
+            foreach ($deposits as $deposit) {
+                $topLevel[] = [ 'type' => 'deposit', 'datetime' => $deposit['datetime'], 'entry' => $deposit ];
+            }
         }
         // Sort by date/datetime ascending (oldest to newest)
         usort($topLevel, function($a, $b) {
@@ -806,7 +822,7 @@ $simpleOrderMode = isset($this->simpleOrderMode) ? $this->simpleOrderMode : fals
                 echo '<td style="font-weight:bold;">' . $dayDrinkSum . '</td>';
                 echo '<td style="font-weight:bold;"></td>';
                 echo '<td style="font-weight:bold;">' . $this->priceFormat(-$dayTotalAmount * 100.0, null, null, null, null, null, true, false, false) . '</td>';
-                echo '<td style="font-weight:bold;'.($balanceAfter < 0 ? ' color:#d32f2f;' : '').'">' . $this->priceFormat($balanceAfter * 100.0, null, null, null, null, null, true, true, false) . '</td>';
+                if (!$simpleOrderMode) echo '<td style="font-weight:bold;'.($balanceAfter < 0 ? ' color:#d32f2f;' : '').'">' . $this->priceFormat($balanceAfter * 100.0, null, null, null, null, null, true, true, false) . '</td>';
                 echo '</tr>';
                 // Sort orders inside the group newest to oldest
                 $ordersSorted = $orders;
@@ -838,6 +854,7 @@ $simpleOrderMode = isset($this->simpleOrderMode) ? $this->simpleOrderMode : fals
                     echo '<td>' . $strikeOpen . (int)$entry['quantity'] . $strikeClose . '</td>';
                     echo '<td>' . $strikeOpen . $this->priceFormat($entry['price'] * 100.0, null, null, null, null, null, true, false, false) . $strikeClose . '</td>';
                     echo '<td>' . $strikeOpen . $this->priceFormat($entry['total'] * 100.0, null, null, null, null, null, true, false, false) . $strikeClose . '</td>';
+                    if (!$simpleOrderMode) echo '<td></td>';
                     echo '</tr>';
                 }
                 $groupIndex++;
@@ -851,7 +868,7 @@ $simpleOrderMode = isset($this->simpleOrderMode) ? $this->simpleOrderMode : fals
                 echo '<td></td>';
                 echo '<td></td>';
                 echo '<td>' . $this->priceFormat($amount * 100.0, null, null, null, null, null, true, true, false) . '</td>';
-                echo '<td>' . $this->priceFormat($balanceAfter * 100.0, null, null, null, null, null, true, true, false) . '</td>';
+                if (!$simpleOrderMode) echo '<td>' . $this->priceFormat($balanceAfter * 100.0, null, null, null, null, null, true, true, false) . '</td>';
                 echo '</tr>';
             }
         }

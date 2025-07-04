@@ -1,9 +1,96 @@
-<h1>Simple Login</h1>
-<?php if (!empty($this->error)): ?>
-    <div style="color:red;"> <?= $this->escapeHtml($this->error) ?> </div>
-<?php endif; ?>
-<form method="post">
-    <label for="alias">Drink Alias:</label>
-    <input type="text" name="alias" id="alias" required autofocus>
-    <button type="submit">Login</button>
-</form>
+<style>
+.simple-login-bg {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(135deg, #e3f0fa 0%, #fafdff 100%);
+    z-index: -1;
+    width: 100vw;
+    height: 100vh;
+}
+.simple-login-frame {
+    max-width: 350px;
+    margin: 8vh auto 0 auto;
+    background: #fafdff;
+    border-radius: 18px;
+    box-shadow: 0 4px 32px rgba(33,150,243,0.10), 0 1.5px 6px rgba(33,150,243,0.08);
+    padding: 36px 32px 28px 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    border: 1.5px solid #2196f3;
+}
+.simple-login-frame h1 {
+    color: #2196f3;
+    font-size: 2em;
+    margin-bottom: 18px;
+    font-weight: bold;
+    text-align: center;
+}
+.simple-login-frame label {
+    font-size: 1.1em;
+    color: #333;
+    margin-bottom: 8px;
+    font-weight: 500;
+    display: block;
+    text-align: left;
+}
+.simple-login-frame input[type="text"] {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1.5px solid #b0c4de;
+    font-size: 1.1em;
+    margin-bottom: 18px;
+    outline: none;
+    transition: border 0.2s;
+}
+.simple-login-frame input[type="text"]:focus {
+    border-color: #2196f3;
+}
+.simple-login-frame button[type="submit"] {
+    width: 100%;
+    background: #2196f3;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 0;
+    font-size: 1.15em;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(33,150,243,0.08);
+    transition: background 0.18s;
+    margin-top: 6px;
+}
+.simple-login-frame button[type="submit"]:hover {
+    background: #1769aa;
+}
+.simple-login-frame .error-message {
+    color: #d32f2f;
+    background: #fff3f3;
+    border: 1px solid #d32f2f;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-bottom: 16px;
+    width: 100%;
+    text-align: center;
+    font-size: 1em;
+}
+@media (max-width: 500px) {
+    .simple-login-frame {
+        max-width: 98vw;
+        padding: 18px 6vw 18px 6vw;
+    }
+}
+</style>
+<div class="simple-login-bg"></div>
+<div class="simple-login-frame">
+    <h1>Simple Login</h1>
+    <?php if (!empty($this->error)): ?>
+        <div class="error-message"> <?= $this->escapeHtml($this->error) ?> </div>
+    <?php endif; ?>
+    <form method="post" style="width:100%;">
+        <label for="alias">Drink Alias:</label>
+        <input type="password" name="alias" id="alias" required autofocus autocomplete="username">
+        <button type="submit">Login</button>
+    </form>
+</div>
