@@ -12,6 +12,7 @@ if (isset($this->drinkHistory) && is_array($this->drinkHistory)) {
         if ($entry['type'] === 'deposit') {
             $currentBalance += $entry['amount'];
         } else if ($entry['type'] === 'order') {
+            if (!empty($entry['deleted'])) continue; // skip deleted orders for balance
             $currentBalance -= $entry['total'];
         }
     }
@@ -500,7 +501,7 @@ $this->setup(array(
             if (isset($this->drinks) && isset($this->drinkHistory) && is_array($this->drinks) && is_array($this->drinkHistory)) {
                 $drinkOrderCounts = array();
                 foreach ($this->drinkHistory as $entry) {
-                    if ($entry['type'] === 'order' && isset($entry['drink_id'])) {
+                    if ($entry['type'] === 'order' && isset($entry['drink_id']) && empty($entry['deleted'])) { // skip deleted orders
                         $drinkId = $entry['drink_id'];
                         $qty = isset($entry['quantity']) ? (int)$entry['quantity'] : 1;
                         if (!isset($drinkOrderCounts[$drinkId])) $drinkOrderCounts[$drinkId] = 0;
@@ -702,6 +703,7 @@ $this->setup(array(
             if ($entry['type'] === 'deposit') {
                 $balance += $entry['amount'];
             } else if ($entry['type'] === 'order') {
+                if (!empty($entry['deleted'])) continue; // skip deleted orders for balance
                 $balance -= $entry['total'];
             }
             $rows[$i] = $balance;
@@ -742,6 +744,7 @@ $this->setup(array(
             if ($item['type'] === 'day') {
                 $dayTotalAmount = 0;
                 foreach ($item['orders'] as $entry) {
+                    if (!empty($entry['deleted'])) continue; // skip deleted orders for group balance
                     $dayTotalAmount += $entry['total'];
                 }
                 $balance -= $dayTotalAmount;
@@ -766,6 +769,7 @@ $this->setup(array(
                 $dayDrinkSum = 0;
                 $dayTotalAmount = 0;
                 foreach ($orders as $entry) {
+                    if (!empty($entry['deleted'])) continue; // skip deleted orders for day sum
                     $dayDrinkSum += (int)$entry['quantity'];
                     $dayTotalAmount += $entry['total'];
                 }
@@ -787,12 +791,28 @@ $this->setup(array(
                 foreach ($ordersSorted as $entry) {
                     $time = date('H:i', strtotime($entry['datetime']));
                     $rowStyle = $isOpen ? '' : 'display:none;';
-                    echo '<tr class="order-day-row" data-group="' . $collapsedId . '" style="background:#fafdff;' . $rowStyle . '">';
-                    echo '<td style="color:#888; font-size:0.95em; text-align:center;">' . $time . '</td>';
-                    echo '<td>' . $this->escapeHtml($entry['name']) . '</td>';
-                    echo '<td>' . (int)$entry['quantity'] . '</td>';
-                    echo '<td>' . $this->priceFormat($entry['price'] * 100.0, null, null, null, null, null, true, false, false) . '</td>';
-                    echo '<td>' . $this->priceFormat($entry['total'] * 100.0, null, null, null, null, null, true, false, false) . '</td>';
+                    $isDeleted = $entry['deleted'];
+                    $showCancel = false;
+                    $orderId = $entry['id'];
+                    if ($orderId && isset($entry['datetime']) && !$isDeleted) {
+                        $orderTime = strtotime($entry['datetime']);
+                        $now = time();
+                        if ($now - $orderTime < $drinkOrderCancelWindow) { // use variable
+                            $showCancel = true;
+                        }
+                    }
+                    $strikeOpen = $isDeleted ? '<span style="text-decoration:line-through; color:#b0b0b0;">' : '';
+                    $strikeClose = $isDeleted ? '</span>' : '';
+                    echo '<tr class="order-day-row' . ($isDeleted ? ' order-deleted-row' : '') . '" data-group="' . $collapsedId . '" style="background:#fafdff;' . $rowStyle . '">';
+                    echo '<td style="color:#888; font-size:0.95em; text-align:center; position:relative;">' . $time;
+                    if ($showCancel) {
+                        echo '<button class="order-cancel-btn" data-order-id="' . htmlspecialchars($orderId) . '" title="' . $this->t('Bestellung stornieren') . '" style="position:absolute; right:2px; top:2px; width:18px; height:18px; border:none; background:transparent; color:#d32f2f; font-size:15px; font-weight:bold; cursor:pointer; line-height:16px; padding:0;">&times;</button>';
+                    }
+                    echo '</td>';
+                    echo '<td>' . $strikeOpen . $this->escapeHtml($entry['name']) . $strikeClose . '</td>';
+                    echo '<td>' . $strikeOpen . (int)$entry['quantity'] . $strikeClose . '</td>';
+                    echo '<td>' . $strikeOpen . $this->priceFormat($entry['price'] * 100.0, null, null, null, null, null, true, false, false) . $strikeClose . '</td>';
+                    echo '<td>' . $strikeOpen . $this->priceFormat($entry['total'] * 100.0, null, null, null, null, null, true, false, false) . $strikeClose . '</td>';
                     echo '</tr>';
                 }
                 $groupIndex++;
@@ -840,6 +860,189 @@ $this->setup(array(
                 this.textContent = isOpen ? '+' : '–';
             });
         });
+        // Cancel order (X button)
+        document.querySelectorAll('.order-cancel-btn').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var orderId = this.getAttribute('data-order-id');
+                if (!orderId) return;
+                if (!confirm('<?= $this->t('Bestellung wirklich stornieren?') ?>')) return;
+                var button = this;
+                button.disabled = true;
+                fetch('bookings/drop-order', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: 'order_id=' + encodeURIComponent(orderId)
+                })
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    if (data && data.success) {
+                        // Mark the row as deleted visually
+                        var row = button.closest('tr');
+                        if (row) {
+                            row.classList.add('order-deleted-row');
+                            row.style.opacity = 0.4;
+                            // Add strikethrough to all cells except the first (time/cancel)
+                            var tds = row.querySelectorAll('td');
+                            for (var i = 1; i < tds.length; ++i) {
+                                tds[i].innerHTML = '<span style="text-decoration:line-through; color:#b0b0b0;">' + tds[i].textContent + '</span>';
+                            }
+                        }
+                        button.remove();
+                        // Update balances and counts in the table
+                        updateOrderHistoryBalances();
+                        // Update top Guthaben field
+                        updateTopBalance();
+                        // Update drink statistics table
+                        updateDrinkStatsTable();
+                    } else {
+                        alert('<?= $this->t('Stornierung fehlgeschlagen.') ?>');
+                        button.disabled = false;
+                    }
+                })
+                .catch(function() {
+                    alert('<?= $this->t('Stornierung fehlgeschlagen.') ?>');
+                    button.disabled = false;
+                });
+            });
+        });
+        // Update order history balances and counts after deletion
+        function updateOrderHistoryBalances() {
+            // Recalculate running balance and drink counts for visible (non-deleted) orders
+            var table = document.querySelector('table.default-table.middle-table');
+            if (!table) return;
+            var rows = table.querySelectorAll('tr.order-day-row');
+            var balance = 0;
+            // Find the initial balance (from the last Kontostand cell in the table)
+            var balanceCells = table.querySelectorAll('td[style*="Kontostand"], td:last-child');
+            // Not robust, so recalculate from scratch:
+            var drinkHistoryRows = [];
+            rows.forEach(function(row) {
+                if (!row.classList.contains('order-deleted-row')) {
+                    var tds = row.querySelectorAll('td');
+                    if (tds.length >= 5) {
+                        var totalCell = tds[4];
+                        var totalText = totalCell.textContent.replace(/[^0-9,.-]/g, '').replace(',', '.');
+                        var total = parseFloat(totalText) || 0;
+                        balance -= total;
+                    }
+                }
+            });
+            // Update all Kontostand cells (last cell in each row)
+            var groupRows = table.querySelectorAll('tr.order-day-header');
+            var runningBalance = balance;
+            groupRows.forEach(function(headerRow) {
+                var tds = headerRow.querySelectorAll('td');
+                if (tds.length >= 6) {
+                    var balCell = tds[5];
+                    balCell.innerHTML = balCell.innerHTML.replace(/<span.*?>|<\/span>/g, '');
+                    balCell.textContent = runningBalance.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+                    if (runningBalance < 0) {
+                        balCell.style.color = '#d32f2f';
+                    } else {
+                        balCell.style.color = '';
+                    }
+                }
+            });
+        }
+        // Update the top Guthaben (balance) field after deletion
+        function updateTopBalance() {
+            // Recalculate from visible (non-deleted) orders and deposits in the history table
+            var table = document.querySelector('table.default-table.middle-table');
+            if (!table) return;
+            var rows = table.querySelectorAll('tr.order-day-row, tr[style*="font-weight:bold;"]');
+            var balance = 0;
+            rows.forEach(function(row) {
+                if (row.classList.contains('order-day-row') && row.classList.contains('order-deleted-row')) return;
+                var tds = row.querySelectorAll('td');
+                // For deposit rows (font-weight:bold), amount is in 5th cell
+                if (row.classList.contains('order-day-row')) {
+                    if (tds.length >= 5) {
+                        var totalCell = tds[4];
+                        var totalText = totalCell.textContent.replace(/[^0-9,.-]/g, '').replace(',', '.');
+                        var total = parseFloat(totalText) || 0;
+                        balance -= total;
+                    }
+                } else if (tds.length >= 5 && tds[4].textContent.trim() !== '') {
+                    var depositText = tds[4].textContent.replace(/[^0-9,.-]/g, '').replace(',', '.');
+                    var deposit = parseFloat(depositText) || 0;
+                    balance += deposit;
+                }
+            });
+            // Update the top Guthaben field
+            var balanceElem = document.getElementById('current-balance-value');
+            var balanceBox = document.getElementById('current-balance-display');
+            balanceElem.textContent = balance.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+            balanceElem.style.color = (balance < 0) ? '#d32f2f' : '#2196f3';
+            if (balance < 0) {
+                balanceBox.classList.add('negative-balance');
+            } else {
+                balanceBox.classList.remove('negative-balance');
+            }
+        }
+        // Update the drink statistics table after deletion
+        function updateDrinkStatsTable() {
+            var statsTable = document.querySelector('table.default-table.middle-table');
+            var statsSection = null;
+            // Find the stats table by looking for the header 'Getränk'
+            var tables = document.querySelectorAll('table.default-table.middle-table');
+            for (var i = 0; i < tables.length; ++i) {
+                var ths = tables[i].querySelectorAll('th');
+                for (var j = 0; j < ths.length; ++j) {
+                    if (ths[j].textContent.indexOf('Getränk') !== -1) {
+                        statsSection = tables[i];
+                        break;
+                    }
+                }
+                if (statsSection) break;
+            }
+            if (!statsSection) return;
+            // Recalculate stats from visible (non-deleted) orders in the order history table
+            var orderRows = document.querySelectorAll('tr.order-day-row');
+            var drinkCounts = {};
+            orderRows.forEach(function(row) {
+                if (row.classList.contains('order-deleted-row')) return;
+                var tds = row.querySelectorAll('td');
+                if (tds.length >= 3) {
+                    var drinkName = tds[1].textContent.trim();
+                    var qty = parseInt(tds[2].textContent) || 0;
+                    if (!drinkCounts[drinkName]) drinkCounts[drinkName] = 0;
+                    drinkCounts[drinkName] += qty;
+                }
+            });
+            // Remove all rows except the header
+            var trs = statsSection.querySelectorAll('tr');
+            for (var i = trs.length - 1; i > 0; --i) {
+                statsSection.removeChild(trs[i]);
+            }
+            // Add new rows
+            var names = Object.keys(drinkCounts);
+            names.sort();
+            names.forEach(function(name) {
+                var tr = document.createElement('tr');
+                var td1 = document.createElement('td');
+                td1.textContent = name;
+                var td2 = document.createElement('td');
+                td2.textContent = drinkCounts[name];
+                tr.appendChild(td1);
+                tr.appendChild(td2);
+                statsSection.appendChild(tr);
+            });
+            // If no stats, show the empty message
+            if (names.length === 0) {
+                var tr = document.createElement('tr');
+                var td = document.createElement('td');
+                td.colSpan = 2;
+                td.style.color = '#888';
+                td.style.marginBottom = '16px';
+                td.textContent = 'Keine Getränke-Statistik verfügbar.';
+                tr.appendChild(td);
+                statsSection.appendChild(tr);
+            }
+        }
     });
     </script>
     <div class="separator-small"></div>

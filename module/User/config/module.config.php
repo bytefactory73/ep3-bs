@@ -114,6 +114,16 @@ return array(
                                     ),
                                 ),
                             ),
+                            'drop-order' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/drop-order',
+                                    'defaults' => array(
+                                        'controller' => 'User\Controller\Account',
+                                        'action' => 'dropOrder',
+                                    ),
+                                ),
+                            ),
                         ),
                     ),
                     'settings' => array(

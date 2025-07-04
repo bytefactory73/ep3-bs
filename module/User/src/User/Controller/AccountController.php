@@ -397,6 +397,7 @@ class AccountController extends AbstractActionController
                     $balance += $deposit['amount'];
                 }
                 foreach ($drinkOrders as $order) {
+                    if (!empty($order['deleted'])) continue; // skip deleted orders
                     $balance -= $order['quantity'] * $order['price'];
                 }
                 // Send confirmation email
@@ -439,6 +440,7 @@ class AccountController extends AbstractActionController
         // Merge and sort by date descending
         $drinkHistory = [];
         foreach ($drinkOrders as $order) {
+            $deleted = isset($order['deleted']) ? (int)$order['deleted'] : 0;
             $drinkHistory[] = [
                 'type' => 'order',
                 'id' => $order['id'],
@@ -447,6 +449,7 @@ class AccountController extends AbstractActionController
                 'price' => $order['price'],
                 'total' => $order['quantity'] * $order['price'],
                 'datetime' => $order['order_time'],
+                'deleted' => $deleted,
             ];
         }
         foreach ($drinkDeposits as $deposit) {
@@ -480,8 +483,20 @@ class AccountController extends AbstractActionController
             // In case of DB error, leave $drinkStats empty
         }
 
+        $drinkOrderCounts = array();
+        foreach ($drinkHistory as $entry) {
+            if ($entry['type'] === 'order' && isset($entry['drink_id']) && empty($entry['deleted'])) {
+                $drinkId = $entry['drink_id'];
+                $qty = isset($entry['quantity']) ? (int)$entry['quantity'] : 1;
+                if (!isset($drinkOrderCounts[$drinkId])) $drinkOrderCounts[$drinkId] = 0;
+                $drinkOrderCounts[$drinkId] += $qty;
+            }
+        }
+
+        // Pass cancel window from backend constant
+        $drinkOrderCancelWindow = \Drinks\Manager\DrinkOrderManager::CANCEL_WINDOW_SECONDS;
         return array(
-            'now' => new DateTime(),
+            'now' => new \DateTime(),
             'bookings' => $bookings,
             'reservations' => $reservations,
             'squareManager' => $squareManager,
@@ -494,6 +509,7 @@ class AccountController extends AbstractActionController
             'drinkStats' => $drinkStats,
             'userId' => $userId,
             'userName' => $userName,
+            'drinkOrderCancelWindow' => $drinkOrderCancelWindow,
         );
     }
 
@@ -801,6 +817,59 @@ class AccountController extends AbstractActionController
             'dbAdapter' => $dbAdapter,
             'drinkCategories' => $drinkCategories,
         ];
+    }
+
+    public function dropOrderAction()
+    {
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $user = $userSessionManager->getSessionUser();
+        if (!$user) {
+            return $this->getResponse()->setStatusCode(403);
+        }
+        $orderId = (int)$this->params()->fromPost('order_id');
+        if (!$orderId) {
+            return $this->getResponse()->setStatusCode(400);
+        }
+        $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+        // Fetch order details before deletion
+        $sql = 'SELECT do.*, d.name as drink_name FROM drink_orders do JOIN drinks d ON do.drink_id = d.id WHERE do.id = ? AND do.user_id = ?';
+        $statement = $dbAdapter->createStatement($sql, [$orderId, $user->need('uid')]);
+        $result = $statement->execute();
+        $order = $result->current();
+        $result = $drinkOrderManager->dropOrder($orderId, $user->need('uid'));
+        if ($result->getAffectedRows() > 0 && $order) {
+            // Recalculate balance after cancellation
+            $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($user->need('uid')));
+            $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
+            $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($user->need('uid')));
+            $balance = 0;
+            foreach ($drinkDeposits as $deposit) {
+                $balance += $deposit['amount'];
+            }
+            foreach ($drinkOrders as $o) {
+                if (!empty($o['deleted'])) continue;
+                $balance -= $o['quantity'] * $o['price'];
+            }
+            // Send cancellation email
+            $userMailService = $serviceManager->get('User\Service\MailService');
+            $subject = $this->t('Stornierung Deiner Getränkebestellung');
+            $lines = [];
+            $lines[] = sprintf('%s x %d = %.2f EUR', $order['drink_name'], $order['quantity'], $order['quantity'] * $order['price']);
+            $lines[] = '---------------------';
+            $lines[] = sprintf($this->t('Storniert am:') . ' %s', date('d.m.Y H:i'));
+            $lines[] = sprintf($this->t('Saldo nach Stornierung:') . '<b> %.2f EUR </b>', $balance);
+            $text = $this->t('Deine Getränkebestellung wurde erfolgreich storniert.') . "<br><br>" . implode("<br>", $lines);
+            if ($balance < 0) {
+                $text .= "<br><br>";
+                $text .= '<span style="color:#d32f2f;font-weight:bold;">' . $this->t('Warnung: Dein Saldo ist negativ! Bitte überweise Geld auf das STC Paypal-Konto.') . '</span>';
+            }
+            $userMailService->send($user, $subject, $text, array('isHtml' => true));
+            return $this->getResponse()->setContent(json_encode(['success' => true]))->setStatusCode(200);
+        } else {
+            return $this->getResponse()->setContent(json_encode(['success' => false]))->setStatusCode(404);
+        }
     }
 
 }

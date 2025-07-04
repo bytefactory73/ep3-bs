@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS drink_orders (
     quantity INT NOT NULL,
     price DECIMAL(10,2) NOT NULL,
     order_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted TINYINT(1) NOT NULL DEFAULT 0,
     FOREIGN KEY (user_id) REFERENCES bs_users(uid),
     FOREIGN KEY (drink_id) REFERENCES drinks(id)
 );
