@@ -45,7 +45,7 @@ class SimpleLoginController extends AbstractActionController
         $userId = $session->user_id;
         $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
         // Example: fetch available drinks (customize as needed)
-        $drinks = $db->query('SELECT id, name, price FROM drinks', [])->toArray();
+        $drinks = $db->query('SELECT id, name, price, image FROM drinks', [])->toArray();
         // Provide dummy or minimal data for booking.phtml compatibility
         $drinkHistory = [];
         $userName = 'Gast';
@@ -66,6 +66,51 @@ class SimpleLoginController extends AbstractActionController
                 $error = 'Please select a drink and quantity.';
             }
         }
+        $userManager = $this->getServiceLocator()->get('User\Manager\UserManager');
+        $user = $userManager->get($userId);
+        $userName = $user ? $user->get('alias') : 'Gast';
+        $drinkOrderManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkOrderManager');
+        $drinkDepositManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkDepositManager');
+        $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($userId));
+        $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($userId));
+        // Calculate current balance
+        $currentBalance = 0;
+        foreach ($drinkDeposits as $deposit) {
+            $currentBalance += $deposit['amount'];
+        }
+        foreach ($drinkOrders as $order) {
+            if (!empty($order['deleted'])) continue;
+            $currentBalance -= $order['quantity'] * $order['price'];
+        }
+        // Merge drink orders and deposits into a single history array with 'type' key
+        $drinkHistory = [];
+        foreach ($drinkDeposits as $deposit) {
+            $drinkHistory[] = [
+                'type' => 'deposit',
+                'amount' => $deposit['amount'],
+                'created_at' => $deposit['deposit_time'],
+                'datetime' => $deposit['deposit_time'],
+                'id' => $deposit['id'],
+            ];
+        }
+        foreach ($drinkOrders as $order) {
+            $drinkHistory[] = [
+                'type' => 'order',
+                'drink_id' => $order['drink_id'],
+                'name' => $order['name'],
+                'quantity' => $order['quantity'],
+                'price' => $order['price'],
+                'total' => $order['quantity'] * $order['price'],
+                'created_at' => $order['order_time'],
+                'datetime' => $order['order_time'],
+                'id' => $order['id'],
+                'deleted' => $order['deleted'],
+            ];
+        }
+        // Sort by created_at descending
+        usort($drinkHistory, function($a, $b) {
+            return strtotime($b['created_at']) - strtotime($a['created_at']);
+        });
         return new ViewModel([
             'drinks' => $drinks,
             'drinkHistory' => $drinkHistory,

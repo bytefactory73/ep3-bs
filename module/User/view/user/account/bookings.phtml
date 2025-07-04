@@ -1,5 +1,8 @@
 <?php
 
+// Always use a local variable for drinks to allow sorting/modification
+$drinks = isset($this->drinks) ? $this->drinks : [];
+
 // Display user name at the top if available
 if (isset($this->userName) && $this->userName) {
     echo '<div style="font-size:1.3em; color:#2196f3; font-weight:bold; margin-bottom:12px; text-align:center;">' . $this->escapeHtml($this->userName) . '</div>';
@@ -239,7 +242,7 @@ $this->setup(array(
 }
 </style>
 
-<?php if (isset($this->drinks)): ?>
+<?php if (isset($drinks)): ?>
     <div class="separator-small"></div>
     <div class="drink-order-top-bar" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0 8px;">
         <div style="flex: 1 1 auto; display: flex; justify-content: center; align-items: center;">
@@ -519,7 +522,8 @@ $this->setup(array(
             foreach ($this->drinks as $drink): ?>
                 <div class="drink-tile" data-category="<?= (int)($drink['category'] ?? 0) ?>" favourite-count="<?= (int)($drink['user_total_count'] ?? 0) ?>">
                     <?php
-                    $imgPath = isset($drink['image']) && $drink['image'] ? $this->basePath('imgs/branding/' . $drink['image']) : $this->basePath('imgs/branding/drink-placeholder.png');
+                    $imgFile = isset($drink['image']) && $drink['image'] ? $drink['image'] : 'drink-placeholder.png';
+                    $imgPath = $this->basePath('/imgs/branding/' . $imgFile);
                     ?>
                     <div class="drink-controls">
                         <button type="button" class="drink-minus" data-drink-id="<?= (int)$drink['id'] ?>" style="background: #eee; border: none; border-radius: 4px; width: 28px; height: 28px; font-size: 18px; font-weight: bold; color: #2196f3; cursor: pointer; margin-right: 0;">–</button>
