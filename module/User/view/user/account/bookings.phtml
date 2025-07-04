@@ -501,7 +501,7 @@ $this->setup(array(
         <div class="drink-tiles-wrapper">
             <?php
             // Sort drinks by total ordered count descending for the order form
-            if (isset($this->drinks) && isset($this->drinkHistory) && is_array($this->drinks) && is_array($this->drinkHistory)) {
+            if (isset($drinks) && isset($this->drinkHistory) && is_array($drinks) && is_array($this->drinkHistory)) {
                 $drinkOrderCounts = array();
                 foreach ($this->drinkHistory as $entry) {
                     if ($entry['type'] === 'order' && isset($entry['drink_id']) && empty($entry['deleted'])) { // skip deleted orders

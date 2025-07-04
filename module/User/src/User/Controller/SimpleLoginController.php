@@ -11,9 +11,6 @@ class SimpleLoginController extends AbstractActionController
     {
         $request = $this->getRequest();
         $error = null;
-        // Ensure session manager is started
-        $sessionManager = $this->getServiceLocator()->get('Zend\Session\SessionManager');
-        $sessionManager->start();
         if ($request->isPost()) {
             $alias = trim($request->getPost('alias'));
             if ($alias) {
@@ -45,7 +42,11 @@ class SimpleLoginController extends AbstractActionController
         $userId = $session->user_id;
         $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
         // Example: fetch available drinks (customize as needed)
-        $drinks = $db->query('SELECT id, name, price, image FROM drinks', [])->toArray();
+        // Fetch available drinks with user_total_count for this user
+        $drinks = $db->query('
+            SELECT d.id, d.name, d.price, d.image, d.category,
+                (SELECT SUM(o.quantity) FROM drink_orders o WHERE o.user_id = ? AND o.drink_id = d.id AND o.deleted = 0) AS user_total_count
+            FROM drinks d', [$userId])->toArray();
         // Provide dummy or minimal data for booking.phtml compatibility
         $drinkHistory = [];
         $userName = 'Gast';
@@ -71,6 +72,9 @@ class SimpleLoginController extends AbstractActionController
         $userName = $user ? $user->get('alias') : 'Gast';
         $drinkOrderManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkOrderManager');
         $drinkDepositManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkDepositManager');
+        // Fetch drink categories for category buttons in simple order UI
+        $drinkCategoryManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkCategoryManager');
+        $drinkCategories = iterator_to_array($drinkCategoryManager->getAll());
         $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($userId));
         $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($userId));
         // Calculate current balance
@@ -111,6 +115,20 @@ class SimpleLoginController extends AbstractActionController
         usort($drinkHistory, function($a, $b) {
             return strtotime($b['created_at']) - strtotime($a['created_at']);
         });
+        // Fetch drink statistics for the user
+        $drinkStats = [];
+        try {
+            $statsResult = $drinkOrderManager->getDrinkStatsByUser($userId);
+            foreach ($statsResult as $row) {
+                $drinkStats[] = [
+                    'id' => isset($row['id']) ? (int)$row['id'] : null,
+                    'name' => $row['name'],
+                    'total_count' => $row['total_count'],
+                ];
+            }
+        } catch (\Exception $e) {
+            // Leave $drinkStats empty on error
+        }
         $drinkOrderCancelWindow = \Drinks\Manager\DrinkOrderManager::CANCEL_WINDOW_SECONDS;
         return new ViewModel([
             'drinks' => $drinks,
@@ -119,7 +137,9 @@ class SimpleLoginController extends AbstractActionController
             'currentBalance' => $currentBalance,
             'error' => $error,
             'success' => $success,
-            'drinkOrderCancelWindow' => $drinkOrderCancelWindow
+            'drinkOrderCancelWindow' => $drinkOrderCancelWindow,
+            'drinkCategories' => $drinkCategories,
+            'drinkStats' => $drinkStats
         ]);
     }
 }
