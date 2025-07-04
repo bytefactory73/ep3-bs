@@ -398,6 +398,7 @@ $this->setup(array(
     <div style="display: flex; justify-content: center; width: 100%;">
         <div id="drink-category-selection" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;">
             <button type="button" class="category-btn" data-category="all" style="padding: 6px 18px; border-radius: 6px; border: 1px solid #2196f3; background: #e3f0fa; color: #2196f3; font-weight: bold; cursor: pointer;">All</button>
+            <button type="button" class="category-btn" data-category="favourites" style="padding: 6px 18px; border-radius: 6px; border: 1px solid #2196f3; background: #fff; color: #2196f3; font-weight: bold; cursor: pointer;">Meine Favoriten</button>
             <?php foreach ($this->drinkCategories as $cat): ?>
                 <button type="button" class="category-btn" data-category="<?= (int)$cat['id'] ?>" style="padding: 6px 18px; border-radius: 6px; border: 1px solid #2196f3; background: #fff; color: #2196f3; font-weight: bold; cursor: pointer;">
                     <?= $this->escapeHtml($cat['name']) ?>
@@ -414,7 +415,7 @@ $this->setup(array(
                 this.style.background = '#e3f0fa';
                 var cat = this.getAttribute('data-category');
                 document.querySelectorAll('.drink-tile').forEach(function(tile) {
-                    if (cat === 'all' || tile.getAttribute('data-category') === cat) {
+                    if (cat === 'all' || (cat === 'favourites' && tile.getAttribute('favourite-count') > 0) || tile.getAttribute('data-category') === cat) {
                         tile.style.display = '';
                     } else {
                         tile.style.display = 'none';
@@ -449,7 +450,7 @@ $this->setup(array(
                 });
             }
             foreach ($this->drinks as $drink): ?>
-                <div class="drink-tile" data-category="<?= (int)($drink['category'] ?? 0) ?>">
+                <div class="drink-tile" data-category="<?= (int)($drink['category'] ?? 0) ?>" favourite-count="<?= (int)($drink['user_total_count'] ?? 0) ?>">
                     <?php
                     $imgPath = isset($drink['image']) && $drink['image'] ? $this->basePath('imgs/branding/' . $drink['image']) : $this->basePath('imgs/branding/drink-placeholder.png');
                     ?>
