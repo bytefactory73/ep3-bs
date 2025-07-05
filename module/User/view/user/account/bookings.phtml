@@ -1,5 +1,10 @@
 <?php
 
+// Ensure $simpleOrderMode is defined at the top
+if (!isset($simpleOrderMode)) {
+    $simpleOrderMode = isset($this->simpleOrderMode) ? $this->simpleOrderMode : false;
+}
+
 // Always use a local variable for drinks to allow sorting/modification
 $drinks = isset($this->drinks) ? $this->drinks : [];
 
@@ -618,6 +623,10 @@ $this->setup(array(
         }
     }
     document.addEventListener('DOMContentLoaded', function() {
+        var clearBtn = document.getElementById('clear-drink-selection');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', function() { clearSelectionAndLogout(false); });
+        }        
         document.querySelectorAll('.drink-plus').forEach(function(btn) {
             btn.addEventListener('click', function() {
                 var id = this.getAttribute('data-drink-id');
@@ -646,9 +655,16 @@ $this->setup(array(
         });
     });
     // --- Shared clear selection and logout logic (global scope) ---
-    function clearSelectionAndLogout() {
-        if (!confirm('<?= $this->t('Bist Du sicher, dass Du Deine Getränkeauswahl löschen möchtest? Dadurch wird Deine aktuelle Bestellung zurückgesetzt.') ?>')) {
-            return;
+    function clearSelectionAndLogout(logoutUser) {
+        // Check if any drink is selected before asking for confirmation
+        var hasOrder = false;
+        document.querySelectorAll('input[id^="input-"]').forEach(function(input) {
+            if (parseInt(input.value) > 0) hasOrder = true;
+        });
+        if (hasOrder) {
+            if (!confirm('<?= $this->t('Bist Du sicher, dass Du Deine Getränkeauswahl löschen möchtest? Dadurch wird Deine aktuelle Bestellung zurückgesetzt.') ?>')) {
+                return;
+            }
         }
         document.querySelectorAll('input[id^="input-"]').forEach(function(input) {
             input.value = 0;
@@ -658,21 +674,10 @@ $this->setup(array(
             badge.style.visibility = 'hidden';
         });
         if (typeof updateDrinkOrderTotal === 'function') updateDrinkOrderTotal();
-    }
-    document.addEventListener('DOMContentLoaded', function() {
-        var clearBtn = document.getElementById('clear-drink-selection');
-        if (clearBtn) {
-            clearBtn.addEventListener('click', clearSelectionAndLogout);
+        if (logoutUser) {
+            window.location.replace('<?= $this->url("user/simple-login") ?>');
         }
-        // Initialize all badges to 0 and hidden
-        document.querySelectorAll('input[id^="input-"]').forEach(function(input) {
-            var id = input.id.replace('input-', '');
-            var badge = document.getElementById('badge-' + id);
-            badge.textContent = input.value;
-            badge.style.visibility = (parseInt(input.value) > 0) ? 'visible' : 'hidden';
-        });
-        updateDrinkOrderTotal();
-    });
+    }
     function confirmDrinkOrder() {
         var items = [];
         var total = 0;
@@ -698,7 +703,6 @@ $this->setup(array(
 <?php endif; ?>
 
 <?php
-$simpleOrderMode = isset($this->simpleOrderMode) ? $this->simpleOrderMode : false;
 $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
 ?>
 <?php if ($showHistory && (!$simpleOrderMode || $simpleOrderMode)) : ?>
@@ -1144,7 +1148,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     updateTimerDisplay();
                     if (remaining <= 0) {
                         clearInterval(logoutTimeout);
-                        window.location.href = '<?= $this->url("user/simple-login") ?>';
+                        window.location.replace('<?= $this->url("user/simple-login") ?>');
                     }
                 }, 1000);
             }
@@ -1157,7 +1161,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             if (timerElem) {
                 timerElem.addEventListener('click', function(e) {
-                    clearSelectionAndLogout();
+                    clearSelectionAndLogout(true);
                 });
             }
             resetLogoutTimer();
