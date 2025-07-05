@@ -658,10 +658,6 @@ $this->setup(array(
             badge.style.visibility = 'hidden';
         });
         if (typeof updateDrinkOrderTotal === 'function') updateDrinkOrderTotal();
-        // In simple-order mode, log out (redirect to login)
-        if (window.SIMPLE_ORDER_MODE) {
-            window.location.href = '<?= $this->url("user/simple-login") ?>';
-        }
     }
     document.addEventListener('DOMContentLoaded', function() {
         var clearBtn = document.getElementById('clear-drink-selection');

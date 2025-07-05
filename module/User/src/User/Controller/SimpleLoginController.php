@@ -252,8 +252,6 @@ class SimpleLoginController extends AbstractActionController
             $lines[] = sprintf($this->t('Saldo nach Stornierung:') . '<b> %.2f EUR </b>', $balance);
             $text = $this->t('Deine Getränkebestellung wurde erfolgreich storniert.') . "<br><br>" . implode("<br>", $lines);
             $userMailService->send($user, $subject, $text, array('isHtml' => true));
-            // Log out user after cancellation in simple-order mode
-            $session->getManager()->getStorage()->clear('SimpleLogin');
             return $this->getResponse()->setContent(json_encode(['success' => true]))->setStatusCode(200);
         } else {
             return $this->getResponse()->setContent(json_encode(['success' => false, 'error_message' => 'Update failed.']))->setStatusCode(500);
