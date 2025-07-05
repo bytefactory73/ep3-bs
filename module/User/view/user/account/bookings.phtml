@@ -1114,6 +1114,18 @@ button.default-button[disabled], button.default-button:disabled {
 </style>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+        // Prevent double-tap zoom on iOS for drink plus/minus buttons
+        var plusMinusBtns = document.querySelectorAll('.drink-plus, .drink-minus');
+        plusMinusBtns.forEach(function(btn) {
+            btn.addEventListener('touchstart', function(e) {
+                // Prevent double-tap zoom
+                if (e.touches.length > 1) return;
+                e.preventDefault();
+                // Manually trigger click for accessibility
+                btn.click();
+            }, { passive: false });
+        });
+
         // --- Simple order mode: auto-logout after 1 minute of inactivity ---
         if (window.SIMPLE_ORDER_MODE) {
             var logoutTimeout = null;
@@ -1155,40 +1167,4 @@ document.addEventListener('DOMContentLoaded', function() {
             resetLogoutTimer();
         }
     });
-</script>
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-        // Prevent double-tap zoom on iOS for drink plus/minus buttons
-        var plusMinusBtns = document.querySelectorAll('.drink-plus, .drink-minus');
-        plusMinusBtns.forEach(function(btn) {
-            btn.addEventListener('touchstart', function(e) {
-                // Prevent double-tap zoom
-                if (e.touches.length > 1) return;
-                e.preventDefault();
-                // Manually trigger click for accessibility
-                btn.click();
-            }, { passive: false });
-        });
-    });
-</script>
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    if (window.SIMPLE_ORDER_MODE) {
-        var navTexts = [
-            'Verwandte Seiten',
-            'Profil',
-            'Zurück zu: Kalender'
-        ];
-        // Only check nav, ul, li, a, and nav-like classes
-        var selector = 'nav, ul, li, a, .nav, .menu, .sidebar, .links';
-        document.querySelectorAll(selector).forEach(function(el) {
-            var text = (el.textContent || '').toLowerCase();
-            navTexts.forEach(function(target) {
-                if (text.indexOf(target.toLowerCase()) !== -1) {
-                    el.style.display = 'none';
-                }
-            });
-        });
-    }
-});
 </script>
