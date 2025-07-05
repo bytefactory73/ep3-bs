@@ -1,3 +1,4 @@
+<?= $this->render('user/simple-login/apple-webapp-meta') ?>
 <link rel="stylesheet" href="../css/simple-mode.css" />
 <style>
 .simple-login-bg {
@@ -113,7 +114,7 @@
     <?php if (!empty($this->error)): ?>
         <div class="error-message"> <?= $this->escapeHtml($this->error) ?> </div>
     <?php endif; ?>
-    <form method="post" autocomplete="off" onsubmit="document.getElementById('real-alias').value = window._realAlias || ''">
+    <form method="post" autocomplete="off" id="simple-login-form">
         <input type="text" id="alias-mask" autocomplete="off" inputmode="text" spellcheck="false" required autofocus placeholder="Theken ID">
         <input type="hidden" name="alias" id="real-alias">
         <button type="submit">Login</button>
@@ -153,6 +154,31 @@
             var paste = (e.clipboardData || window.clipboardData).getData('text');
             window._realAlias += paste;
             maskInput.value = '*'.repeat(window._realAlias.length);
+        });
+
+        // Standalone mode form submit fix for iOS
+        document.getElementById('simple-login-form').addEventListener('submit', function(e) {
+            realInput.value = window._realAlias || '';
+            if (window.navigator.standalone) {
+                e.preventDefault();
+                var form = e.target;
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', form.action || window.location.pathname, true);
+                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                xhr.onload = function() {
+                    if (xhr.status >= 200 && xhr.status < 400) {
+                        // Replace the page content with the response
+                        document.open();
+                        document.write(xhr.responseText);
+                        document.close();
+                    } else {
+                        // fallback: reload
+                        window.location.reload();
+                    }
+                };
+                var params = 'alias=' + encodeURIComponent(realInput.value);
+                xhr.send(params);
+            }
         });
     })();
     </script>
