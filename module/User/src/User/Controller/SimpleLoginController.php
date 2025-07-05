@@ -31,11 +31,16 @@ class SimpleLoginController extends AbstractActionController
                 $error = 'Please enter an alias.';
             }
         }
-        return new ViewModel(['error' => $error]);
+        $viewModel = new ViewModel(['error' => $error]);
+        $viewModel->setTerminal(true);
+        return $viewModel;
     }
 
     public function orderAction()
     {
+        // Disable layout for simple order mode (render only the view, no layout)
+        $viewModel = new ViewModel();
+        $viewModel->setTerminal(true);
         $sessionManager = $this->getServiceLocator()->get('Zend\Session\SessionManager');
         $sessionManager->start();
         $session = new \Zend\Session\Container('SimpleLogin');
@@ -185,7 +190,7 @@ class SimpleLoginController extends AbstractActionController
             // Leave $drinkStats empty on error
         }
         $drinkOrderCancelWindow = \Drinks\Manager\DrinkOrderManager::CANCEL_WINDOW_SECONDS;
-        return new ViewModel([
+        return $viewModel->setVariables([
             'drinks' => $drinks,
             'drinkHistory' => $drinkHistory,
             'userName' => $userName,
