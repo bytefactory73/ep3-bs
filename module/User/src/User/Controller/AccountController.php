@@ -738,11 +738,11 @@ class AccountController extends AbstractActionController
                 // Check uniqueness again in controller (defense-in-depth)
                 $existing = $dbAdapter->query('SELECT user_id FROM drink_aliases WHERE alias = ? AND user_id != ?', [$alias, $userId])->current();
                 if ($existing) {
-                    $editDrinksAliasForm->get('edaf-alias')->setMessages([$this->t('Dieser Alias ist bereits vergeben.')]);
+                    $editDrinksAliasForm->get('edaf-alias')->setMessages([$this->t('Diese Theken-ID ist bereits vergeben.')]);
                 } else {
                     // Upsert alias
                     $dbAdapter->query('INSERT INTO drink_aliases (user_id, alias) VALUES (?, ?) ON DUPLICATE KEY UPDATE alias = VALUES(alias)', [$userId, $alias]);
-                    $this->flashMessenger()->addSuccessMessage($this->t('Theken Alias wurde gespeichert.'));
+                    $this->flashMessenger()->addSuccessMessage($this->t('Theken-ID wurde gespeichert.'));
                     return $this->redirect()->toRoute('user/settings');
                 }
             }

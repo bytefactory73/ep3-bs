@@ -19,7 +19,7 @@ class EditDrinksAliasForm extends Form
                 'style' => 'width: 235px;',
             ),
             'options' => array(
-                'notes' => 'Dein Alias für die Theke (wird für Getränkebestellungen verwendet)',
+                'notes' => 'Deine Theken-ID für die Thekenbestellungen',
             ),
         ));
 
@@ -27,7 +27,7 @@ class EditDrinksAliasForm extends Form
             'name' => 'edaf-submit',
             'type' => 'Submit',
             'attributes' => array(
-                'value' => 'Alias speichern',
+                'value' => 'Theken-ID speichern',
                 'class' => 'default-button',
             ),
         ));

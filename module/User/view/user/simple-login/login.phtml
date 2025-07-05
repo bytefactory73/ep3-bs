@@ -106,13 +106,15 @@
 }
 </style>
 <div class="simple-login-bg"></div>
+<header style="width:100vw;text-align:center;padding:2.5vh 0 1.5vh 0;">
+    <span style="font-size:2.1em;font-weight:bold;color:#2196f3;letter-spacing:0.5px;">STC Butzbach - SB-Theke</span>
+</header>
 <div class="simple-login-frame">
-    <h1>STC Butzbach - SB-Theke - Login</h1>
     <?php if (!empty($this->error)): ?>
         <div class="error-message"> <?= $this->escapeHtml($this->error) ?> </div>
     <?php endif; ?>
     <form method="post" autocomplete="off" onsubmit="document.getElementById('real-alias').value = window._realAlias || ''">
-        <input type="text" id="alias-mask" autocomplete="off" inputmode="text" spellcheck="false" required autofocus placeholder="Drink Alias">
+        <input type="text" id="alias-mask" autocomplete="off" inputmode="text" spellcheck="false" required autofocus placeholder="Theken ID">
         <input type="hidden" name="alias" id="real-alias">
         <button type="submit">Login</button>
     </form>
@@ -154,4 +156,7 @@
         });
     })();
     </script>
+</div>
+<div class="simple-login-info" style="max-width:350px;margin:18px auto 0 auto;background:#e3f0fa;border-radius:12px;border:1.5px solid #2196f3;padding:18px 22px;color:#1769aa;font-size:1.08em;text-align:center;box-shadow:0 2px 12px rgba(33,150,243,0.07);">
+    Logge dich mit deiner <b>"Theken-ID"</b> ein. Diese kannst du in deinem Benutzer Profil des Buchungssystem selbst wählen.
 </div>
