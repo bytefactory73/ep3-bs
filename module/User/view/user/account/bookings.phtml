@@ -50,8 +50,8 @@ $this->setup(array(
     color: #d32f2f !important;
 }
 .drink-tile {
-    width: 155px;
-    height: 210px;
+    width: 140px;
+    height: 190px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -98,6 +98,9 @@ $this->setup(array(
 }
 .drink-tile .drink-controls button {
     pointer-events: auto;
+    width: 32px;
+    height: 32px;
+    font-size: 22px;
 }
 .drink-tile .drink-count-badge {
     display: flex;
@@ -118,8 +121,8 @@ $this->setup(array(
     opacity: 0.9;
 }
 .drink-image-frame {
-    width: 142px;
-    height: 142px;
+    width: 128px;
+    height: 128px;
     display: flex;
     align-items: flex-end;
     justify-content: center;
@@ -251,6 +254,22 @@ $this->setup(array(
 #logout-timer {
     cursor: pointer;
 }
+#drink-category-selection .category-btn {
+    font-size: 1.18em;
+}
+#drink-order-total {
+    font-weight: bold;
+    color: #fff;
+    background: #2196f3;
+    border-radius: 3px !important;
+    padding: 2px 12px;
+    font-size: 1em;
+    margin-left: 8px;
+    min-width: 60px;
+    display: inline-block;
+    text-align: center;
+    transition: background 0.2s, color 0.2s;
+}
 </style>
 
 <?php if (isset($drinks)): ?>
@@ -259,7 +278,6 @@ $this->setup(array(
         <div style="flex: 1 1 auto; display: flex; justify-content: center; align-items: center;">
             <button id="scan-barcode-btn" type="button" class="default-button" title="<?= $this->t('Scan Barcode') ?>" style="font-size: 1.1em; font-weight: bold; background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; padding: 4px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 0; width: 52px; height: 44px; justify-content: center;">
                 <svg width="36" height="28" viewBox="0 0 28 22" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <rect x="1" y="1" width="26" height="20" rx="3" stroke="#2196f3" stroke-width="2" fill="#e3f0fa"/>
                     <rect x="4" y="4" width="2" height="14" fill="#2196f3"/>
                     <rect x="8" y="4" width="1" height="14" fill="#2196f3"/>
                     <rect x="11" y="4" width="2" height="14" fill="#2196f3"/>
@@ -281,13 +299,12 @@ $this->setup(array(
             </div>
         </div>
         <div class="order-actions" style="flex: 1 1 auto; display: flex; justify-content: center; align-items: center;">
-            <button type="submit" form="drink-order-form" name="drink_order_submit" value="1" class="default-button" style="font-size: 1.2em; padding: 12px 32px; min-width: 120px; font-weight: bold; display: flex; align-items: center; gap: 12px; flex: 1 1 0; height: 44px; min-height: 44px;">
+            <button type="submit" form="drink-order-form" name="drink_order_submit" value="1" class="default-button" style="font-size: 1.1em; font-weight: bold; background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; padding: 4px 14px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 0; width: 120px; height: 44px; justify-content: center;">
                 <span style="font-weight: bold;"><?= $this->t('Buchen') ?></span>
-                <span id="drink-order-total" style="font-weight: bold; color: #2196f3; font-size: 1em;"> <?= $this->priceFormat(0) ?> </span>
+                <span id="drink-order-total" style="font-weight: bold; color: #fff; background: #2196f3; border-radius: 3px; padding: 2px 12px; font-size: 1em; margin-left: 8px; min-width: 60px; display: inline-block; text-align: center; transition: background 0.2s, color 0.2s;">&nbsp;<?= $this->priceFormat(0) ?>&nbsp;</span>
             </button>
             <button type="button" id="clear-drink-selection" title="<?= $this->escapeHtmlAttr($this->t('Clear selection')) ?>" class="default-button" style="background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; padding: 4px; min-width: 0; width: 52px; height: 44px; display: flex; align-items: center; justify-content: center; margin-right: 0; cursor: pointer;">
                 <svg width="32" height="32" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <rect x="1" y="1" width="20" height="20" rx="4" stroke="#2196f3" stroke-width="2" fill="#e3f0fa"/>
                     <line x1="6" y1="6" x2="16" y2="16" stroke="#2196f3" stroke-width="2.2" stroke-linecap="round"/>
                     <line x1="16" y1="6" x2="6" y2="16" stroke="#2196f3" stroke-width="2.2" stroke-linecap="round"/>
                 </svg>
@@ -438,7 +455,7 @@ $this->setup(array(
     <?php if (isset($this->drinkCategories) && count($this->drinkCategories) > 0): ?>
     <div style="height: 18px;"></div>
     <div style="display: flex; justify-content: center; width: 100%;">
-        <div id="drink-category-selection" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;">
+        <div id="drink-category-selection" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px;">
             <button type="button" class="category-btn" data-category="all" style="padding: 6px 18px; border-radius: 6px; border: 1px solid #2196f3; background: #e3f0fa; color: #2196f3; font-weight: bold; cursor: pointer;">All</button>
             <button type="button" class="category-btn" data-category="favourites" style="padding: 6px 18px; border-radius: 6px; border: 1px solid #2196f3; background: #fff; color: #2196f3; font-weight: bold; cursor: pointer;">Meine Favoriten</button>
             <?php foreach ($this->drinkCategories as $cat): ?>
@@ -541,11 +558,11 @@ $this->setup(array(
                     $imgPath = $this->basePath('/imgs/branding/' . $imgFile);
                     ?>
                     <div class="drink-controls">
-                        <button type="button" class="drink-minus" data-drink-id="<?= (int)$drink['id'] ?>" style="background: #eee; border: none; border-radius: 4px; width: 28px; height: 28px; font-size: 18px; font-weight: bold; color: #2196f3; cursor: pointer; margin-right: 0;">–</button>
+                        <button type="button" class="drink-minus" data-drink-id="<?= (int)$drink['id'] ?>" style="background: #eee; border: none; border-radius: 4px; width: 30.8px; height: 30.8px; font-size: 19.8px; font-weight: bold; color: #2196f3; cursor: pointer; margin-right: 0;">–</button>
                         <span style="flex: 1 1 auto; display: flex; align-items: center; justify-content: center; min-width: 32px;">
                             <span class="drink-count-badge" id="badge-<?= (int)$drink['id'] ?>" style="background: #2196f3; color: #fff; border-radius: 10px; padding: 5px 16px; font-size: 16px; font-weight: bold; min-width: 32px; min-height: 28px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.04); transition: background 0.2s, color 0.2s; visibility: hidden;">0</span>
                         </span>
-                        <button type="button" class="drink-plus" data-drink-id="<?= (int)$drink['id'] ?>" style="background: #eee; border: none; border-radius: 4px; width: 28px; height: 28px; font-size: 18px; font-weight: bold; color: #2196f3; cursor: pointer; margin-left: 0;">+</button>
+                        <button type="button" class="drink-plus" data-drink-id="<?= (int)$drink['id'] ?>" style="background: #eee; border: none; border-radius: 4px; width: 30.8px; height: 30.8px; font-size: 19.8px; font-weight: bold; color: #2196f3; cursor: pointer; margin-left: 0;">+</button>
                     </div>
                     <div class="drink-image-frame">
                         <img src="<?= $imgPath ?>" alt="<?= $this->escapeHtmlAttr($drink['name']) ?>" />
@@ -668,7 +685,8 @@ $this->setup(array(
         });
         // Format as currency (EUR, 2 decimals, comma as decimal separator)
         var formatted = (total).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
-        document.getElementById('drink-order-total').textContent = formatted;
+        var totalElem = document.getElementById('drink-order-total');
+        totalElem.textContent = '\u00a0' + formatted + '\u00a0';
 
         // Enable/disable booking button
         var bookBtn = document.querySelector('button[type="submit"][form="drink-order-form"]');
@@ -778,183 +796,185 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
 ?>
 <?php if ($showHistory && (!$simpleOrderMode || $simpleOrderMode)) : ?>
 <div id="order-history-section">
-    <h2><?= $this->t('Käufe und Einzahlungen') ?></h2>
+    <h2 style="text-align: center;"><?= $this->t('Käufe und Einzahlungen') ?></h2>
     <div style="margin-bottom: 18px;"></div>
-    <table class="default-table middle-table">
-        <tr style="background: #e3f0fa;">
-            <th style="text-align:left; width:24px;"></th>
-            <th style="text-align:left;">
-                <?= $this->t('Aktion') ?>
-            </th>
-            <th style="text-align:left;">
-                <?= $this->t('#') ?>
-            </th>
-            <th style="text-align:left;">
-                <?= $this->t('Price') ?>
-            </th>
-            <th style="text-align:left;">
-                <?= $this->t('Total') ?>
-            </th>
-            <?php if (!$simpleOrderMode): ?>
-            <th style="text-align:left;">
-                <?= $this->t('Kontostand') ?>
-            </th>
-            <?php endif; ?>
-        </tr>
-        <?php
-        $drinkHistory = array_reverse($this->drinkHistory);
-        $balance = 0;
-        $rows = [];
-        // Calculate balance from bottom up
-        for ($i = count($drinkHistory) - 1; $i >= 0; $i--) {
-            $entry = $drinkHistory[$i];
-            if ($entry['type'] === 'deposit') {
-                $balance += $entry['amount'];
-            } else if ($entry['type'] === 'order') {
-                if (!empty($entry['deleted'])) continue; // skip deleted orders for balance
-                $balance -= $entry['total'];
-            }
-            $rows[$i] = $balance;
-        }
-        $rows = array_reverse($rows);
-        // Prepare a flat list of top-level entries: day groups and deposits, sorted newest to oldest
-        $entriesByDay = [];
-        $deposits = [];
-        foreach ($drinkHistory as $entry) {
-            if ($entry['type'] === 'deposit') {
-                $deposits[] = $entry;
-            } else if ($entry['type'] === 'order') {
-                $date = date('Y-m-d', strtotime($entry['datetime']));
-                if (!isset($entriesByDay[$date])) {
-                    $entriesByDay[$date] = [];
+    <div style="display: flex; justify-content: center; width: 100%;">
+        <table class="default-table middle-table" style="margin: 0 auto;">
+            <tr style="background: #e3f0fa;">
+                <th style="text-align:left; width:24px;"></th>
+                <th style="text-align:left;">
+                    <?= $this->t('Aktion') ?>
+                </th>
+                <th style="text-align:left;">
+                    <?= $this->t('#') ?>
+                </th>
+                <th style="text-align:left;">
+                    <?= $this->t('Price') ?>
+                </th>
+                <th style="text-align:left;">
+                    <?= $this->t('Total') ?>
+                </th>
+                <?php if (!$simpleOrderMode): ?>
+                <th style="text-align:left;">
+                    <?= $this->t('Kontostand') ?>
+                </th>
+                <?php endif; ?>
+            </tr>
+            <?php
+            $drinkHistory = array_reverse($this->drinkHistory);
+            $balance = 0;
+            $rows = [];
+            // Calculate balance from bottom up
+            for ($i = count($drinkHistory) - 1; $i >= 0; $i--) {
+                $entry = $drinkHistory[$i];
+                if ($entry['type'] === 'deposit') {
+                    $balance += $entry['amount'];
+                } else if ($entry['type'] === 'order') {
+                    if (!empty($entry['deleted'])) continue; // skip deleted orders for balance
+                    $balance -= $entry['total'];
                 }
-                $entriesByDay[$date][] = $entry;
+                $rows[$i] = $balance;
             }
-        }
-        // Build a flat list of top-level items (date group or deposit), sorted oldest to newest for math
-        $topLevel = [];
-        if ($simpleOrderMode) {
-            $now = time();
-            $cutoff = $now - 18 * 3600; // 18 hours ago
-            foreach ($entriesByDay as $date => $orders) {
-                // Filter orders in this group to only those within last 18 hours
-                $recentOrders = array_filter($orders, function($entry) use ($cutoff) {
-                    return strtotime($entry['datetime']) >= $cutoff;
-                });
-                if (count($recentOrders) > 0) {
-                    $topLevel[] = [ 'type' => 'day', 'date' => $date, 'orders' => $recentOrders ];
-                }
-            }
-        } else {
-            foreach ($entriesByDay as $date => $orders) {
-                $topLevel[] = [ 'type' => 'day', 'date' => $date, 'orders' => $orders ];
-            }
-            foreach ($deposits as $deposit) {
-                $topLevel[] = [ 'type' => 'deposit', 'datetime' => $deposit['datetime'], 'entry' => $deposit ];
-            }
-        }
-        // Sort by date/datetime ascending (oldest to newest)
-        usort($topLevel, function($a, $b) {
-            $aTime = ($a['type'] === 'day') ? strtotime($a['date'] . ' 23:59:59') : strtotime($a['entry']['datetime']);
-            $bTime = ($b['type'] === 'day') ? strtotime($b['date'] . ' 23:59:59') : strtotime($b['entry']['datetime']);
-            return $aTime <=> $bTime;
-        });
-        // Calculate balances for each top-level group
-        $balance = 0;
-        $groupBalances = [];
-        foreach ($topLevel as $idx => $item) {
-            if ($item['type'] === 'day') {
-                $dayTotalAmount = 0;
-                foreach ($item['orders'] as $entry) {
-                    if (!empty($entry['deleted'])) continue; // skip deleted orders for group balance
-                    $dayTotalAmount += $entry['total'];
-                }
-                $balance -= $dayTotalAmount;
-                $groupBalances[$idx] = $balance;
-            } else if ($item['type'] === 'deposit') {
-                $amount = $item['entry']['amount'];
-                $balance += $amount;
-                $groupBalances[$idx] = $balance;
-            }
-        }
-        // Now render from newest to oldest
-        $renderOrder = array_reverse(array_keys($topLevel));
-        $groupIndex = 0;
-        foreach ($renderOrder as $i) {
-            $item = $topLevel[$i];
-            $balanceAfter = $groupBalances[$i];
-            if ($item['type'] === 'day') {
-                $date = $item['date'];
-                $orders = $item['orders'];
-                $collapsedId = 'order-day-' . $groupIndex;
-                $isOpen = ($groupIndex === 0);
-                $dayDrinkSum = 0;
-                $dayTotalAmount = 0;
-                foreach ($orders as $entry) {
-                    if (!empty($entry['deleted'])) continue; // skip deleted orders for day sum
-                    $dayDrinkSum += (int)$entry['quantity'];
-                    $dayTotalAmount += $entry['total'];
-                }
-                echo '<tr class="order-day-header" style="background:#f5faff; cursor:pointer;" data-group="' . $collapsedId . '">';
-                echo '<td style="width:24px; text-align:center;">';
-                echo '<span class="collapse-toggle" data-group="' . $collapsedId . '" style="display:inline-block; width:20px; height:20px; line-height:20px; border-radius:50%; background:#2196f3; color:#fff; font-weight:bold; cursor:pointer;">' . ($isOpen ? '–' : '+') . '</span>';
-                echo '</td>';
-                echo '<td style="font-weight:bold;">' . $this->escapeHtml($date) . ' - ' . $this->t('Käufe') . '</td>';
-                echo '<td style="font-weight:bold;">' . $dayDrinkSum . '</td>';
-                echo '<td style="font-weight:bold;"></td>';
-                echo '<td style="font-weight:bold;">' . $this->priceFormat(-$dayTotalAmount * 100.0, null, null, null, null, null, true, false, false) . '</td>';
-                if (!$simpleOrderMode) echo '<td style="font-weight:bold;'.($balanceAfter < 0 ? ' color:#d32f2f;' : '').'">' . $this->priceFormat($balanceAfter * 100.0, null, null, null, null, null, true, true, false) . '</td>';
-                echo '</tr>';
-                // Sort orders inside the group newest to oldest
-                $ordersSorted = $orders;
-                usort($ordersSorted, function($a, $b) {
-                    return strtotime($b['datetime']) <=> strtotime($a['datetime']);
-                });
-                foreach ($ordersSorted as $entry) {
-                    $time = date('H:i', strtotime($entry['datetime']));
-                    $rowStyle = $isOpen ? '' : 'display:none;';
-                    $isDeleted = $entry['deleted'];
-                    $showCancel = false;
-                    $orderId = $entry['id'];
-                    if ($orderId && isset($entry['datetime']) && !$isDeleted) {
-                        $orderTime = strtotime($entry['datetime']);
-                        $now = time();
-                        if ($now - $orderTime < $drinkOrderCancelWindow) { // use variable
-                            $showCancel = true;
-                        }
+            $rows = array_reverse($rows);
+            // Prepare a flat list of top-level entries: day groups and deposits, sorted newest to oldest
+            $entriesByDay = [];
+            $deposits = [];
+            foreach ($drinkHistory as $entry) {
+                if ($entry['type'] === 'deposit') {
+                    $deposits[] = $entry;
+                } else if ($entry['type'] === 'order') {
+                    $date = date('Y-m-d', strtotime($entry['datetime']));
+                    if (!isset($entriesByDay[$date])) {
+                        $entriesByDay[$date] = [];
                     }
-                    $strikeOpen = $isDeleted ? '<span style="text-decoration:line-through; color:#b0b0b0;">' : '';
-                    $strikeClose = $isDeleted ? '</span>' : '';
-                    echo '<tr class="order-day-row' . ($isDeleted ? ' order-deleted-row' : '') . '" data-group="' . $collapsedId . '" style="background:#fafdff;' . $rowStyle . '">';
-                    echo '<td style="color:#888; font-size:0.95em; text-align:center; position:relative;">' . $time;
-                    if ($showCancel) {
-                        echo '<button class="order-cancel-btn" data-order-id="' . htmlspecialchars($orderId) . '" title="' . $this->t('Bestellung stornieren') . '" style="position:absolute; right:2px; top:2px; width:18px; height:18px; border:none; background:transparent; color:#d32f2f; font-size:15px; font-weight:bold; cursor:pointer; line-height:16px; padding:0;">&times;</button>';
+                    $entriesByDay[$date][] = $entry;
+                }
+            }
+            // Build a flat list of top-level items (date group or deposit), sorted oldest to newest for math
+            $topLevel = [];
+            if ($simpleOrderMode) {
+                $now = time();
+                $cutoff = $now - 18 * 3600; // 18 hours ago
+                foreach ($entriesByDay as $date => $orders) {
+                    // Filter orders in this group to only those within last 18 hours
+                    $recentOrders = array_filter($orders, function($entry) use ($cutoff) {
+                        return strtotime($entry['datetime']) >= $cutoff;
+                    });
+                    if (count($recentOrders) > 0) {
+                        $topLevel[] = [ 'type' => 'day', 'date' => $date, 'orders' => $recentOrders ];
                     }
+                }
+            } else {
+                foreach ($entriesByDay as $date => $orders) {
+                    $topLevel[] = [ 'type' => 'day', 'date' => $date, 'orders' => $orders ];
+                }
+                foreach ($deposits as $deposit) {
+                    $topLevel[] = [ 'type' => 'deposit', 'datetime' => $deposit['datetime'], 'entry' => $deposit ];
+                }
+            }
+            // Sort by date/datetime ascending (oldest to newest)
+            usort($topLevel, function($a, $b) {
+                $aTime = ($a['type'] === 'day') ? strtotime($a['date'] . ' 23:59:59') : strtotime($a['entry']['datetime']);
+                $bTime = ($b['type'] === 'day') ? strtotime($b['date'] . ' 23:59:59') : strtotime($b['entry']['datetime']);
+                return $aTime <=> $bTime;
+            });
+            // Calculate balances for each top-level group
+            $balance = 0;
+            $groupBalances = [];
+            foreach ($topLevel as $idx => $item) {
+                if ($item['type'] === 'day') {
+                    $dayTotalAmount = 0;
+                    foreach ($item['orders'] as $entry) {
+                        if (!empty($entry['deleted'])) continue; // skip deleted orders for group balance
+                        $dayTotalAmount += $entry['total'];
+                    }
+                    $balance -= $dayTotalAmount;
+                    $groupBalances[$idx] = $balance;
+                } else if ($item['type'] === 'deposit') {
+                    $amount = $item['entry']['amount'];
+                    $balance += $amount;
+                    $groupBalances[$idx] = $balance;
+                }
+            }
+            // Now render from newest to oldest
+            $renderOrder = array_reverse(array_keys($topLevel));
+            $groupIndex = 0;
+            foreach ($renderOrder as $i) {
+                $item = $topLevel[$i];
+                $balanceAfter = $groupBalances[$i];
+                if ($item['type'] === 'day') {
+                    $date = $item['date'];
+                    $orders = $item['orders'];
+                    $collapsedId = 'order-day-' . $groupIndex;
+                    $isOpen = ($groupIndex === 0);
+                    $dayDrinkSum = 0;
+                    $dayTotalAmount = 0;
+                    foreach ($orders as $entry) {
+                        if (!empty($entry['deleted'])) continue; // skip deleted orders for day sum
+                        $dayDrinkSum += (int)$entry['quantity'];
+                        $dayTotalAmount += $entry['total'];
+                    }
+                    echo '<tr class="order-day-header" style="background:#f5faff; cursor:pointer;" data-group="' . $collapsedId . '">';
+                    echo '<td style="width:24px; text-align:center;">';
+                    echo '<span class="collapse-toggle" data-group="' . $collapsedId . '" style="display:inline-block; width:20px; height:20px; line-height:20px; border-radius:50%; background:#2196f3; color:#fff; font-weight:bold; cursor:pointer;">' . ($isOpen ? '–' : '+') . '</span>';
                     echo '</td>';
-                    echo '<td>' . $strikeOpen . $this->escapeHtml($entry['name']) . $strikeClose . '</td>';
-                    echo '<td>' . $strikeOpen . (int)$entry['quantity'] . $strikeClose . '</td>';
-                    echo '<td>' . $strikeOpen . $this->priceFormat($entry['price'] * 100.0, null, null, null, null, null, true, false, false) . $strikeClose . '</td>';
-                    echo '<td>' . $strikeOpen . $this->priceFormat($entry['total'] * 100.0, null, null, null, null, null, true, false, false) . $strikeClose . '</td>';
-                    if (!$simpleOrderMode) echo '<td></td>';
+                    echo '<td style="font-weight:bold;">' . $this->escapeHtml($date) . ' - ' . $this->t('Käufe') . '</td>';
+                    echo '<td style="font-weight:bold;">' . $dayDrinkSum . '</td>';
+                    echo '<td style="font-weight:bold;"></td>';
+                    echo '<td style="font-weight:bold;">' . $this->priceFormat(-$dayTotalAmount * 100.0, null, null, null, null, null, true, false, false) . '</td>';
+                    if (!$simpleOrderMode) echo '<td style="font-weight:bold;'.($balanceAfter < 0 ? ' color:#d32f2f;' : '').'">' . $this->priceFormat($balanceAfter * 100.0, null, null, null, null, null, true, true, false) . '</td>';
+                    echo '</tr>';
+                    // Sort orders inside the group newest to oldest
+                    $ordersSorted = $orders;
+                    usort($ordersSorted, function($a, $b) {
+                        return strtotime($b['datetime']) <=> strtotime($a['datetime']);
+                    });
+                    foreach ($ordersSorted as $entry) {
+                        $time = date('H:i', strtotime($entry['datetime']));
+                        $rowStyle = $isOpen ? '' : 'display:none;';
+                        $isDeleted = $entry['deleted'];
+                        $showCancel = false;
+                        $orderId = $entry['id'];
+                        if ($orderId && isset($entry['datetime']) && !$isDeleted) {
+                            $orderTime = strtotime($entry['datetime']);
+                            $now = time();
+                            if ($now - $orderTime < $drinkOrderCancelWindow) { // use variable
+                                $showCancel = true;
+                            }
+                        }
+                        $strikeOpen = $isDeleted ? '<span style="text-decoration:line-through; color:#b0b0b0;">' : '';
+                        $strikeClose = $isDeleted ? '</span>' : '';
+                        echo '<tr class="order-day-row' . ($isDeleted ? ' order-deleted-row' : '') . '" data-group="' . $collapsedId . '" style="background:#fafdff;' . $rowStyle . '">';
+                        echo '<td style="color:#888; font-size:0.95em; text-align:center; position:relative;">' . $time;
+                        if ($showCancel) {
+                            echo '<button class="order-cancel-btn" data-order-id="' . htmlspecialchars($orderId) . '" title="' . $this->t('Bestellung stornieren') . '" style="position:absolute; right:2px; top:2px; width:18px; height:18px; border:none; background:transparent; color:#d32f2f; font-size:15px; font-weight:bold; cursor:pointer; line-height:16px; padding:0;">&times;</button>';
+                        }
+                        echo '</td>';
+                        echo '<td>' . $strikeOpen . $this->escapeHtml($entry['name']) . $strikeClose . '</td>';
+                        echo '<td>' . $strikeOpen . (int)$entry['quantity'] . $strikeClose . '</td>';
+                        echo '<td>' . $strikeOpen . $this->priceFormat($entry['price'] * 100.0, null, null, null, null, null, true, false, false) . $strikeClose . '</td>';
+                        echo '<td>' . $strikeOpen . $this->priceFormat($entry['total'] * 100.0, null, null, null, null, null, true, false, false) . $strikeClose . '</td>';
+                        if (!$simpleOrderMode) echo '<td></td>';
+                        echo '</tr>';
+                    }
+                    $groupIndex++;
+                } else if ($item['type'] === 'deposit') {
+                    $entry = $item['entry'];
+                    $date = date('Y-m-d', strtotime($entry['datetime']));
+                    $amount = $entry['amount'];
+                    echo '<tr style="background:#fafdff; font-weight:bold;">';
+                    echo '<td></td>';
+                    echo '<td>' . $this->escapeHtml($date) . ' - ' . $this->t('Einzahlung') . '</td>';
+                    echo '<td></td>';
+                    echo '<td></td>';
+                    echo '<td>' . $this->priceFormat($amount * 100.0, null, null, null, null, null, true, true, false) . '</td>';
+                    if (!$simpleOrderMode) echo '<td>' . $this->priceFormat($balanceAfter * 100.0, null, null, null, null, null, true, true, false) . '</td>';
                     echo '</tr>';
                 }
-                $groupIndex++;
-            } else if ($item['type'] === 'deposit') {
-                $entry = $item['entry'];
-                $date = date('Y-m-d', strtotime($entry['datetime']));
-                $amount = $entry['amount'];
-                echo '<tr style="background:#fafdff; font-weight:bold;">';
-                echo '<td></td>';
-                echo '<td>' . $this->escapeHtml($date) . ' - ' . $this->t('Einzahlung') . '</td>';
-                echo '<td></td>';
-                echo '<td></td>';
-                echo '<td>' . $this->priceFormat($amount * 100.0, null, null, null, null, null, true, true, false) . '</td>';
-                if (!$simpleOrderMode) echo '<td>' . $this->priceFormat($balanceAfter * 100.0, null, null, null, null, null, true, true, false) . '</td>';
-                echo '</tr>';
             }
-        }
-        ?>
-    </table>
+            ?>
+        </table>
+    </div>
     <script>
     document.addEventListener('DOMContentLoaded', function() {
         document.querySelectorAll('.order-day-header').forEach(function(header) {
