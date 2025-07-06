@@ -1,7 +1,16 @@
-<?= $this->render('user/simple-login/apple-webapp-meta') ?>
-<link rel="stylesheet" href="../css/simple-mode.css" />
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <?= $this->render('user/simple-login/apple-webapp-meta') ?>
+    <link rel="stylesheet" href="../css/simple-mode.css" />
+</head>
+<body>
 <?php if (!empty($this->error)): ?>
     <div style="color:red;"> <?= $this->escapeHtml($this->error) ?> </div>
 <?php endif; ?>
 <script>window.SIMPLE_ORDER_MODE = true;</script>
 <?= $this->render('user/account/bookings') ?>
+</body>
+</html>

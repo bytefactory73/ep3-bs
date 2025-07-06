@@ -1,111 +1,121 @@
-<?= $this->render('user/simple-login/apple-webapp-meta') ?>
-<link rel="stylesheet" href="../css/simple-mode.css" />
-<style>
-.simple-login-bg {
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: linear-gradient(135deg, #e3f0fa 0%, #fafdff 100%);
-    z-index: -1;
-    width: 100vw;
-    height: 100vh;
-}
-.simple-login-frame {
-    max-width: 350px;
-    margin: 8vh auto 0 auto;
-    background: #fafdff;
-    border-radius: 18px;
-    box-shadow: 0 4px 32px rgba(33,150,243,0.10), 0 1.5px 6px rgba(33,150,243,0.08);
-    padding: 36px 32px 28px 32px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    border: 1.5px solid #2196f3;
-}
-.simple-login-frame h1 {
-    color: #2196f3;
-    font-size: 2em;
-    margin-bottom: 18px;
-    font-weight: bold;
-    text-align: center;
-}
-.simple-login-frame label {
-    font-size: 1.1em;
-    color: #333;
-    margin-bottom: 8px;
-    font-weight: 500;
-    display: block;
-    text-align: left;
-}
-.simple-login-frame input[type="password"] {
-    width: 100%;
-    padding: 10px 12px;
-    border-radius: 8px;
-    border: 1.5px solid #b0c4de;
-    font-size: 1.1em;
-    margin-bottom: 18px;
-    outline: none;
-    transition: border 0.2s;
-}
-.simple-login-frame input[type="password"]:focus {
-    border-color: #2196f3;
-}
-.simple-login-frame button[type="submit"] {
-    width: 100%;
-    background: #2196f3;
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    padding: 12px 0;
-    font-size: 1.15em;
-    font-weight: bold;
-    cursor: pointer;
-    box-shadow: 0 1px 4px rgba(33,150,243,0.08);
-    transition: background 0.18s;
-    margin-top: 6px;
-}
-.simple-login-frame button[type="submit"]:hover {
-    background: #1769aa;
-}
-.simple-login-frame .error-message {
-    color: #d32f2f;
-    background: #fff3f3;
-    border: 1px solid #d32f2f;
-    border-radius: 6px;
-    padding: 8px 12px;
-    margin-bottom: 16px;
-    width: 100%;
-    text-align: center;
-    font-size: 1em;
-}
-.simple-login-frame form {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-.simple-login-frame input[type="text"] {
-    width: 100%;
-    max-width: 100%;
-    padding: 10px 12px;
-    border-radius: 8px;
-    border: 1.5px solid #b0c4de;
-    font-size: 1.1em;
-    margin-bottom: 18px;
-    outline: none;
-    transition: border 0.2s;
-    box-sizing: border-box;
-    text-align: center;
-}
-.simple-login-frame input[type="text"]:focus {
-    border-color: #2196f3;
-}
-@media (max-width: 500px) {
-    .simple-login-frame {
-        max-width: 98vw;
-        padding: 18px 6vw 18px 6vw;
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <?= $this->render('user/simple-login/apple-webapp-meta') ?>
+    <link rel="stylesheet" href="../css/simple-mode.css" />
+    <style>
+    body, html {
+        height: 100%;
     }
-}
-</style>
+    .simple-login-bg {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: linear-gradient(135deg, #e3f0fa 0%, #fafdff 100%);
+        z-index: -1;
+        width: 100vw;
+        height: 100vh;
+    }
+    .simple-login-frame {
+        max-width: 350px;
+        margin: 8vh auto 0 auto;
+        background: #fafdff;
+        border-radius: 18px;
+        box-shadow: 0 4px 32px rgba(33,150,243,0.10), 0 1.5px 6px rgba(33,150,243,0.08);
+        padding: 36px 32px 28px 32px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        border: 1.5px solid #2196f3;
+    }
+    .simple-login-frame h1 {
+        color: #2196f3;
+        font-size: 2em;
+        margin-bottom: 18px;
+        font-weight: bold;
+        text-align: center;
+    }
+    .simple-login-frame label {
+        font-size: 1.1em;
+        color: #333;
+        margin-bottom: 8px;
+        font-weight: 500;
+        display: block;
+        text-align: left;
+    }
+    .simple-login-frame input[type="password"] {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1.5px solid #b0c4de;
+        font-size: 1.1em;
+        margin-bottom: 18px;
+        outline: none;
+        transition: border 0.2s;
+    }
+    .simple-login-frame input[type="password"]:focus {
+        border-color: #2196f3;
+    }
+    .simple-login-frame button[type="submit"] {
+        width: 100%;
+        background: #2196f3;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 12px 0;
+        font-size: 1.15em;
+        font-weight: bold;
+        cursor: pointer;
+        box-shadow: 0 1px 4px rgba(33,150,243,0.08);
+        transition: background 0.18s;
+        margin-top: 6px;
+    }
+    .simple-login-frame button[type="submit"]:hover {
+        background: #1769aa;
+    }
+    .simple-login-frame .error-message {
+        color: #d32f2f;
+        background: #fff3f3;
+        border: 1px solid #d32f2f;
+        border-radius: 6px;
+        padding: 8px 12px;
+        margin-bottom: 16px;
+        width: 100%;
+        text-align: center;
+        font-size: 1em;
+    }
+    .simple-login-frame form {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+    .simple-login-frame input[type="text"] {
+        width: 100%;
+        max-width: 100%;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1.5px solid #b0c4de;
+        font-size: 1.1em;
+        margin-bottom: 18px;
+        outline: none;
+        transition: border 0.2s;
+        box-sizing: border-box;
+        text-align: center;
+    }
+    .simple-login-frame input[type="text"]:focus {
+        border-color: #2196f3;
+    }
+    @media (max-width: 500px) {
+        .simple-login-frame {
+            max-width: 98vw;
+            padding: 18px 6vw 18px 6vw;
+        }
+    }
+    </style>
+</head>
+<body>
 <div class="simple-login-bg"></div>
 <header style="width:100vw;text-align:center;padding:2.5vh 0 1.5vh 0;">
     <span style="font-size:2.1em;font-weight:bold;color:#2196f3;letter-spacing:0.5px;">STC Butzbach - SB-Theke</span>
@@ -186,3 +196,5 @@
 <div class="simple-login-info" style="max-width:350px;margin:18px auto 0 auto;background:#e3f0fa;border-radius:12px;border:1.5px solid #2196f3;padding:18px 22px;color:#1769aa;font-size:1.08em;text-align:center;box-shadow:0 2px 12px rgba(33,150,243,0.07);">
     Logge dich mit deiner <b>"Theken-ID"</b> ein. Diese kannst du in deinem Benutzer Profil des Buchungssystem selbst wählen.
 </div>
+</body>
+</html>
