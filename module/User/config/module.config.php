@@ -124,6 +124,16 @@ return array(
                                     ),
                                 ),
                             ),
+                            'submit-order' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/submit-order',
+                                    'defaults' => array(
+                                        'controller' => 'User\\Controller\\Account',
+                                        'action' => 'submitOrder',
+                                    ),
+                                ),
+                            ),
                         ),
                     ),
                     'settings' => array(
@@ -204,6 +214,16 @@ return array(
                                     'defaults' => array(
                                         'controller' => 'User\\Controller\\SimpleLogin',
                                         'action' => 'dropOrder',
+                                    ),
+                                ),
+                            ),
+                            'submit-order' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/submit-order',
+                                    'defaults' => array(
+                                        'controller' => 'User\\Controller\\SimpleLogin',
+                                        'action' => 'submitOrder',
                                     ),
                                 ),
                             ),

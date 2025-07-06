@@ -63,72 +63,6 @@ class SimpleLoginController extends AbstractActionController
         $success = false;
         $drinkOrderManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkOrderManager');
         $drinkDepositManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkDepositManager');
-        if ($this->getRequest()->isPost()) {
-            $drinkCounts = $this->getRequest()->getPost('drink_counts', []);
-            $anyOrdered = false;
-            if (is_array($drinkCounts)) {
-                // Build a map of drink_id => price for quick lookup
-                $drinkPriceMap = [];
-                foreach ($drinks as $drink) {
-                    $drinkPriceMap[$drink['id']] = $drink['price'];
-                }
-                foreach ($drinkCounts as $drinkId => $qty) {
-                    $drinkId = (int)$drinkId;
-                    $qty = (int)$qty;
-                    if ($drinkId && $qty > 0 && isset($drinkPriceMap[$drinkId])) {
-                        $price = $drinkPriceMap[$drinkId];
-                        $db->query('INSERT INTO drink_orders (user_id, drink_id, quantity, price, order_time) VALUES (?, ?, ?, ?, NOW())', [$userId, $drinkId, $qty, $price]);
-                        $anyOrdered = true;
-                    }
-                }
-            }
-            if ($anyOrdered) {
-                $success = true;
-                // Send confirmation email (copied from AccountController)
-                $userManager = $this->getServiceLocator()->get('User\Manager\UserManager');
-                $user = $userManager->get($userId);
-                $userMailService = $this->getServiceLocator()->get('User\Service\MailService');
-                $drinkManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkManager');
-                $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($userId));
-                $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($userId));
-                $balance = $currentBalance;
-                // Recalculate balance after order
-                $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($userId));
-                $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($userId));
-                $balance = 0;
-                foreach ($drinkDeposits as $deposit) $balance += $deposit['amount'];
-                foreach ($drinkOrders as $order) if (empty($order['deleted'])) $balance -= $order['quantity'] * $order['price'];
-                $subject = $this->t('Bestätigung Deiner Getränkebestellung');
-                $lines = [];
-                $totalSum = 0;
-                foreach ($drinkCounts as $drinkId => $quantity) {
-                    $drinkId = (int)$drinkId;
-                    $quantity = (int)$quantity;
-                    if ($drinkId > 0 && $quantity > 0) {
-                        $drink = $drinkManager->get($drinkId);
-                        if ($drink) {
-                            $lines[] = sprintf('%s x %d = %.2f EUR', $drink['name'], $quantity, $quantity * $drink['price']);
-                            $totalSum += $quantity * $drink['price'];
-                        }
-                    }
-                }
-                $lines[] = '---------------------';
-                $lines[] = sprintf($this->t('Gesamt:') . ' %.2f EUR', $totalSum);
-                $lines[] = '';
-                $lines[] = sprintf($this->t('Saldo nach Bestellung:') . '<b> %.2f EUR </b>', $balance);
-                $text = $this->t('Vielen Dank für Deine Getränkebestellung!') . "<br><br>" . implode("<br>", $lines);
-                if ($balance < 0) {
-                    $text .= "<br><br>";
-                    $text .= '<span style="color:#d32f2f;font-weight:bold;">' . $this->t('Warnung: Dein Saldo ist negativ! Bitte überweise Geld auf das STC Paypal-Konto.') . '</span>';
-                }
-                $userMailService->send($user, $subject, $text, array('isHtml' => true));
-                // Only clear session and redirect to login if booking was successful
-                $session->getManager()->getStorage()->clear('SimpleLogin');
-                return $this->redirect()->toRoute('user/simple-login');
-            } else {
-                $error = 'Bitte mindestens ein Getränk auswählen.';
-            }
-        }
         $userManager = $this->getServiceLocator()->get('User\Manager\UserManager');
         $user = $userManager->get($userId);
         $userName = $user ? $user->get('alias') : 'Gast';
@@ -255,6 +189,76 @@ class SimpleLoginController extends AbstractActionController
             return $this->getResponse()->setContent(json_encode(['success' => true]))->setStatusCode(200);
         } else {
             return $this->getResponse()->setContent(json_encode(['success' => false, 'error_message' => 'Update failed.']))->setStatusCode(500);
+        }
+    }
+
+    public function submitOrderAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $sessionManager = $this->getServiceLocator()->get('Zend\Session\SessionManager');
+        $sessionManager->start();
+        $session = new \Zend\Session\Container('SimpleLogin');
+        if (empty($session->user_id)) {
+            return $this->getResponse()->setStatusCode(401)->setContent(json_encode(['success' => false, 'error' => 'Not authenticated.']));
+        }
+        $userId = $session->user_id;
+        $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
+        $drinkOrderManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkOrderManager');
+        $drinkManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkManager');
+        $drinkDepositManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkDepositManager');
+        $drinkCounts = $this->params()->fromPost('drink_counts', []);
+        $anyOrdered = false;
+        $orderedDrinks = [];
+        if (is_array($drinkCounts)) {
+            foreach ($drinkCounts as $drinkId => $qty) {
+                $drinkId = (int)$drinkId;
+                $qty = (int)$qty;
+                if ($drinkId && $qty > 0) {
+                    $drink = $drinkManager->get($drinkId);
+                    if ($drink) {
+                        $db->query('INSERT INTO drink_orders (user_id, drink_id, quantity, price, order_time) VALUES (?, ?, ?, ?, NOW())', [$userId, $drinkId, $qty, $drink['price']]);
+                        $anyOrdered = true;
+                        $orderedDrinks[] = [
+                            'name' => $drink['name'],
+                            'quantity' => $qty,
+                            'price' => $drink['price'],
+                            'total' => $qty * $drink['price'],
+                        ];
+                    }
+                }
+            }
+        }
+        if ($anyOrdered) {
+            // Calculate new balance after order
+            $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($userId));
+            $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($userId));
+            $balance = 0;
+            foreach ($drinkDeposits as $deposit) $balance += $deposit['amount'];
+            foreach ($drinkOrders as $order) if (empty($order['deleted'])) $balance -= $order['quantity'] * $order['price'];
+            // Send confirmation email
+            $userManager = $this->getServiceLocator()->get('User\Manager\UserManager');
+            $user = $userManager->get($userId);
+            $subject = $this->t('Bestätigung Deiner Getränkebestellung');
+            $lines = [];
+            $totalSum = 0;
+            foreach ($orderedDrinks as $item) {
+                $lines[] = sprintf('%s x %d = %.2f EUR', $item['name'], $item['quantity'], $item['total']);
+                $totalSum += $item['total'];
+            }
+            $lines[] = '---------------------';
+            $lines[] = sprintf($this->t('Gesamt:') . ' %.2f EUR', $totalSum);
+            $lines[] = '';
+            $lines[] = sprintf($this->t('Saldo nach Bestellung:') . '<b> %.2f EUR </b>', $balance);
+            $text = $this->t('Vielen Dank für Deine Getränkebestellung!') . "<br><br>" . implode("<br>", $lines);
+            if ($balance < 0) {
+                $text .= "<br><br>";
+                $text .= '<span style="color:#d32f2f;font-weight:bold;">' . $this->t('Warnung: Dein Saldo ist negativ! Bitte überweise Geld auf das STC Paypal-Konto.') . '</span>';
+            }
+            $userMailService = $this->getServiceLocator()->get('User\Service\MailService');
+            $userMailService->send($user, $subject, $text, array('isHtml' => true));
+            return $this->getResponse()->setContent(json_encode(['success' => true, 'balance' => $balance]))->setStatusCode(200);
+        } else {
+            return $this->getResponse()->setContent(json_encode(['success' => false, 'error' => $this->t('Bitte mindestens ein Getränk auswählen.')]))->setStatusCode(400);
         }
     }
 }

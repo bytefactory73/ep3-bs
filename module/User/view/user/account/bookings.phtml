@@ -511,7 +511,7 @@ $this->setup(array(
     });
     </script>
     <?php endif; ?>
-    <form method="post" id="drink-order-form" onsubmit="return confirmDrinkOrder();">
+    <form method="post" id="drink-order-form" onsubmit="return false;">
         <div style="height: 16px;"></div>
         <div class="drink-tiles-wrapper">
             <?php
@@ -564,7 +564,74 @@ $this->setup(array(
         </div>
         <div style="height: 24px;"></div>
     </form>
+    <div id="drink-order-feedback" style="display:none; margin: 12px 0; text-align:center; font-weight:bold;"></div>
     <script>
+    // --- AJAX drink order submission ---
+    function getDrinkOrderData() {
+        var data = {};
+        document.querySelectorAll('input[id^="input-"]').forEach(function(input) {
+            var count = parseInt(input.value) || 0;
+            if (count > 0) {
+                var id = input.id.replace('input-', '');
+                data['drink_counts[' + id + ']'] = count;
+            }
+        });
+        return data;
+    }
+    function showOrderFeedback(msg, isError) {
+        var box = document.getElementById('drink-order-feedback');
+        box.textContent = msg;
+        box.style.display = '';
+        box.style.color = isError ? '#d32f2f' : '#2196f3';
+        setTimeout(function() { box.style.display = 'none'; }, 4000);
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+        var form = document.getElementById('drink-order-form');
+        var submitBtn = document.querySelector('button[type="submit"][form="drink-order-form"]');
+        if (form && submitBtn) {
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                if (submitBtn.disabled) return;
+                // Confirm order
+                if (typeof confirmDrinkOrder === 'function' && !confirmDrinkOrder()) return;
+                var data = getDrinkOrderData();
+                if (Object.keys(data).length === 0) {
+                    showOrderFeedback('<?= $this->t('Bitte mindestens ein Getränk auswählen.') ?>', true);
+                    return;
+                }
+                submitBtn.disabled = true;
+                submitBtn.classList.add('loading');
+                var url = window.SIMPLE_ORDER_MODE ? 'simple-order/submit-order' : 'bookings/submit-order';
+                fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: Object.entries(data).map(function(pair) {
+                        return encodeURIComponent(pair[0]) + '=' + encodeURIComponent(pair[1]);
+                    }).join('&')
+                })
+                .then(function(response) { return response.json(); })
+                .then(function(res) {
+                    if (res && res.success) {
+                        showOrderFeedback('<?= $this->t('Bestellung erfolgreich!') ?>', false);
+                        setTimeout(function() { window.location.reload(); }, 1200);
+                    } else {
+                        var msg = res && res.error ? res.error : '<?= $this->t('Bestellung fehlgeschlagen.') ?>';
+                        showOrderFeedback(msg, true);
+                        submitBtn.disabled = false;
+                        submitBtn.classList.remove('loading');
+                    }
+                })
+                .catch(function(err) {
+                    showOrderFeedback('<?= $this->t('Bestellung fehlgeschlagen.') ?>', true);
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('loading');
+                });
+            });
+        }
+    });
     // Drink order tile logic
     // --- Dynamic sorting of drink tiles by count (JS) ---
     function sortDrinkTiles() {
@@ -1095,10 +1162,6 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
 
         <div class="separator-small"></div>
 
-    <?php endif; ?>
-
-    <?php if (isset($this->orderMessage) && $this->orderMessage): ?>
-        <div class="info-message"> <?= $this->escapeHtml($this->orderMessage) ?> </div>
     <?php endif; ?>
 </div>
 <?php endif; ?>
