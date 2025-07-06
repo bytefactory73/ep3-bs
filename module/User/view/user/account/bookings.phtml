@@ -615,8 +615,12 @@ $this->setup(array(
                 .then(function(response) { return response.json(); })
                 .then(function(res) {
                     if (res && res.success) {
-                        showOrderFeedback('<?= $this->t('Bestellung erfolgreich!') ?>', false);
-                        setTimeout(function() { window.location.reload(); }, 1200);
+                        alert('<?= $this->t('Bestellung erfolgreich!') ?>');
+                        if (window.SIMPLE_ORDER_MODE) {
+                            window.location.replace('<?= $this->url("user/simple-login") ?>');
+                        } else {
+                            window.location.reload();
+                        }
                     } else {
                         var msg = res && res.error ? res.error : '<?= $this->t('Bestellung fehlgeschlagen.') ?>';
                         showOrderFeedback(msg, true);

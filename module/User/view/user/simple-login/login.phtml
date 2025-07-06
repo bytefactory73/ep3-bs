@@ -7,7 +7,8 @@
     <link rel="stylesheet" href="../css/simple-mode.css" />
     <style>
     body, html {
-        height: 100%;
+        min-height: 100vh;
+        height: auto;
     }
     .simple-login-bg {
         position: fixed;
@@ -15,7 +16,8 @@
         background: linear-gradient(135deg, #e3f0fa 0%, #fafdff 100%);
         z-index: -1;
         width: 100vw;
-        height: 100vh;
+        min-height: 100vh;
+        height: 100%;
     }
     .simple-login-frame {
         max-width: 350px;
@@ -113,6 +115,25 @@
             padding: 18px 6vw 18px 6vw;
         }
     }
+    .simple-order-history-frame {
+        max-width: 350px;
+        margin: 8vh auto 0 auto;
+        background: #fafdff;
+        border-radius: 18px;
+        box-shadow: 0 4px 32px rgba(33,150,243,0.10), 0 1.5px 6px rgba(33,150,243,0.08);
+        padding: 36px 32px 28px 32px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        border: 1.5px solid #2196f3;
+    }
+    .simple-order-history-frame h1 {
+        color: #2196f3;
+        font-size: 2em;
+        margin-bottom: 18px;
+        font-weight: bold;
+        text-align: center;
+    }
     </style>
 </head>
 <body>
@@ -195,6 +216,75 @@
 </div>
 <div class="simple-login-info" style="max-width:350px;margin:18px auto 0 auto;background:#e3f0fa;border-radius:12px;border:1.5px solid #2196f3;padding:18px 22px;color:#1769aa;font-size:1.08em;text-align:center;box-shadow:0 2px 12px rgba(33,150,243,0.07);">
     Logge dich mit deiner <b>"Theken-ID"</b> ein. Diese kannst du in deinem Benutzer Profil des Buchungssystem selbst wählen.
+</div>
+<div class="simple-order-history-frame">
+    <h1>Buchungshistorie</h1>
+    <table style="font-size:1em; border-collapse:collapse; margin-bottom:24px; margin-left:auto; margin-right:auto; min-width:0; width:auto; max-width:100%;">
+        <thead>
+            <tr style="background:#e3f0fa; color:#1769aa;">
+                <th colspan="2" style="padding:0; border:none; background:none;"></th>
+                <th style="padding:0; border:none; background:none;"></th>
+            </tr>
+        </thead>
+        <tbody>
+        <?php
+        if (!empty($this->recentOrders)):
+            // Group orders by date and alias
+            $grouped = [];
+            foreach ($this->recentOrders as $row) {
+                $dt = new DateTime($row['order_time']);
+                $date = $dt->format('Y-m-d');
+                $alias = $row['alias'];
+                $drink = $row['drink_name'];
+                $isDeleted = isset($row['deleted']) && $row['deleted'];
+                $deletedKey = $isDeleted ? 'deleted' : 'active';
+                if (!isset($grouped[$date])) $grouped[$date] = [];
+                if (!isset($grouped[$date][$alias])) $grouped[$date][$alias] = ['drinks' => [], 'deleted' => $isDeleted, 'order_time' => $row['order_time']];
+                // If any order for this group is deleted, mark as deleted
+                $grouped[$date][$alias]['deleted'] = $grouped[$date][$alias]['deleted'] || $isDeleted;
+                $grouped[$date][$alias]['order_time'] = min($grouped[$date][$alias]['order_time'], $row['order_time']);
+                if (!isset($grouped[$date][$alias]['drinks'][$drink])) {
+                    $grouped[$date][$alias]['drinks'][$drink] = 0;
+                }
+                $grouped[$date][$alias]['drinks'][$drink] += (int)$row['quantity'];
+            }
+            // Sort by date descending, then by order_time ascending
+            krsort($grouped);
+            foreach ($grouped as $date => $aliases) {
+                $firstAlias = true;
+                $datePrinted = false;
+                foreach ($aliases as $alias => $info) {
+                    $dt = new DateTime($info['order_time']);
+                    $strikeOpen = $info['deleted'] ? '<span style="text-decoration:line-through; color:#b0b0b0;">' : '';
+                    $strikeClose = $info['deleted'] ? '</span>' : '';
+                    $drinks = [];
+                    foreach ($info['drinks'] as $drinkName => $qty) {
+                        $drinks[] = (int)$qty . ' x ' . $this->escapeHtml($drinkName);
+                    }
+                    $drinksLine = implode('<br>', $drinks);
+                    if (!$datePrinted) {
+        ?>
+    <tr>
+        <td colspan="3" style="padding:8px 2px; color:#1769aa; font-weight:bold; background:#e3f0fa; text-align:center; font-size:1.08em;">
+            <?= $strikeOpen . $dt->format('d.m.Y') . $strikeClose ?>
+        </td>
+    </tr>
+<?php
+                        $datePrinted = true;
+                    }
+?>
+    <tr style="border-bottom:1px solid #e3f0fa;">
+        <td colspan="2" style="padding:4px 2px; color:#2196f3; font-weight:bold; vertical-align: top;"> <?= $strikeOpen . $this->escapeHtml($alias) . $strikeClose ?> </td>
+        <td style="padding:4px 2px; color:#333;"> <?= $strikeOpen . $drinksLine . $strikeClose ?> </td>
+    </tr>
+<?php
+                }
+            }
+        else: ?>
+            <tr><td colspan="3" style="text-align:center; color:#888; padding:10px;">Keine Bestellungen in den letzten 24 Stunden.</td></tr>
+        <?php endif; ?>
+        </tbody>
+    </table>
 </div>
 </body>
 </html>
