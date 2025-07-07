@@ -241,6 +241,9 @@ button, .category-btn, input, select, textarea {
         margin: 0 !important;
         box-sizing: border-box;
     }
+    #drink-category-selection {
+        justify-content: center !important;
+    }
 }
 @media (max-width: 500px) {
     .drink-tiles-wrapper {
@@ -333,8 +336,18 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
 
 <?php if (isset($drinks)): ?>
     <div class="separator-small"></div>
+    <?php if ($simpleOrderMode): ?>
+        <div id="simple-balance-container" style="width:100%;display:flex;justify-content:center;align-items:center;padding-bottom: 6px !important;">
+            <?php if ($currentBalance < 0): ?>
+                <button id="current-balance-display" class="negative-balance" style="font-size: 1.35em; font-weight: bold; color: #d32f2f; background: #fff3f3; border-radius: 6px; padding: 4px 14px; display: inline-flex; align-items: center; border: 1px solid #d32f2f; height: 36px; min-height: 36px; cursor:pointer;">
+                    <?= $this->t('Guthaben aufladen!') ?>
+                </button>
+            <?php endif; ?>
+        </div>
+        <div class="separator-small"></div>
+    <?php endif; ?>
     <div class="drink-order-top-bar" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0 8px;">
-        <div style="flex: 1 1 auto; display: flex; justify-content: center; align-items: center;">
+        <div class="order-actions" style="flex: 1 1 auto; display: flex; justify-content: center; align-items: center;">
             <button id="scan-barcode-btn" type="button" class="default-button" title="<?= $this->t('Scan Barcode') ?>" style="font-size: 1.1em; font-weight: bold; background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; padding: 4px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 0; width: 52px; height: 44px; justify-content: center;">
                 <svg width="36" height="28" viewBox="0 0 28 22" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                     <rect x="4" y="4" width="2" height="14" fill="#2196f3"/>
@@ -346,12 +359,12 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
                 </svg>
                 <span class="sr-only" style="position:absolute;left:-9999px;"> <?= $this->t('Scan Barcode') ?> </span>
             </button>
-            <div id="current-balance-display" class="<?= $currentBalance < 0 ? 'negative-balance' : '' ?>" style="font-size: 1.35em; font-weight: bold; color: #2196f3; background: #f5faff; border-radius: 6px; padding: 4px 14px; display: inline-flex; align-items: center; border: 1px solid #2196f3; height: 36px; min-height: 36px;">
-                <?= $this->t('Guthaben:') ?>
-                <span id="current-balance-value" style="margin-left: 8px"></span>
-            </div>
-        </div>
-        <div class="order-actions" style="flex: 1 1 auto; display: flex; justify-content: center; align-items: center;">
+            <?php if (!$simpleOrderMode): ?>
+                <div id="current-balance-display" class="<?= $currentBalance < 0 ? 'negative-balance' : '' ?>" style="font-size: 1.35em; font-weight: bold; color: #2196f3; background: #f5faff; border-radius: 6px; padding: 4px 14px; display: inline-flex; align-items: center; border: 1px solid #2196f3; height: 36px; min-height: 36px;">
+                    <?= $this->t('Guthaben:') ?>
+                    <span id="current-balance-value" style="margin-left: 8px"></span>
+                </div>
+            <?php endif; ?>
             <button type="submit" form="drink-order-form" name="drink_order_submit" value="1" class="default-button stc-main-button" style="background: #2196f3; color: #fff; border: 1px solid #2196f3; border-radius: 6px; padding: 4px 14px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 1em; height: 44px; justify-content: center; font-size: 1.35em; font-weight: bold;">
                 <span id="drink-order-total" style="color: #fff; background: transparent; border-radius: 3px; font-size: 1em; min-width: 8em; display: inline-block; text-align: center; transition: background 0.2s, color 0.2s;"></span>
             </button>
@@ -897,18 +910,35 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
         var newBalance = initialBalance - total;
         var formattedBalance = "";
         if (window.SIMPLE_ORDER_MODE) {
+            // Update simple mode balance area
+            var simpleBalance = document.getElementById('simple-balance-container');
+            if (simpleBalance) {
+                if (newBalance < 0) {
+                    if (!document.getElementById('current-balance-display')) {
+                        var btn = document.createElement('button');
+                        btn.id = 'current-balance-display';
+                        btn.className = 'negative-balance';
+                        btn.style.cssText = 'font-size: 1.35em; font-weight: bold; color: #d32f2f; background: #fff3f3; border-radius: 6px; padding: 4px 14px; display: inline-flex; align-items: center; border: 1px solid #d32f2f; height: 36px; min-height: 36px; cursor:pointer;';
+                        btn.textContent = '<?= $this->t('Guthaben aufladen!') ?>';
+                        simpleBalance.appendChild(btn);
+                    }
+                } else {
+                    var btn = document.getElementById('current-balance-display');
+                    if (btn) btn.remove();
+                }
+            }
             formattedBalance = newBalance > 0 ? " > 0 €" : " < 0 €";
         } else {
             formattedBalance = newBalance.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
-        }
-        var balanceElem = document.getElementById('current-balance-value');
-        var balanceBox = document.getElementById('current-balance-display');
-        balanceElem.textContent = formattedBalance;
-        balanceElem.style.color = (newBalance < 0) ? '#d32f2f' : '#2196f3';
-        if (newBalance < 0) {
-            balanceBox.className += ' negative-balance';
-        } else {
-            balanceBox.className = balanceBox.className.replace(/\bnegative-balance\b/, '');
+            var balanceElem = document.getElementById('current-balance-value');
+            var balanceBox = document.getElementById('current-balance-display');
+            balanceElem.textContent = formattedBalance;
+            balanceElem.style.color = (newBalance < 0) ? '#d32f2f' : '#2196f3';
+            if (newBalance < 0) {
+                balanceBox.className += ' negative-balance';
+            } else {
+                balanceBox.className = balanceBox.className.replace(/\bnegative-balance\b/, '');
+            }
         }
     }
     // --- Shared clear selection and logout logic (global scope) ---
