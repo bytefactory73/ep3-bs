@@ -61,10 +61,8 @@ class SimpleLoginController extends AbstractActionController
         $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
         // Example: fetch available drinks (customize as needed)
         // Fetch available drinks with user_total_count for this user
-        $drinks = $db->query('
-            SELECT d.id, d.name, d.price, d.image, d.category,
-                (SELECT SUM(o.quantity) FROM drink_orders o WHERE o.user_id = ? AND o.drink_id = d.id AND o.deleted = 0) AS user_total_count
-            FROM drinks d', [$userId])->toArray();
+        $drinkManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkManager');
+        $drinks = iterator_to_array($drinkManager->getAll($userId));
         // Provide dummy or minimal data for booking.phtml compatibility
         $drinkHistory = [];
         $userName = 'Gast';
