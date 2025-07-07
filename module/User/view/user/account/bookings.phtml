@@ -6,10 +6,10 @@ $drinks = $this->drinks ?? [];
 
 // Display user name at the top if available
 if (!empty($this->userName)) {
-    echo '<div style="font-size:1.3em; color:#2196f3; font-weight:bold; margin-bottom:12px; text-align:center; position:relative;">' .
-        $this->escapeHtml($this->userName) .
-        '<span id="logout-timer" style="position:absolute; right:0; top:0; font-size:0.85em; color:#d32f2f; background:#fff3f3; border:1px solid #d32f2f; border-radius:6px; padding:2px 10px; margin-left:12px; display:none;"></span>' .
-        '</div>';
+    echo '<div style="font-size:1.3em; color:#2196f3; font-weight:bold; margin-bottom:12px; text-align:center; position:relative;">'
+        . $this->escapeHtml($this->userName)
+        . '<span id="logout-timer" style="position:absolute; right:0; top:0; font-size:0.85em; color:#d32f2f; background:#fff3f3; border:1px solid #d32f2f; border-radius:6px; padding:2px 10px; margin-left:12px; display:none;"></span>'
+        . '</div>';
 }
 
 // Calculate current balance from bottom up (oldest to newest)
@@ -102,6 +102,27 @@ button, .category-btn, input, select, textarea {
     width: 32px;
     height: 32px;
     font-size: 22px;
+}
+.drink-tile .drink-controls button.drink-minus {
+    background: #eee;
+    border: none;
+    border-radius: 4px;
+    width: 32px;
+    height: 32px;
+    font-size: 22px;
+    font-family: system-ui, Arial, sans-serif;
+    font-weight: bold;
+    color: #2196f3;
+    cursor: pointer;
+    margin-right: 0;
+    position: relative;
+    z-index: 2;
+    visibility: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    padding: 0;
 }
 .drink-tile .drink-count-badge {
     display: flex;
@@ -595,7 +616,7 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
     document.addEventListener('DOMContentLoaded', function() {
         var catBtns = document.querySelectorAll('.category-btn');
         var wrapper = document.querySelector('.drink-tiles-wrapper');
-        var tiles = Array.from(wrapper.querySelectorAll('.drink-tile'));
+        var tiles = Array.prototype.slice.call(wrapper.querySelectorAll('.drink-tile'));
         // Store original order
         tiles.forEach(function(tile, idx) {
             tile.setAttribute('data-original-index', idx);
@@ -605,7 +626,7 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
                 catBtns.forEach(function(b) { b.style.background = '#fff'; });
                 this.style.background = '#e3f0fa';
                 var cat = this.getAttribute('data-category');
-                var allTiles = Array.from(wrapper.querySelectorAll('.drink-tile'));
+                var allTiles = Array.prototype.slice.call(wrapper.querySelectorAll('.drink-tile'));
                 if (cat === 'favourites') {
                     // Show only favourites, sort by current order count, then favourite-count, then name
                     var favTiles = allTiles.filter(function(tile) {
@@ -709,13 +730,15 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
     // --- AJAX drink order submission ---
     function getDrinkOrderData() {
         var data = {};
-        document.querySelectorAll('input[id^="input-"]').forEach(function(input) {
-            var count = parseInt(input.value) || 0;
+        var inputs = document.querySelectorAll('input[id^="input-"]');
+        for (var i = 0; i < inputs.length; i++) {
+            var input = inputs[i];
+            var count = parseInt(input.value, 10) || 0;
             if (count > 0) {
                 var id = input.id.replace('input-', '');
                 data['drink_counts[' + id + ']'] = count;
             }
-        });
+        }
         return data;
     }
     function showOrderFeedback(msg, isError) {
@@ -732,90 +755,134 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
             form.addEventListener('submit', function(e) {
                 e.preventDefault();
                 if (submitBtn.disabled) return;
-                // Confirm order
                 if (typeof confirmDrinkOrder === 'function' && !confirmDrinkOrder()) return;
                 var data = getDrinkOrderData();
-                if (Object.keys(data).length === 0) {
+                var hasData = false;
+                for (var k in data) { if (data.hasOwnProperty(k)) { hasData = true; break; } }
+                if (!hasData) {
                     showOrderFeedback('<?= $this->t('Bitte mindestens ein Getränk auswählen.') ?>', true);
                     return;
                 }
                 submitBtn.disabled = true;
-                submitBtn.classList.add('loading');
+                submitBtn.className += ' loading';
                 var url = window.SIMPLE_ORDER_MODE ? 'simple-order/submit-order' : 'bookings/submit-order';
-                fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    body: Object.entries(data).map(function(pair) {
-                        return encodeURIComponent(pair[0]) + '=' + encodeURIComponent(pair[1]);
-                    }).join('&')
-                })
-                .then(function(response) { return response.json(); })
-                .then(function(res) {
-                    if (res && res.success) {
-                        alert('<?= $this->t('Bestellung erfolgreich!') ?>');
-                        if (window.SIMPLE_ORDER_MODE) {
-                            window.location.replace('<?= $this->url("user/simple-login") ?>');
-                        } else {
-                            window.location.reload();
-                        }
-                    } else {
-                        var msg = res && res.error ? res.error : '<?= $this->t('Bestellung fehlgeschlagen.') ?>';
-                        showOrderFeedback(msg, true);
-                        submitBtn.disabled = false;
-                        submitBtn.classList.remove('loading');
+                var params = [];
+                for (var key in data) {
+                    if (data.hasOwnProperty(key)) {
+                        params.push(encodeURIComponent(key) + '=' + encodeURIComponent(data[key]));
                     }
-                })
-                .catch(function(err) {
+                }
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', url, true);
+                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState === 4) {
+                        try {
+                            var res = JSON.parse(xhr.responseText);
+                        } catch (e) { res = null; }
+                        if (res && res.success) {
+                            alert('<?= $this->t('Bestellung erfolgreich!') ?>');
+                            if (window.SIMPLE_ORDER_MODE) {
+                                window.location.replace('<?= $this->url("user/simple-login") ?>');
+                            } else {
+                                window.location.reload();
+                            }
+                        } else {
+                            var msg = res && res.error ? res.error : '<?= $this->t('Bestellung fehlgeschlagen.') ?>';
+                            showOrderFeedback(msg, true);
+                            submitBtn.disabled = false;
+                            submitBtn.className = submitBtn.className.replace(/\bloading\b/, '');
+                        }
+                    }
+                };
+                xhr.onerror = function() {
                     showOrderFeedback('<?= $this->t('Bestellung fehlgeschlagen.') ?>', true);
                     submitBtn.disabled = false;
-                    submitBtn.classList.remove('loading');
-                });
+                    submitBtn.className = submitBtn.className.replace(/\bloading\b/, '');
+                };
+                xhr.send(params.join('&'));
             });
         }
+        // Drink order tile logic
+        var clearBtn = document.getElementById('clear-drink-selection');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', function() { clearSelectionAndLogout(false); });
+        }
+        var minusBtns = document.querySelectorAll('.drink-minus');
+        for (var i = 0; i < minusBtns.length; i++) {
+            minusBtns[i].addEventListener('click', function() {
+                var id = this.getAttribute('data-drink-id');
+                var input = document.getElementById('input-' + id);
+                var badge = document.getElementById('badge-' + id);
+                var val = parseInt(input.value, 10) || 0;
+                if (val > 0) val--;
+                input.value = val;
+                badge.textContent = val;
+                badge.style.visibility = val > 0 ? 'visible' : 'hidden';
+                var minusBtn = this;
+                minusBtn.style.visibility = val > 0 ? 'visible' : 'hidden';
+                updateDrinkOrderTotal();
+            });
+        }
+        var tiles = document.querySelectorAll('.drink-tile');
+        for (var i = 0; i < tiles.length; i++) {
+            tiles[i].addEventListener('click', function(e) {
+                var minusBtn = this.querySelector('.drink-minus');
+                if (minusBtn && e.target === minusBtn) return;
+                var id = this.getAttribute('data-drink-id');
+                var input = document.getElementById('input-' + id);
+                var badge = document.getElementById('badge-' + id);
+                var val = parseInt(input.value, 10) || 0;
+                val++;
+                input.value = val;
+                badge.textContent = val;
+                badge.style.visibility = val > 0 ? 'visible' : 'hidden';
+                if (minusBtn) minusBtn.style.visibility = val > 0 ? 'visible' : 'hidden';
+                updateDrinkOrderTotal();
+            });
+        }
+        // Initialize minus button visibility on page load
+        for (var i = 0; i < tiles.length; i++) {
+            var input = tiles[i].querySelector('input[type="hidden"]');
+            var minusBtn = tiles[i].querySelector('.drink-minus');
+            var val = parseInt(input.value, 10) || 0;
+            if (minusBtn) minusBtn.style.visibility = val > 0 ? 'visible' : 'hidden';
+        }
+        // Ensure booking button is disabled on initial load if no drinks selected
+        updateDrinkOrderTotal();
     });
-    // Drink order tile logic
     // --- Dynamic sorting of drink tiles by count (JS) ---
     function sortDrinkTiles() {
         var wrapper = document.querySelector('.drink-tiles-wrapper');
         if (!wrapper) return;
-        var tiles = Array.from(wrapper.querySelectorAll('.drink-tile'));
+        var tiles = [].slice.call(wrapper.querySelectorAll('.drink-tile'));
         tiles.sort(function(a, b) {
             var inputA = a.querySelector('input[type="hidden"]');
             var inputB = b.querySelector('input[type="hidden"]');
-            var countA = parseInt(inputA.value) || 0;
-            var countB = parseInt(inputB.value) || 0;
-//            if (countA === countB) {
-//                var nameA = a.querySelector('.drink-name').textContent.trim().toLowerCase();
-//                var nameB = b.querySelector('.drink-name').textContent.trim().toLowerCase();
-//                return nameA.localeCompare(nameB);
-//            }
+            var countA = parseInt(inputA.value, 10) || 0;
+            var countB = parseInt(inputB.value, 10) || 0;
             return countB - countA;
         });
-        tiles.forEach(function(tile) { wrapper.appendChild(tile); });
+        for (var i = 0; i < tiles.length; i++) { wrapper.appendChild(tiles[i]); }
     }
     // Call after every count change
     function updateDrinkOrderTotal() {
         var total = 0;
         var anySelected = false;
-        document.querySelectorAll('input[id^="input-"]').forEach(function(input) {
-            var count = parseInt(input.value) || 0;
+        var inputs = document.querySelectorAll('input[id^="input-"]');
+        for (var i = 0; i < inputs.length; i++) {
+            var input = inputs[i];
+            var count = parseInt(input.value, 10) || 0;
             var price = parseFloat(input.getAttribute('data-price')) || 0;
             total += count * price;
             if (count > 0) anySelected = true;
-        });
-        // Format as currency (EUR, 2 decimals, comma as decimal separator)
-        var formatted = (total).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+        }
+        var formatted = total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
         var totalElem = document.getElementById('drink-order-total');
-        totalElem.textContent = 'Buchen:\u00a0' + formatted + '\u00a0';
-
-        // Enable/disable booking button
+        totalElem.textContent = 'Buchen: ' + formatted + ' ';
         var bookBtn = document.querySelector('button[type="submit"][form="drink-order-form"]');
         if (bookBtn) bookBtn.disabled = !anySelected;
-
-        // Update current balance preview
         var initialBalance = parseFloat("<?= $currentBalance ?>");
         var newBalance = initialBalance - total;
         var formattedBalance = "";
@@ -829,79 +896,35 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
         balanceElem.textContent = formattedBalance;
         balanceElem.style.color = (newBalance < 0) ? '#d32f2f' : '#2196f3';
         if (newBalance < 0) {
-            balanceBox.classList.add('negative-balance');
+            balanceBox.className += ' negative-balance';
         } else {
-            balanceBox.classList.remove('negative-balance');
+            balanceBox.className = balanceBox.className.replace(/\bnegative-balance\b/, '');
         }
     }
-    document.addEventListener('DOMContentLoaded', function() {
-        var clearBtn = document.getElementById('clear-drink-selection');
-        if (clearBtn) {
-            clearBtn.addEventListener('click', function() { clearSelectionAndLogout(false); });
-        }        
-        document.querySelectorAll('.drink-minus').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                var id = this.getAttribute('data-drink-id');
-                var input = document.getElementById('input-' + id);
-                var badge = document.getElementById('badge-' + id);
-                var val = parseInt(input.value) || 0;
-                if (val > 0) val--;
-                input.value = val;
-                badge.textContent = val;
-                badge.style.visibility = val > 0 ? 'visible' : 'hidden';
-                var minusBtn = this;
-                minusBtn.style.visibility = val > 0 ? 'visible' : 'hidden';
-                updateDrinkOrderTotal();
-            });
-        });
-        document.querySelectorAll('.drink-tile').forEach(function(tile) {
-            tile.addEventListener('click', function(e) {
-                // Prevent increment if minus button is clicked
-                if (e.target.closest('.drink-minus')) return;
-                var id = this.getAttribute('data-drink-id');
-                var input = document.getElementById('input-' + id);
-                var badge = document.getElementById('badge-' + id);
-                var val = parseInt(input.value) || 0;
-                val++;
-                input.value = val;
-                badge.textContent = val;
-                badge.style.visibility = val > 0 ? 'visible' : 'hidden';
-                var minusBtn = this.querySelector('.drink-minus');
-                if (minusBtn) minusBtn.style.visibility = val > 0 ? 'visible' : 'hidden';
-                updateDrinkOrderTotal();
-            });
-        });
-        // Initialize minus button visibility on page load
-        document.querySelectorAll('.drink-tile').forEach(function(tile) {
-            var input = tile.querySelector('input[type="hidden"]');
-            var minusBtn = tile.querySelector('.drink-minus');
-            var val = parseInt(input.value) || 0;
-            if (minusBtn) minusBtn.style.visibility = val > 0 ? 'visible' : 'hidden';
-        });
-        // Ensure booking button is disabled on initial load if no drinks selected
-        updateDrinkOrderTotal();
-    });
     // --- Shared clear selection and logout logic (global scope) ---
     function clearSelectionAndLogout(logoutUser) {
-        // Check if any drink is selected before asking for confirmation
         var hasOrder = false;
-        document.querySelectorAll('input[id^="input-"]').forEach(function(input) {
-            if (parseInt(input.value) > 0) hasOrder = true;
-        });
+        var inputs = document.querySelectorAll('input[id^="input-"]');
+        for (var i = 0; i < inputs.length; i++) {
+            if (parseInt(inputs[i].value, 10) > 0) hasOrder = true;
+        }
         if (hasOrder) {
             if (!confirm('<?= $this->t('Bist Du sicher, dass Du Deine Getränkeauswahl löschen möchtest? Dadurch wird Deine aktuelle Bestellung zurückgesetzt.') ?>')) {
                 return;
             }
         }
-        document.querySelectorAll('input[id^="input-"]').forEach(function(input) {
-            input.value = 0;
-            var id = input.id.replace('input-', '');
+        for (var i = 0; i < inputs.length; i++) {
+            inputs[i].value = 0;
+            var id = inputs[i].id.replace('input-', '');
             var badge = document.getElementById('badge-' + id);
             badge.textContent = 0;
             badge.style.visibility = 'hidden';
-            var minusBtn = document.getElementById('input-' + id)?.closest('.drink-tile')?.querySelector('.drink-minus');
-            if (minusBtn) minusBtn.style.visibility = 'hidden';
-        });
+            var tile = document.getElementById('input-' + id);
+            if (tile) {
+                var minusBtn = tile.parentNode.parentNode.querySelector('.drink-minus');
+                if (minusBtn) minusBtn.style.visibility = 'hidden';
+            }
+        }
         if (typeof updateDrinkOrderTotal === 'function') updateDrinkOrderTotal();
         if (logoutUser) {
             window.location.replace('<?= $this->url("user/simple-login") ?>');
@@ -910,18 +933,24 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
     function confirmDrinkOrder() {
         var items = [];
         var total = 0;
-        document.querySelectorAll('input[id^="input-"]').forEach(function(input) {
-            var count = parseInt(input.value) || 0;
+        var inputs = document.querySelectorAll('input[id^="input-"]');
+        for (var i = 0; i < inputs.length; i++) {
+            var input = inputs[i];
+            var count = parseInt(input.value, 10) || 0;
             if (count > 0) {
                 var id = input.id.replace('input-', '');
-                var nameElem = document.querySelector('.drink-tile [id="input-' + id + '"]').closest('.drink-tile').querySelector('.drink-name');
-                var name = nameElem ? nameElem.textContent.trim() : id;
-                var price = parseFloat(input.getAttribute('data-price')) || 0;
-                var itemTotal = count * price;
-                total += itemTotal;
-                items.push(name + ' x ' + count + ' = ' + itemTotal.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }));
+                var nameElem = document.querySelector('.drink-tile [id="input-' + id + '"]');
+                if (nameElem) {
+                    var tile = nameElem.parentNode.parentNode;
+                    var nameDiv = tile.querySelector('.drink-name');
+                    var name = nameDiv ? nameDiv.textContent.replace(/^\s+|\s+$/g, '') : id;
+                    var price = parseFloat(input.getAttribute('data-price')) || 0;
+                    var itemTotal = count * price;
+                    total += itemTotal;
+                    items.push(name + ' x ' + count + ' = ' + itemTotal.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }));
+                }
             }
-        });
+        }
         if (items.length === 0) {
             return confirm('<?= $this->t('Keine Getränke ausgewählt') ?>');
         }
