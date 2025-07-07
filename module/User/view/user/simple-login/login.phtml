@@ -10,6 +10,7 @@
         min-height: 100vh;
         height: auto;
         overflow-x: hidden;
+        font-size: 1.04em; /* Slightly above default */
     }
     .simple-login-bg {
         position: fixed;
@@ -21,7 +22,8 @@
         height: 100%;
     }
     .simple-login-frame {
-        max-width: 350px;
+        max-width: 600px;
+        width: 100%;
         margin: 8vh auto 0 auto;
         background: #fafdff;
         border-radius: 18px;
@@ -31,28 +33,30 @@
         flex-direction: column;
         align-items: center;
         border: 1.5px solid #2196f3;
+        font-size: 1em; /* Default size in login frame */
     }
     .simple-login-frame h1 {
         color: #2196f3;
-        font-size: 2em;
+        font-size: 1.25em; /* Slightly larger heading */
         margin-bottom: 18px;
         font-weight: bold;
         text-align: center;
     }
     .simple-login-frame label {
-        font-size: 1.1em;
+        font-size: 1.04em; /* Slightly larger label */
         color: #333;
         margin-bottom: 8px;
         font-weight: 500;
         display: block;
         text-align: left;
     }
-    .simple-login-frame input[type="password"] {
+    .simple-login-frame input[type="password"],
+    .simple-login-frame input[type="text"] {
+        font-size: 1.04em; /* Slightly larger input text */
         width: 100%;
         padding: 10px 12px;
         border-radius: 8px;
         border: 1.5px solid #b0c4de;
-        font-size: 1.1em;
         margin-bottom: 18px;
         outline: none;
         transition: border 0.2s;
@@ -61,13 +65,13 @@
         border-color: #2196f3;
     }
     .simple-login-frame button[type="submit"] {
+        font-size: 1.04em; /* Slightly larger button text */
         width: 100%;
         background: #2196f3;
         color: #fff;
         border: none;
         border-radius: 8px;
         padding: 12px 0;
-        font-size: 1.15em;
         font-weight: bold;
         cursor: pointer;
         box-shadow: 0 1px 4px rgba(33,150,243,0.08);
@@ -78,6 +82,7 @@
         background: #1769aa;
     }
     .simple-login-frame .error-message {
+        font-size: 1em; /* Default error message size */
         color: #d32f2f;
         background: #fff3f3;
         border: 1px solid #d32f2f;
@@ -86,7 +91,6 @@
         margin-bottom: 16px;
         width: 100%;
         text-align: center;
-        font-size: 1em;
     }
     .simple-login-frame form {
         width: 100%;
@@ -94,31 +98,17 @@
         flex-direction: column;
         align-items: center;
     }
-    .simple-login-frame input[type="text"] {
-        width: 100%;
-        max-width: 100%;
-        padding: 10px 12px;
-        border-radius: 8px;
-        border: 1.5px solid #b0c4de;
-        font-size: 1.1em;
-        margin-bottom: 18px;
-        outline: none;
-        transition: border 0.2s;
-        box-sizing: border-box;
-        text-align: center;
-    }
-    .simple-login-frame input[type="text"]:focus {
-        border-color: #2196f3;
-    }
-    @media (max-width: 500px) {
-        .simple-login-frame {
+    @media (max-width: 700px) {
+        .simple-login-frame,
+        .simple-order-history-frame {
             max-width: 98vw;
             padding: 18px 6vw 18px 6vw;
         }
     }
     .simple-order-history-frame {
-        max-width: 350px;
-        margin: 8vh auto 0 auto;
+        max-width: 600px;
+        width: 100%;
+        margin: 18px auto 0 auto;
         background: #fafdff;
         border-radius: 18px;
         box-shadow: 0 4px 32px rgba(33,150,243,0.10), 0 1.5px 6px rgba(33,150,243,0.08);
@@ -127,10 +117,11 @@
         flex-direction: column;
         align-items: center;
         border: 1.5px solid #2196f3;
+        font-size: 1em; /* Default order history text */
     }
     .simple-order-history-frame h1 {
+        font-size: 1.15em; /* Slightly larger order history heading */
         color: #2196f3;
-        font-size: 2em;
         margin-bottom: 18px;
         font-weight: bold;
         text-align: center;
@@ -215,11 +206,11 @@
     })();
     </script>
 </div>
-<div class="simple-login-info" style="max-width:350px;width:100%;background:#e3f0fa;border-radius:12px;border:1.5px solid #2196f3;padding:18px 22px;color:#1769aa;font-size:1.08em;text-align:center;box-shadow:0 2px 12px rgba(33,150,243,0.07);margin:18px auto 0 auto;">
+<div class="simple-login-info" style="max-width:600px;width:100%;background:#e3f0fa;border-radius:12px;border:1.5px solid #2196f3;padding:18px 22px;color:#1769aa;font-size:1.08em;text-align:center;box-shadow:0 2px 12px rgba(33,150,243,0.07);margin:18px auto 0 auto;">
     Logge dich mit deiner <b>"Theken-ID"</b> ein. Diese kannst du in deinem Benutzer Profil des Buchungssystem selbst wählen.<br><br>
-    <i><b>In der Testphase kannst du dich auch mit "test" einloggen um alles auszuprobieren</b></i>.
+    <i>In der Testphase kannst du dich auch mit <b>"test"</b> einloggen um alles auszuprobieren</i>.
 </div>
-<div class="simple-order-history-frame" style="max-width:350px;margin:18px auto 0 auto;background:#fafdff;border-radius:18px;box-shadow:0 4px 32px rgba(33,150,243,0.10), 0 1.5px 6px rgba(33,150,243,0.08);padding:36px 32px 28px 32px;display:flex;flex-direction:column;align-items:center;border:1.5px solid #2196f3;">
+<div class="simple-order-history-frame" style="max-width:600px;width:100%;margin:18px auto 0 auto;background:#fafdff;border-radius:18px;box-shadow:0 4px 32px rgba(33,150,243,0.10), 0 1.5px 6px rgba(33,150,243,0.08);padding:36px 32px 28px 32px;display:flex;flex-direction:column;align-items:center;border:1.5px solid #2196f3;">
     <h1>Buchungshistorie</h1>
     <table style="font-size:1em; border-collapse:collapse; margin-bottom:24px; margin-left:auto; margin-right:auto; min-width:0; width:auto; max-width:100%;">
         <thead>
