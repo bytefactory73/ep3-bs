@@ -229,6 +229,36 @@ return array(
                             ),
                         ),
                     ),
+                    'drinks-admin' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/drinks-admin',
+                            'defaults' => array(
+                                'controller' => 'User\Controller\Account',
+                                'action' => 'drinksAdmin',
+                            ),
+                        ),
+                    ),
+                    'deposits' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/deposits',
+                            'defaults' => array(
+                                'controller' => 'User\\Controller\\Account',
+                                'action' => 'deposits',
+                            ),
+                        ),
+                    ),
+                    'get-user-deposits-data' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/get-user-deposits-data',
+                            'defaults' => array(
+                                'controller' => 'User\Controller\Account',
+                                'action' => 'getUserDepositsData',
+                            ),
+                        ),
+                    ),
                 ),
             ),
         ),

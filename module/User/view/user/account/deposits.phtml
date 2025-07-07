@@ -1,0 +1,162 @@
+<?php
+// Admin-only: Übersicht Einzahlungen
+$this->setup([
+    'title' => 'Einzahlungen Übersicht',
+    'panel' => 'centered-panel',
+    'back' => $this->url('user/drinks-admin'),
+    'links' => [
+        'Drinks Verwaltung' => $this->url('user/drinks-admin'),
+    ],
+]);
+?>
+
+<h1><?= $this->t('Einzahlungen Übersicht') ?></h1>
+<div class="separator-small"></div>
+<p><?= $this->t('Hier können Sie alle Einzahlungen der Nutzer einsehen und verwalten.') ?></p>
+
+<div id="add-deposit-section" style="margin-top: 20px; margin-bottom: 20px; padding: 16px 14px 14px 14px; background: #f7faff; border-radius: 8px; box-shadow: 0 1px 6px rgba(30,60,120,0.06);">
+    <h2 id="add-deposit-section-title" style="margin-top: 0; margin-bottom: 12px;"> <?= $this->t('Add Deposit to User') ?> </h2>
+    <form method="post" id="deposit-form" style="margin-bottom:2em;">
+        <label for="deposit_user_id">User:</label>
+        <select name="deposit_user_id" id="deposit_user_id" required>
+            <option value="">-- <?= $this->t('Select User') ?> --</option>
+            <?php foreach ($this->users as $user): ?>
+                <option value="<?= (int)$user->get('uid') ?>">
+                    <?= $this->escapeHtml($user->get('alias')) ?> (<?= $this->escapeHtml($user->get('email')) ?>)
+                </option>
+            <?php endforeach; ?>
+        </select>
+        <br>
+        <label for="deposit_amount">Amount:</label>
+        <input type="number" name="deposit_amount" id="deposit_amount" min="0.01" step="0.01" placeholder="<?= $this->t('Amount') ?>" required />
+        <label for="deposit_comment">Kommentar:</label>
+        <input type="text" name="deposit_comment" id="deposit_comment" maxlength="255" placeholder="<?= $this->t('Kommentar (optional)') ?>" />
+        <button type="submit" name="add_deposit" class="default-button mini-button">
+            <?= $this->t('Add Deposit') ?>
+        </button>
+    </form>
+    <div id="current-balance-box" style="display:none; margin-top:10px; font-weight:bold; color:#2196f3;"></div>
+</div>
+
+<div id="user-history-section"></div>
+
+<script>
+function formatCurrency(amount) {
+    return amount != null ? amount.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) : '';
+}
+document.addEventListener('DOMContentLoaded', function() {
+    var userSelect = document.getElementById('deposit_user_id');
+    var balanceBox = document.getElementById('current-balance-box');
+    var historySection = document.getElementById('user-history-section');
+    // Restore last selected user from localStorage
+    var lastUid = localStorage.getItem('deposits_selected_uid');
+    if (lastUid && userSelect.querySelector('option[value="' + lastUid + '"]')) {
+        userSelect.value = lastUid;
+    }
+    // Persist showStorno state in localStorage
+    var showStorno = localStorage.getItem('deposits_show_storno') === '1';
+    async function updateUserInfo() {
+        var uid = userSelect.value;
+        // Save selected user to localStorage
+        localStorage.setItem('deposits_selected_uid', uid);
+        balanceBox.style.display = 'none';
+        balanceBox.textContent = '';
+        historySection.innerHTML = '';
+        if (uid) {
+            try {
+                const resp = await fetch('<?= $this->url('user/get-user-deposits-data') ?>?uid=' + encodeURIComponent(uid), { credentials: 'same-origin' });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await resp.json();
+                if (typeof data.balance !== 'undefined' && data.balance !== null) {
+                    balanceBox.style.display = '';
+                    balanceBox.textContent = '<?= $this->t('Aktueller Kontostand:') ?> ' + formatCurrency(data.balance);
+                }
+                function renderHistory(history, showStorno) {
+                    var html = '<h2><?= $this->t('Buchungs- und Einzahlungsverlauf') ?></h2>' +
+                        '<div style="margin-bottom:10px;"><label><input type="checkbox" id="show-storno-checkbox"' + (showStorno ? ' checked' : '') + '> <?= $this->t('Zeige Storno') ?></label></div>';
+                    for (var day of history) {
+                        var deposits = day.entries.filter(e => e.type === 'Einzahlung' && !e.deleted);
+                        var orders = day.entries.filter(e => e.type !== 'Einzahlung' && (showStorno || !e.deleted));
+                        // Only show the day if there are visible entries
+                        if (orders.length === 0 && deposits.length === 0) continue;
+                        var runningBalance = 0;
+                        var daySum = day.entries.filter(e => e.type !== 'Einzahlung' && (showStorno || !e.deleted)).reduce((sum, e) => (e.deleted ? sum : sum + e.amount), 0);
+                        html += '<div style="margin-top:18px; margin-bottom:8px; font-weight:bold; color:#1769aa;">' + day.date + '</div>';
+                        html += '<div style="margin-left:32px;">';
+                        if (orders.length > 0) {
+                            html += '<table class="default-table" style="margin-bottom:4px; text-align:left; margin-left:0; padding-left:16px;">';
+                            var lastBalance = null;
+                            for (var entry of day.entries.filter(e => e.type !== 'Einzahlung')) {
+                                if (entry.deleted && !showStorno) continue;
+                                var isDeleted = entry.deleted;
+                                var color = entry.type === 'Buchung' ? '#1769aa' : '#b71c1c';
+                                var style = 'color:' + color + ';';
+                                if (isDeleted) style += ' text-decoration:line-through;color:#b0b0b0;';
+                                style += ' padding-top:1px; padding-bottom:1px; line-height:1; text-align:left;';
+                                var timeStr = '';
+                                if (entry.datetime) {
+                                    var match = entry.datetime.match(/\b(\d{2}:\d{2})/);
+                                    if (match) timeStr = match[1];
+                                }
+                                html += '<tr style="' + style + '">';
+                                html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + entry.type + '</td>';
+                                html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + formatCurrency(entry.amount) + '</td>';
+                                html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + (entry.desc || '') + (timeStr ? ' <span style="color:#888;font-size:90%;margin-left:8px;">' + timeStr + '</span>' : '') + '</td>';
+                                html += '</tr>';
+                                if (!isDeleted && typeof entry.balance !== 'undefined') {
+                                    lastBalance = entry.balance;
+                                }
+                            }
+                            html += '<tr style="font-weight:bold;background:#fafdff;">' +
+                                '<td style="text-align:left;">Tagessumme</td>' +
+                                '<td style="text-align:left;">' + formatCurrency(daySum) + '</td>' +
+                                '<td style="text-align:left;">';
+                            if (lastBalance !== null) {
+                                html += '<span style="color:#2196f3;"><?= $this->t('Saldo:') ?> ' + formatCurrency(lastBalance) + '</span>';
+                            }
+                            html += '</td></tr>';
+                            html += '</table>';
+                        }
+                        for (var entry of deposits) {
+                            var timeStr = '';
+                            if (entry.datetime) {
+                                var match = entry.datetime.match(/\b(\d{2}:\d{2})/);
+                                if (match) timeStr = match[1];
+                            }
+                            html += '<div style="margin-bottom:1px; color:#388e3c; font-weight:bold; line-height:1.1;">'
+                                + '<?= $this->t('Einzahlung:') ?> ' + formatCurrency(entry.amount)
+                                + (entry.desc ? ' <span style="color:#888;font-weight:normal;">' + entry.desc + '</span>' : '')
+                                + (timeStr ? ' <span style="color:#888;font-size:90%;margin-left:8px;">' + timeStr + '</span>' : '')
+                                + (typeof entry.balance !== 'undefined' ? ' <span style="color:#2196f3;">Saldo: ' + formatCurrency(entry.balance) + '</span>' : '')
+                                + '</div>';
+                        }
+                        html += '</div>';
+                    }
+                    return html;
+                }
+                if (Array.isArray(data.history)) {
+                    var history = data.history;
+                    function attachStornoHandler() {
+                        var stornoCheckbox = document.getElementById('show-storno-checkbox');
+                        if (stornoCheckbox) {
+                            stornoCheckbox.addEventListener('change', function() {
+                                showStorno = stornoCheckbox.checked;
+                                localStorage.setItem('deposits_show_storno', showStorno ? '1' : '0');
+                                historySection.innerHTML = renderHistory(history, showStorno);
+                                attachStornoHandler();
+                            });
+                        }
+                    }
+                    historySection.innerHTML = renderHistory(history, showStorno);
+                    attachStornoHandler();
+                }
+            } catch (e) {
+                historySection.innerHTML = '<div style="color:red;">Fehler beim Laden der Daten.</div>';
+            }
+        }
+    }
+    userSelect.addEventListener('change', updateUserInfo);
+    // Only update if a user is preselected
+    if (userSelect.value) updateUserInfo();
+});
+</script>

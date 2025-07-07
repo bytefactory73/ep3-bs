@@ -20,10 +20,10 @@ class DrinkDepositManager
         return $statement->execute();
     }
 
-    public function addDeposit($userId, $amount)
+    public function addDeposit($userId, $amount, $comment = null)
     {
-        $sql = 'INSERT INTO drink_deposits (user_id, amount) VALUES (?, ?)';
-        $statement = $this->dbAdapter->createStatement($sql, [$userId, $amount]);
+        $sql = 'INSERT INTO drink_deposits (user_id, amount, comment) VALUES (?, ?, ?)';
+        $statement = $this->dbAdapter->createStatement($sql, [$userId, $amount, $comment]);
         return $statement->execute();
     }
 }

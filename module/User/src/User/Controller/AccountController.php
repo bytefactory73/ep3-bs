@@ -758,16 +758,6 @@ class AccountController extends AbstractActionController
                     $dbAdapter->query('DELETE FROM drinks WHERE id = ?', [$id]);
                     $message = 'Drink deleted.';
                 }
-            } elseif (isset($post['add_deposit'])) {
-                $depositUserId = intval($post['deposit_user_id']);
-                $depositAmount = floatval($post['deposit_amount']);
-                if ($depositUserId > 0 && $depositAmount > 0) {
-                    $drinkDepositManager->addDeposit($depositUserId, $depositAmount);
-                    // Redirect to avoid duplicate deposit on reload (PRG pattern)
-                    return $this->redirect()->toRoute(null, [], ['query' => ['message' => 'Deposit added.']], true);
-                } else {
-                    $message = 'Invalid deposit data.';
-                }
             }
         }
         $drinks = $drinkManager->getAll();
@@ -824,5 +814,116 @@ class AccountController extends AbstractActionController
         } else {
             return $this->getResponse()->setContent(json_encode(['success' => false, 'error' => $result['error']]))->setStatusCode(400);
         }
+    }
+
+    public function drinksAdminAction()
+    {
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $user = $userSessionManager->getSessionUser();
+        if (!$user || $user->get('status') !== 'admin') {
+            return $this->redirect()->toRoute('user/settings');
+        }
+        // Just render the new landing page
+        return [];
+    }
+
+    public function depositsAction()
+    {
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $user = $userSessionManager->getSessionUser();
+        if (!$user || $user->get('status') !== 'admin') {
+            return $this->redirect()->toRoute('user/settings');
+        }
+        $userManager = $serviceManager->get('User\Manager\UserManager');
+        $users = $userManager->getAll('alias ASC');
+        $message = null;
+        if ($this->getRequest()->isPost()) {
+            $post = $this->params()->fromPost();
+            if (isset($post['add_deposit'])) {
+                $depositUserId = intval($post['deposit_user_id']);
+                $depositAmount = floatval($post['deposit_amount']);
+                $depositComment = isset($post['deposit_comment']) ? trim($post['deposit_comment']) : null;
+                if ($depositUserId > 0 && $depositAmount > 0) {
+                    $serviceManager->get('Drinks\Manager\DrinkDepositManager')->addDeposit($depositUserId, $depositAmount, $depositComment);
+                    return $this->redirect()->toRoute(null, [], ['query' => ['message' => 'Deposit added.']], true);
+                } else {
+                    $message = 'Invalid deposit data.';
+                }
+            }
+        }
+        return [
+            'users' => $users,
+            'message' => $message,
+        ];
+    }
+
+    public function getUserDepositsDataAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $admin = $userSessionManager->getSessionUser();
+        if (!$admin || $admin->get('status') !== 'admin') {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['error' => 'No permission']));
+        }
+        $uid = (int)$this->params()->fromQuery('uid');
+        if (!$uid) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'No user selected']));
+        }
+        $userManager = $serviceManager->get('User\Manager\UserManager');
+        $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
+        $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
+        $user = $userManager->get($uid);
+        if (!$user) {
+            return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['error' => 'User not found']));
+        }
+        $orders = iterator_to_array($drinkOrderManager->getByUser($uid));
+        $deposits = iterator_to_array($drinkDepositManager->getByUser($uid));
+        $history = [];
+        foreach ($deposits as $d) {
+            $history[] = [
+                'type' => 'Einzahlung',
+                'amount' => $d['amount'],
+                'desc' => $d['comment'],
+                'datetime' => $d['deposit_time'],
+                'deleted' => 0,
+            ];
+        }
+        foreach ($orders as $o) {
+            $history[] = [
+                'type' => empty($o['deleted']) ? 'Buchung' : 'Storno',
+                'amount' => -1 * $o['quantity'] * $o['price'],
+                'desc' => $o['quantity'] . ' x ' . $o['name'],
+                'datetime' => $o['order_time'],
+                'deleted' => empty($o['deleted']) ? 0 : 1,
+            ];
+        }
+        usort($history, function($a, $b) { return strcmp($a['datetime'], $b['datetime']); });
+        // Group by day and calculate running balance
+        $days = [];
+        $balance = 0;
+        foreach ($history as $entry) {
+            $date = substr($entry['datetime'], 0, 10);
+            if (empty($entry['deleted'])) {
+                $balance += $entry['amount'];
+                $entry['balance'] = $balance;
+            }
+            if (!isset($days[$date])) $days[$date] = [];
+            $days[$date][] = $entry;
+        }
+        $userBalance = $balance;
+        $userHistory = [];
+        foreach ($days as $date => $entries) {
+            $userHistory[] = [
+                'date' => $date,
+                'entries' => $entries,
+            ];
+        }
+        return $this->getResponse()->setContent(json_encode([
+            'balance' => $userBalance,
+            'history' => $userHistory,
+        ]));
     }
 }
