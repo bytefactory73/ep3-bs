@@ -106,19 +106,24 @@ $this->setup(array(
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: 0 2px;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 32px;
+    height: 32px;
     background: #2196f3;
     color: #fff;
     border-radius: 10px;
-    padding: 5px 16px;
-    font-size: 16px;
+    font-size: 19.8px;
     font-weight: bold;
-    min-width: 32px;
-    min-height: 28px;
     text-align: center;
     box-shadow: 0 1px 2px rgba(0,0,0,0.04);
     transition: background 0.2s, color 0.2s;
     opacity: 0.9;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+    min-height: 0;
 }
 .drink-image-frame {
     width: 128px;
@@ -417,6 +422,8 @@ $this->setup(array(
                     input.value = val;
                     badge.textContent = val;
                     badge.style.visibility = val > 0 ? 'visible' : 'hidden';
+                    var minusBtn = tile ? tile.querySelector('.drink-minus') : null;
+                    if (minusBtn) minusBtn.style.visibility = val > 0 ? 'visible' : 'hidden';
                     if (typeof updateDrinkOrderTotal === 'function') updateDrinkOrderTotal();
                     sortDrinkTiles(); // Only sort after barcode scan
                 } else {
@@ -552,18 +559,15 @@ $this->setup(array(
                 });
             }
             foreach ($drinks as $drink): ?>
-                <div class="drink-tile" data-category="<?= (int)($drink['category'] ?? 0) ?>" favourite-count="<?= (int)($drink['user_total_count'] ?? 0) ?>">
+                <div class="drink-tile" data-category="<?= (int)($drink['category'] ?? 0) ?>" favourite-count="<?= (int)($drink['user_total_count'] ?? 0) ?>" data-drink-id="<?= (int)$drink['id'] ?>" style="position:relative; cursor:pointer;">
                     <?php
                     $imgFile = isset($drink['image']) && $drink['image'] ? $drink['image'] : 'drink-placeholder.png';
                     $imgPath = $this->basePath('/imgs/branding/' . $imgFile);
                     ?>
                     <div class="drink-controls">
-                        <button type="button" class="drink-minus" data-drink-id="<?= (int)$drink['id'] ?>" style="background: #eee; border: none; border-radius: 4px; width: 30.8px; height: 30.8px; font-size: 19.8px; font-weight: bold; color: #2196f3; cursor: pointer; margin-right: 0;">–</button>
-                        <span style="flex: 1 1 auto; display: flex; align-items: center; justify-content: center; min-width: 32px;">
-                            <span class="drink-count-badge" id="badge-<?= (int)$drink['id'] ?>" style="background: #2196f3; color: #fff; border-radius: 10px; padding: 5px 16px; font-size: 16px; font-weight: bold; min-width: 32px; min-height: 28px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.04); transition: background 0.2s, color 0.2s; visibility: hidden;">0</span>
-                        </span>
-                        <button type="button" class="drink-plus" data-drink-id="<?= (int)$drink['id'] ?>" style="background: #eee; border: none; border-radius: 4px; width: 30.8px; height: 30.8px; font-size: 19.8px; font-weight: bold; color: #2196f3; cursor: pointer; margin-left: 0;">+</button>
+                        <button type="button" class="drink-minus" data-drink-id="<?= (int)$drink['id'] ?>" style="background: #eee; border: none; border-radius: 4px; width: 32px; height: 32px; font-size: 19.8px; font-weight: bold; color: #2196f3; cursor: pointer; margin-right: 0; position:relative; z-index:2;">–</button>
                     </div>
+                    <span class="drink-count-badge" id="badge-<?= (int)$drink['id'] ?>" style="position:absolute; top:4px; right:4px; z-index:2; visibility:hidden;">0</span>
                     <div class="drink-image-frame">
                         <img src="<?= $imgPath ?>" alt="<?= $this->escapeHtmlAttr($drink['name']) ?>" />
                     </div>
@@ -716,19 +720,6 @@ $this->setup(array(
         if (clearBtn) {
             clearBtn.addEventListener('click', function() { clearSelectionAndLogout(false); });
         }        
-        document.querySelectorAll('.drink-plus').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                var id = this.getAttribute('data-drink-id');
-                var input = document.getElementById('input-' + id);
-                var badge = document.getElementById('badge-' + id);
-                var val = parseInt(input.value) || 0;
-                val++;
-                input.value = val;
-                badge.textContent = val;
-                badge.style.visibility = val > 0 ? 'visible' : 'hidden';
-                updateDrinkOrderTotal();
-            });
-        });
         document.querySelectorAll('.drink-minus').forEach(function(btn) {
             btn.addEventListener('click', function() {
                 var id = this.getAttribute('data-drink-id');
@@ -739,8 +730,34 @@ $this->setup(array(
                 input.value = val;
                 badge.textContent = val;
                 badge.style.visibility = val > 0 ? 'visible' : 'hidden';
+                var minusBtn = this;
+                minusBtn.style.visibility = val > 0 ? 'visible' : 'hidden';
                 updateDrinkOrderTotal();
             });
+        });
+        document.querySelectorAll('.drink-tile').forEach(function(tile) {
+            tile.addEventListener('click', function(e) {
+                // Prevent increment if minus button is clicked
+                if (e.target.closest('.drink-minus')) return;
+                var id = this.getAttribute('data-drink-id');
+                var input = document.getElementById('input-' + id);
+                var badge = document.getElementById('badge-' + id);
+                var val = parseInt(input.value) || 0;
+                val++;
+                input.value = val;
+                badge.textContent = val;
+                badge.style.visibility = val > 0 ? 'visible' : 'hidden';
+                var minusBtn = this.querySelector('.drink-minus');
+                if (minusBtn) minusBtn.style.visibility = val > 0 ? 'visible' : 'hidden';
+                updateDrinkOrderTotal();
+            });
+        });
+        // Initialize minus button visibility on page load
+        document.querySelectorAll('.drink-tile').forEach(function(tile) {
+            var input = tile.querySelector('input[type="hidden"]');
+            var minusBtn = tile.querySelector('.drink-minus');
+            var val = parseInt(input.value) || 0;
+            if (minusBtn) minusBtn.style.visibility = val > 0 ? 'visible' : 'hidden';
         });
     });
     // --- Shared clear selection and logout logic (global scope) ---
@@ -761,6 +778,8 @@ $this->setup(array(
             var badge = document.getElementById('badge-' + id);
             badge.textContent = 0;
             badge.style.visibility = 'hidden';
+            var minusBtn = document.getElementById('input-' + id)?.closest('.drink-tile')?.querySelector('.drink-minus');
+            if (minusBtn) minusBtn.style.visibility = 'hidden';
         });
         if (typeof updateDrinkOrderTotal === 'function') updateDrinkOrderTotal();
         if (logoutUser) {
