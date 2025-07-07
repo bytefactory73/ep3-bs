@@ -1,0 +1,428 @@
+<?php
+// Gesamtauswertung (Drinks Summary) page placeholder
+$this->setup([
+    'title' => 'Gesamtauswertung',
+    'panel' => '', // Remove centered-panel and large-sized for full width
+    'back' => $this->url('user/drinks-admin'),
+]);
+?>
+
+<div style="max-width: none; margin: 0; background: #fff; color: #222; font-size: 15px; font-family: 'Segoe UI', 'Arial', sans-serif;">
+
+<style>
+    .rotated-header {
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+        white-space: nowrap;
+        vertical-align: bottom;
+        text-align: left;
+        height: 120px;
+        min-width: 36px;
+        max-width: 48px;
+        padding: 0 6px 6px 6px !important;
+        font-size: 14px;
+        color: #222;
+        background: #fff;
+        overflow: hidden;
+        box-sizing: border-box;
+        position: relative;
+    }
+    .rotated-header > span {
+        display: inline-block;
+        width: 100%;
+        height: 100%;
+        line-height: 1.1;
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        color: #222;
+        background: #fff;
+    }
+    .drinks-summary-table th {
+        height: 120px;
+        vertical-align: bottom;
+        overflow: hidden;
+        color: #222;
+        background: #fff;
+        font-size: 15px;
+        font-weight: bold;
+        padding: 3px 2px;
+    }
+    .drinks-summary-table td {
+        color: #222;
+        background: #fff;
+        font-size: 15px;
+        padding: 3px 2px;
+    }
+    .drinks-summary-table {
+        border: 2px solid #555;
+    }
+    .drinks-summary-table th,
+    .drinks-summary-table td {
+        border: 1.5px solid #555;
+    }
+    .drinks-summary-table tr:last-child td {
+        border-bottom: 1.5px solid #555;
+    }
+    .drinks-summary-table tr th:last-child,
+    .drinks-summary-table tr td:last-child {
+        border-right: none;
+    }
+    .drinks-summary-table tfoot th, .drinks-summary-table tfoot td {
+        padding: 6px 4px;
+        height: 32px;
+        font-size: 15px;
+        background: #fff;
+        color: #222;
+        border-top: 2px solid #555;
+        font-weight: bold;
+    }
+    .drinks-summary-table td.date-col, .drinks-summary-table td.user-col {
+        font-weight: bold;
+        background: #f3f3f7;
+        color: #111;
+    }
+    .drinks-summary-table th.date-col, .drinks-summary-table th.user-col {
+        font-weight: bold;
+        background: #e9e9ef;
+        color: #111;
+    }
+</style>
+<div style="max-width: none; margin: 0; background: #fff;">
+    <h1><?= $this->t('Gesamtauswertung') ?></h1>
+    <div class="separator-small"></div>
+    <p><?= $this->t('Hier sehen Sie eine Gesamtauswertung aller Getränkeumsätze.') ?></p>
+    <div class="separator separator-line"></div>
+    <div class="padded">
+        <form id="drinks-summary-form" method="get" style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <label style="font-weight: bold; margin-right: 8px;">Ansicht:</label>
+            <select id="drinks-summary-mode" name="mode" onchange="setSummaryMode(this.value)" style="padding: 4px 8px; margin-right: 16px;">
+                <option value="count"<?= ($this->mode === 'count' ? ' selected' : '') ?>><?= $this->t('Anzahl') ?></option>
+                <option value="amount"<?= ($this->mode === 'amount' ? ' selected' : '') ?>><?= $this->t('Betrag (€)') ?></option>
+            </select>
+            <label for="quick-range" style="font-weight: bold; margin-right: 4px;">Zeitraum:</label>
+            <select id="quick-range" style="padding: 4px 8px; margin-right: 8px;">
+                <option value="">-- <?= $this->t('Auswählen') ?> --</option>
+                <option value="cw"><?= $this->t('Aktuelle Woche') ?></option>
+                <option value="lw"><?= $this->t('Letzte Woche') ?></option>
+                <option value="cm"><?= $this->t('Aktueller Monat') ?></option>
+                <option value="lm"><?= $this->t('Letzter Monat') ?></option>
+                <option value="cy"><?= $this->t('Dieses Jahr') ?></option>
+                <option value="ly"><?= $this->t('Letztes Jahr') ?></option>
+            </select>
+            <label for="from-date" style="font-weight: bold; margin-right: 4px;">Von:</label>
+            <input type="date" id="from-date" name="from" value="<?= $this->escapeHtmlAttr($this->from ?? '') ?>" style="padding: 3px 6px; margin-right: 8px;">
+            <label for="to-date" style="font-weight: bold; margin-right: 4px;">Bis:</label>
+            <input type="date" id="to-date" name="to" value="<?= $this->escapeHtmlAttr($this->to ?? '') ?>" style="padding: 3px 6px; margin-right: 8px;">
+            <label for="show-users" style="font-weight: bold; margin-right: 4px;">Benutzer anzeigen:</label>
+            <input type="hidden" name="show_users" value="0">
+            <input type="checkbox" id="show-users" name="show_users" value="1"<?= ($this->show_users === '1' ? ' checked' : '') ?> style="margin-right: 12px;">
+            <label for="group-by" style="font-weight: bold; margin-right: 4px;">Gruppieren nach:</label>
+            <select id="group-by" name="group" style="padding: 4px 8px; margin-right: 8px;">
+                <option value="date"<?= ($this->group === 'date' ? ' selected' : '') ?>><?= $this->t('Tag') ?></option>
+                <option value="week"<?= ($this->group === 'week' ? ' selected' : '') ?>><?= $this->t('Woche') ?></option>
+                <option value="month"<?= ($this->group === 'month' ? ' selected' : '') ?>><?= $this->t('Monat') ?></option>
+                <option value="year"<?= ($this->group === 'year' ? ' selected' : '') ?>><?= $this->t('Jahr') ?></option>
+                <option value="weekday"<?= ($this->group === 'weekday' ? ' selected' : '') ?>><?= $this->t('Wochentag') ?></option>
+            </select>
+        </form>
+        <script>
+        function getMonday(d) {
+            d = new Date(d);
+            var day = d.getDay(), diff = d.getDate() - day + (day === 0 ? -6 : 1);
+            return new Date(d.setDate(diff));
+        }
+        function pad(n) { return n < 10 ? '0' + n : n; }
+        function formatDate(d) {
+            return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+        }
+        function setSummaryMode(mode) {
+            localStorage.setItem('drinksSummaryMode', mode);
+            document.getElementById('drinks-summary-mode').value = mode;
+            document.getElementById('drinks-summary-form').submit();
+        }
+        // Auto-submit on show-users toggle
+        document.addEventListener('DOMContentLoaded', function() {
+            var mode = localStorage.getItem('drinksSummaryMode') || 'count';
+            var el = document.getElementById('drinks-summary-mode');
+            if (el) el.value = mode;
+            // Auto-submit on date change
+            var from = document.getElementById('from-date');
+            var to = document.getElementById('to-date');
+            if (from) from.addEventListener('change', function() {
+                document.getElementById('drinks-summary-form').submit();
+            });
+            if (to) to.addEventListener('change', function() {
+                document.getElementById('drinks-summary-form').submit();
+            });
+            // Quick range dropdown
+            var quick = document.getElementById('quick-range');
+            if (quick) quick.addEventListener('change', function() {
+                var now = new Date();
+                var y = now.getFullYear(), m = now.getMonth();
+                var fromVal = '', toVal = '';
+                if (quick.value === 'cw') {
+                    var mon = getMonday(now);
+                    var sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+                    fromVal = formatDate(mon); toVal = formatDate(sun);
+                } else if (quick.value === 'lw') {
+                    var mon = getMonday(now); mon.setDate(mon.getDate() - 7);
+                    var sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+                    fromVal = formatDate(mon); toVal = formatDate(sun);
+                } else if (quick.value === 'cm') {
+                    fromVal = y + '-' + pad(m + 1) + '-01';
+                    toVal = formatDate(new Date(y, m + 1, 0));
+                } else if (quick.value === 'lm') {
+                    var lastMonth = m === 0 ? 11 : m - 1;
+                    var lastYear = m === 0 ? y - 1 : y;
+                    fromVal = lastYear + '-' + pad(lastMonth + 1) + '-01';
+                    toVal = formatDate(new Date(lastYear, lastMonth + 1, 0));
+                } else if (quick.value === 'cy') {
+                    fromVal = y + '-01-01';
+                    toVal = y + '-12-31';
+                } else if (quick.value === 'ly') {
+                    fromVal = (y - 1) + '-01-01';
+                    toVal = (y - 1) + '-12-31';
+                }
+                if (fromVal && toVal) {
+                    from.value = fromVal;
+                    to.value = toVal;
+                    document.getElementById('drinks-summary-form').submit();
+                }
+            });
+            var showUsers = document.getElementById('show-users');
+            if (showUsers) showUsers.addEventListener('change', function() {
+                document.getElementById('drinks-summary-form').submit();
+            });
+            var groupBy = document.getElementById('group-by');
+            if (groupBy) groupBy.addEventListener('change', function() {
+                document.getElementById('drinks-summary-form').submit();
+            });
+        });
+        </script>
+        <table class="default-table middle-table drinks-summary-table" style="border-collapse: collapse; width: 100%; border: 2px solid #555;">
+            <thead>
+                <tr style="border-bottom: 2px solid #bbb; background: #f8f8f8;">
+                    <th class="date-col" style="border-right: 1px solid #ccc; border-bottom: 2px solid #bbb; padding: 3px 2px; height: 120px; vertical-align: bottom;"> <?= $this->t('Datum') ?> </th>
+                    <?php if ($this->show_users === '1'): ?>
+                    <th class="user-col" style="border-right: 1px solid #ccc; border-bottom: 2px solid #bbb; padding: 3px 2px; height: 120px; vertical-align: bottom;"> <?= $this->t('Benutzer') ?> </th>
+                    <?php endif; ?>
+                    <?php foreach ($this->drinks as $drink): ?>
+                        <th class="rotated-header" style="border-right: 1px solid #ccc; border-bottom: 2px solid #bbb; height: 120px; vertical-align: bottom;">
+                            <span><?= $this->escapeHtml($drink['name']) ?></span>
+                        </th>
+                    <?php endforeach; ?>
+                </tr>
+            </thead>
+            <tbody>
+                <?php
+                // Prepare column sums
+                $colSums = [];
+                foreach ($this->drinks as $drink) {
+                    $colSums[$drink['id']] = 0;
+                }
+                if ($this->group === 'weekday') {
+                    $weekdayOrders = array_fill(0, 7, []);
+                    // Aggregate all orders by weekday (0=So, 1=Mo, ...)
+                    foreach ($this->orders as $date => $userOrders) {
+                        $dt = DateTime::createFromFormat('Y-m-d', substr($date, 0, 10));
+                        if ($dt) {
+                            $w = (int)$dt->format('w');
+                            if (!isset($weekdayOrders[$w])) $weekdayOrders[$w] = [];
+                            foreach ($userOrders as $uid => $drinks) {
+                                if (!isset($weekdayOrders[$w][$uid])) $weekdayOrders[$w][$uid] = [];
+                                foreach ($drinks as $did => $cell) {
+                                    if (!isset($weekdayOrders[$w][$uid][$did])) $weekdayOrders[$w][$uid][$did] = ['count' => 0.0, 'amount' => 0.0];
+                                    // Only sum if value is not empty and numeric
+                                    $countVal = $cell['count'];
+                                    $amountVal = $cell['amount'];
+                                    if ($countVal !== '' && is_numeric(str_replace([',', '.'], ['', '.'], $countVal))) {
+                                        $weekdayOrders[$w][$uid][$did]['count'] += (float)str_replace([',', '.'], ['', '.'], $countVal);
+                                    }
+                                    if ($amountVal !== '' && is_numeric(str_replace([',', '.'], ['', '.'], $amountVal))) {
+                                        $weekdayOrders[$w][$uid][$did]['amount'] += str_replace([',', '.'], ['', '.'], $amountVal);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    $weekdayNames = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+                    for ($w = 0; $w < 7; ++$w) {
+                        $userOrders = $weekdayOrders[$w];
+                        if ($this->show_users === '1') {
+                            foreach ($this->users as $user) {
+                                $uid = $user->need('uid');
+                                $hasOrder = false;
+                                $rowSum = 0;
+                                foreach ($this->drinks as $drink) {
+                                    $did = $drink['id'];
+                                    if (!empty($userOrders[$uid][$did]['count'])) {
+                                        $hasOrder = true;
+                                        break;
+                                    }
+                                }
+                                if (!$hasOrder) continue;
+                                echo '<tr style="border-bottom: 1px solid #eee;">';
+                                echo '<td class="date-col" style="border-right: 1px solid #eee; padding: 2px 2px;">' . $this->escapeHtml($weekdayNames[$w]) . '</td>';
+                                echo '<td class="user-col" style="border-right: 1.5px solid #555; padding: 2px 2px;">' . $this->escapeHtml($user->get('alias')) . '</td>';
+                                foreach ($this->drinks as $drink) {
+                                    $did = $drink['id'];
+                                    $cell = isset($userOrders[$uid][$did]) ? $userOrders[$uid][$did] : ['count' => '', 'amount' => ''];
+                                    $qty = $this->mode === 'amount' ? $cell['amount'] : $cell['count'];
+                                    $val = (float)str_replace(['.', ','], ['', '.'], $qty);
+                                    if ($this->mode === 'amount')
+                                        $val = $val / 100.0;
+                                    if ($qty !== '' && is_numeric($val)) {
+                                        $rowSum += (float)$val;
+                                        $colSums[$did] += (float)$val;
+                                    }
+                                    echo '<td style="text-align: right; border-right: 1.5px solid #555; padding: 2px 2px;">' . ($qty !== '' ? $qty : '') . '</td>';
+                                }
+                                echo '<td style="text-align: right; font-weight: bold; border-left: 2px solid #555; padding: 2px 2px;">' . ($rowSum !== 0 ? ($this->mode === 'amount' ? number_format($rowSum, 2, ',', '.') : $rowSum) : '') . '</td>';
+                                echo '</tr>';
+                            }
+                        } else {
+                            $rowSum = 0;
+                            $drinkSums = [];
+                            foreach ($this->drinks as $drink) {
+                                $did = $drink['id'];
+                                $drinkSums[$did] = 0;
+                            }
+                            foreach ($userOrders as $uid => $drinks) {
+                                foreach ($drinks as $did => $cell) {
+                                    $qty = $this->mode === 'amount' ? $cell['amount'] : $cell['count'];
+                                    $val = str_replace(['.', ','], ['', '.'], $qty);
+                                    if ($this->mode === 'amount')
+                                        $val = $val / 100.0;
+                                    if ($qty !== '' && is_numeric($val)) {
+                                        $drinkSums[$did] += (float)$val;
+                                        $colSums[$did] += (float)$val;
+                                        $rowSum += (float)$val;
+                                    }
+                                }
+                            }
+                            // Only show row if there is at least one value
+                            $hasAny = array_sum($drinkSums) > 0;
+                            if (!$hasAny) continue;
+                            echo '<tr style="border-bottom: 1px solid #eee;">';
+                            echo '<td class="date-col" style="border-right: 1.5px solid #555; padding: 2px 2px;">' . $this->escapeHtml($weekdayNames[$w]) . '</td>';
+                            foreach ($this->drinks as $drink) {
+                                $did = $drink['id'];
+                                $qty = $drinkSums[$did];
+                                echo '<td style="text-align: right; border-right: 1.5px solid #555; padding: 2px 2px;">' . ($qty !== 0 ? ($this->mode === 'amount' ? number_format($qty, 2, ',', '.') : $qty) : '') . '</td>';
+                            }
+                            echo '<td style="text-align: right; font-weight: bold; border-left: 2px solid #555; padding: 2px 2px;">' . ($rowSum !== 0 ? ($this->mode === 'amount' ? number_format($rowSum, 2, ',', '.') : $rowSum) : '') . '</td>';
+                            echo '</tr>';
+                        }
+                    }
+                } else {
+                    if ($this->show_users === '1') {
+                        // Show per user
+                        foreach ($this->orders as $date => $userOrders) {
+                            foreach ($this->users as $user) {
+                                $uid = $user->need('uid');
+                                $hasOrder = false;
+                                $rowSum = 0;
+                                foreach ($this->drinks as $drink) {
+                                    $did = $drink['id'];
+                                    if (!empty($userOrders[$uid][$did]['count'])) {
+                                        $hasOrder = true;
+                                        break;
+                                    }
+                                }
+                                if (!$hasOrder) continue;
+                                // Add week day for day grouping
+                                $dateLabel = $date;
+                                if ($this->group === 'date') {
+                                    $dt = DateTime::createFromFormat('Y-m-d', substr($date, 0, 10));
+                                    if ($dt) {
+                                        $weekdays = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+                                        $dateLabel .= ' (' . $weekdays[(int)$dt->format('w')] . ')';
+                                    }
+                                }
+                                echo '<tr style="border-bottom: 1px solid #eee;">';
+                                echo '<td class="date-col" style="border-right: 1px solid #eee; padding: 2px 2px;">' . $this->escapeHtml($dateLabel) . '</td>';
+                                echo '<td class="user-col" style="border-right: 1.5px solid #555; padding: 2px 2px;">' . $this->escapeHtml($user->get('alias')) . '</td>';
+                                foreach ($this->drinks as $drink) {
+                                    $did = $drink['id'];
+                                    $cell = isset($userOrders[$uid][$did]) ? $userOrders[$uid][$did] : ['count' => '', 'amount' => ''];
+                                    $qty = $this->mode === 'amount' ? $cell['amount'] : $cell['count'];
+                                    $val = str_replace(['.', ','], ['', '.'], $qty); // for sum, convert to float
+                                    if ($qty !== '' && is_numeric($val)) {
+                                        $rowSum += (float)$val;
+                                        $colSums[$did] += (float)$val;
+                                    }
+                                    echo '<td style="text-align: right; border-right: 1.5px solid #555; padding: 2px 2px;">' . ($qty !== '' ? $qty : '') . '</td>';
+                                }
+                                // Row sum
+                                echo '<td style="text-align: right; font-weight: bold; border-left: 2px solid #555; padding: 2px 2px;">' . ($rowSum !== 0 ? ($this->mode === 'amount' ? number_format($rowSum, 2, ',', '.') : $rowSum) : '') . '</td>';
+                                echo '</tr>';
+                            }
+                        }
+                    } else {
+                        // Sum up all users per date
+                        foreach ($this->orders as $date => $userOrders) {
+                            $rowSum = 0;
+                            $drinkSums = [];
+                            foreach ($this->drinks as $drink) {
+                                $did = $drink['id'];
+                                $drinkSums[$did] = 0;
+                            }
+                            foreach ($userOrders as $uid => $drinks) {
+                                foreach ($this->drinks as $drink) {
+                                    $did = $drink['id'];
+                                    $cell = isset($drinks[$did]) ? $drinks[$did] : ['count' => '', 'amount' => ''];
+                                    $qty = $this->mode === 'amount' ? $cell['amount'] : $cell['count'];
+                                    $val = str_replace(['.', ','], ['', '.'], $qty);
+                                    if ($qty !== '' && is_numeric($val)) {
+                                        $drinkSums[$did] += (float)$val;
+                                        $colSums[$did] += (float)$val;
+                                        $rowSum += (float)$val;
+                                    }
+                                }
+                            }
+                            // Add week day for day grouping
+                            $dateLabel = $date;
+                            if ($this->group === 'date') {
+                                $dt = DateTime::createFromFormat('Y-m-d', substr($date, 0, 10));
+                                if ($dt) {
+                                    $weekdays = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+                                    $dateLabel .= ' (' . $weekdays[(int)$dt->format('w')] . ')';
+                                }
+                            }
+                            echo '<tr style="border-bottom: 1px solid #eee;">';
+                            echo '<td class="date-col" style="border-right: 1.5px solid #555; padding: 2px 2px;">' . $this->escapeHtml($dateLabel) . '</td>';
+                            // no user column
+                            foreach ($this->drinks as $drink) {
+                                $did = $drink['id'];
+                                $qty = $drinkSums[$did];
+                                echo '<td style="text-align: right; border-right: 1.5px solid #555; padding: 2px 2px;">' . ($qty !== 0 ? ($this->mode === 'amount' ? number_format($qty, 2, ',', '.') : $qty) : '') . '</td>';
+                            }
+                            echo '<td style="text-align: right; font-weight: bold; border-left: 2px solid #555; padding: 2px 2px;">' . ($rowSum !== 0 ? ($this->mode === 'amount' ? number_format($rowSum, 2, ',', '.') : $rowSum) : '') . '</td>';
+                            echo '</tr>';
+                        }
+                    }
+                }
+                ?>
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th colspan="<?= $this->show_users === '1' ? 2 : 1 ?>" style="text-align: right; font-weight: bold; border-top: 2px solid #555;">Summe</th>
+                    <?php foreach ($this->drinks as $drink): ?>
+                        <th style="text-align: right; font-weight: bold; border-top: 2px solid #555;">
+                            <?= $colSums[$drink['id']] !== 0 ? ($this->mode === 'amount' ? number_format($colSums[$drink['id']], 2, ',', '.') : $colSums[$drink['id']]) : '' ?>
+                        </th>
+                    <?php endforeach; ?>
+                    <th style="text-align: right; font-weight: bold; border-top: 2px solid #555;">
+                        <?php
+                        $totalSum = array_sum($colSums);
+                        echo $totalSum !== 0 ? ($this->mode === 'amount' ? number_format($totalSum, 2, ',', '.') : $totalSum) : '';
+                        ?>
+                    </th>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+</div>

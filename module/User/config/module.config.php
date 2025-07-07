@@ -259,6 +259,16 @@ return array(
                             ),
                         ),
                     ),
+                    'drinks-summary' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/drinks-summary',
+                            'defaults' => array(
+                                'controller' => 'User\\Controller\\Account',
+                                'action' => 'drinksSummary',
+                            ),
+                        ),
+                    ),
                 ),
             ),
         ),

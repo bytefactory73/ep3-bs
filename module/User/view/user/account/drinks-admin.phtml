@@ -2,7 +2,7 @@
 // Drinks admin landing page: choose between Einzahlungen, Artikel konfigurieren
 $this->setup([
     'title' => 'Drinks Verwaltung',
-    'panel' => 'centered-panel',
+    'panel' => 'centered-panel large-sized',
     'back' => $this->url('backend/config'),
     'links' => [
         'Konfiguration' => $this->url('backend/config'),
@@ -10,13 +10,49 @@ $this->setup([
 ]);
 ?>
 
-<h1><?= $this->t('Drinks Verwaltung') ?></h1>
-<div class="separator-small"></div>
-<div style="display: flex; flex-direction: column; align-items: center; gap: 32px; margin-top: 32px;">
-    <a href="<?= $this->url('user/deposits') ?>" class="default-button stc-main-button" style="min-width: 260px; font-size: 1.25em; padding: 18px 0; text-align: center;">
-        <?= $this->t('Einzahlungen') ?>
-    </a>
-    <a href="<?= $this->url('user/manage-drinks') ?>" class="default-button stc-main-button" style="min-width: 260px; font-size: 1.25em; padding: 18px 0; text-align: center;">
-        <?= $this->t('Artikel konfigurieren') ?>
-    </a>
+<div>
+    <h1><?= $this->t('Drinks Verwaltung') ?></h1>
+    <div class="separator-small"></div>
+    <p><?= $this->t('Hier können Sie Getränke, Einzahlungen und Preise verwalten.') ?></p>
+    <div class="separator separator-line"></div>
+    <div class="padded">
+        <table class="default-table middle-table">
+            <tr>
+                <td>
+                    <a href="<?= $this->url('user/deposits') ?>" class="default-button" style="width: 200px; text-align: left;">
+                        <span class="symbolic symbolic-config"><?= $this->t('Einzahlungen') ?></span>
+                    </a>
+                </td>
+                <td>
+                    <p class="gray">
+                        <?= $this->t('Verwalten Sie Einzahlungen und Kontostände der Nutzer.') ?>
+                    </p>
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    <a href="<?= $this->url('user/manage-drinks') ?>" class="default-button" style="width: 200px; text-align: left;">
+                        <span class="symbolic symbolic-config"><?= $this->t('Artikel konfigurieren') ?></span>
+                    </a>
+                </td>
+                <td>
+                    <p class="gray">
+                        <?= $this->t('Fügen Sie neue Getränke hinzu, bearbeiten Sie Preise und verwalten Sie das Sortiment.') ?>
+                    </p>
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    <a href="<?= $this->url('user/drinks-summary') ?>" class="default-button" style="width: 200px; text-align: left;">
+                        <span class="symbolic symbolic-config"><?= $this->t('Gesamtauswertung') ?></span>
+                    </a>
+                </td>
+                <td>
+                    <p class="gray">
+                        <?= $this->t('Sehen Sie eine Gesamtauswertung aller Getränkeumsätze und Einzahlungen.') ?>
+                    </p>
+                </td>
+            </tr>
+        </table>
+    </div>
 </div>

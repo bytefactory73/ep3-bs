@@ -926,4 +926,97 @@ class AccountController extends AbstractActionController
             'history' => $userHistory,
         ]));
     }
+
+    public function drinksSummaryAction()
+    {
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $user = $userSessionManager->getSessionUser();
+        if (!$user || $user->get('status') !== 'admin') {
+            return $this->redirect()->toRoute('user/settings');
+        }
+        $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
+        $userManager = $serviceManager->get('User\Manager\UserManager');
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+        $drinks = iterator_to_array($drinkManager->getAll());
+        $users = $userManager->getAll('alias ASC');
+
+        $group = $this->params()->fromQuery('group', 'date');
+        $from = $this->params()->fromQuery('from');
+        $to = $this->params()->fromQuery('to');
+        $showUsers = $this->params()->fromQuery('show_users', '1');
+
+        // Query all drink orders, grouped by date, user, drink
+        $groupSql = 'DATE(order_time)';
+        $labelFormat = 'Y-m-d';
+        if ($group === 'week') {
+            $groupSql = 'YEAR(order_time), WEEK(order_time, 1)';
+            $labelFormat = 'o-\KWW';
+        } elseif ($group === 'month') {
+            $groupSql = 'YEAR(order_time), MONTH(order_time)';
+            $labelFormat = 'Y-m';
+        } elseif ($group === 'year') {
+            $groupSql = 'YEAR(order_time)';
+            $labelFormat = 'Y';
+        }
+        $sql = 'SELECT ' . $groupSql . ' as grp, user_id, drink_id, SUM(quantity) as quantity, MIN(order_time) as min_time
+                FROM drink_orders
+                WHERE deleted = 0';
+        $params = [];
+        if ($from) {
+            $sql .= ' AND DATE(order_time) >= ?';
+            $params[] = $from;
+        }
+        if ($to) {
+            $sql .= ' AND DATE(order_time) <= ?';
+            $params[] = $to;
+        }
+        $sql .= ' GROUP BY grp, user_id, drink_id
+                ORDER BY min_time ASC, user_id ASC, drink_id ASC';
+        $statement = $dbAdapter->query($sql);
+        $orders = [];
+        foreach ($statement->execute($params) as $row) {
+            $orders[] = $row;
+        }
+        // Build lookup: [group][user_id][drink_id] = ...
+        $orderMap = [];
+        $drinkPriceMap = [];
+        foreach ($drinks as $drink) {
+            $drinkPriceMap[$drink['id']] = (float)$drink['price'];
+        }
+        foreach ($orders as $row) {
+            $grp = $row['grp'];
+            if ($group === 'week') {
+                $dt = new \DateTime($row['min_time']);
+                $grp = $dt->format('o') . '-KW' . $dt->format('W');
+            } elseif ($group === 'month') {
+                $dt = new \DateTime($row['min_time']);
+                $grp = $dt->format('Y-m');
+            } elseif ($group === 'year') {
+                $dt = new \DateTime($row['min_time']);
+                $grp = $dt->format('Y');
+            }
+            $uid = $row['user_id'];
+            $did = $row['drink_id'];
+            $count = (int)$row['quantity'];
+            $amount = $count * ($drinkPriceMap[$did] ?? 0);
+            $orderMap[$grp][$uid][$did] = [
+                'count' => $count > 0 ? $count : '',
+                'amount' => $count > 0 ? number_format($amount, 2, ',', '.') : '',
+            ];
+        }
+
+        $showUsers = $this->params()->fromQuery('show_users', '1');
+
+        return [
+            'drinks' => $drinks,
+            'users' => $users,
+            'orders' => $orderMap,
+            'mode' => $this->params()->fromQuery('mode', 'count'),
+            'from' => $from,
+            'to' => $to,
+            'show_users' => $showUsers,
+            'group' => $group,
+        ];
+    }
 }
