@@ -16,6 +16,6 @@ class DrinkCategoryManager
     {
         $sql = 'SELECT * FROM drink_categories ORDER BY sort_priority, name';
         $statement = $this->dbAdapter->query($sql);
-        return $statement->execute();
+        return iterator_to_array($statement->execute());
     }
 }

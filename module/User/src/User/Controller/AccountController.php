@@ -718,7 +718,7 @@ class AccountController extends AbstractActionController
         $users = $userManager->getAll('alias ASC');
         $message = null;
         $uploadDir = realpath(__DIR__ . '/../../../../../public/imgs/branding');
-        $drinkCategories = iterator_to_array($drinkCategoryManager->getAll());
+        $drinkCategories = $drinkCategoryManager->getAll();
         // Handle add/edit/delete/deposit
         if ($this->getRequest()->isPost()) {
             $post = $this->params()->fromPost();

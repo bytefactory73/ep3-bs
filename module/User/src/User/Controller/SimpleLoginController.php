@@ -14,7 +14,7 @@ class SimpleLoginController extends AbstractActionController
         // Ensure session manager is started
         $sessionManager = $this->getServiceLocator()->get('Zend\Session\SessionManager');
         $sessionManager->start();
-        // Fetch last 24h drink orders for the history box
+        // Fetch last 48h drink orders for the history box
         $recentOrders = [];
         try {
             $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
@@ -22,7 +22,7 @@ class SimpleLoginController extends AbstractActionController
             $sql = 'SELECT o.order_time, o.user_id, u.alias, d.name AS drink_name, o.quantity, o.deleted FROM drink_orders o JOIN bs_users u ON o.user_id = u.uid JOIN drinks d ON o.drink_id = d.id WHERE o.deleted = false AND o.order_time >= ? ORDER BY o.order_time DESC';
             $recentOrders = $db->query($sql, [$cutoff])->toArray();
         } catch (\Exception $e) {
-            $recentOrders = [];
+            // Leave $recentOrders empty on error
         }
         if ($request->isPost()) {
             $alias = trim($request->getPost('alias'));
@@ -34,14 +34,16 @@ class SimpleLoginController extends AbstractActionController
                     $session = new \Zend\Session\Container('SimpleLogin');
                     $session->user_id = $row['user_id'];
                     return $this->redirect()->toRoute('user/simple-order');
-                } else {
-                    $error = 'Alias not found.';
                 }
+                $error = 'Theken-ID nicht gefunden.';
             } else {
-                $error = 'Please enter an alias.';
+                $error = 'Bitte geben Sie eine Theken-ID ein.';
             }
         }
-        $viewModel = new ViewModel(['error' => $error, 'recentOrders' => $recentOrders]);
+        $viewModel = new ViewModel([
+            'error' => $error,
+            'recentOrders' => $recentOrders
+        ]);
         $viewModel->setTerminal(true);
         return $viewModel;
     }
@@ -61,10 +63,10 @@ class SimpleLoginController extends AbstractActionController
         $drinkManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkManager');
         $userManager = $this->getServiceLocator()->get('User\Manager\UserManager');
         $user = $userManager->get($userId);
-        $userName = $user ? $user->get('alias') : 'Gast';
+        $userName = $user->get('alias');
         $drinks = $drinkManager->getAll($userId);
         $drinkCategoryManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkCategoryManager');
-        $drinkCategories = iterator_to_array($drinkCategoryManager->getAll());
+        $drinkCategories = $drinkCategoryManager->getAll();
         $drinkOrderManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkOrderManager');
         $drinkDepositManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkDepositManager');
         $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($userId));
@@ -108,19 +110,6 @@ class SimpleLoginController extends AbstractActionController
             return strtotime($b['created_at']) - strtotime($a['created_at']);
         });
         // Fetch drink statistics for the user
-        $drinkStats = [];
-        try {
-            $statsResult = $drinkOrderManager->getDrinkStatsByUser($userId);
-            foreach ($statsResult as $row) {
-                $drinkStats[] = [
-                    'id' => isset($row['id']) ? (int)$row['id'] : null,
-                    'name' => $row['name'],
-                    'total_count' => $row['total_count'],
-                ];
-            }
-        } catch (\Exception $e) {
-            // Leave $drinkStats empty on error
-        }
         $drinkOrderCancelWindow = \Drinks\Manager\DrinkOrderManager::CANCEL_WINDOW_SECONDS;
         return $viewModel->setVariables([
             'drinks' => $drinks,
@@ -131,7 +120,7 @@ class SimpleLoginController extends AbstractActionController
             'success' => false,
             'drinkOrderCancelWindow' => $drinkOrderCancelWindow,
             'drinkCategories' => $drinkCategories,
-            'drinkStats' => $drinkStats,
+            'drinkStats' => [],
             'simpleOrderMode' => true // Add this line to enable simple-order mode in the view
         ]);
     }

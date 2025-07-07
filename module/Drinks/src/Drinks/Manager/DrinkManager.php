@@ -52,8 +52,7 @@ class DrinkManager
         // Fetch order details before deletion
         $sql = 'SELECT do.*, d.name as drink_name FROM drink_orders do JOIN drinks d ON do.drink_id = d.id WHERE do.id = ? AND do.user_id = ?';
         $statement = $dbAdapter->createStatement($sql, [$orderId, $user->need('uid')]);
-        $result = $statement->execute();
-        $order = $result->current();
+        $order = $statement->execute()->current();
         $result = $drinkOrderManager->dropOrder($orderId, $user->need('uid'));
         if ($result->getAffectedRows() > 0 && $order) {
             // Recalculate balance after cancellation
@@ -61,26 +60,33 @@ class DrinkManager
             $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
             $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($user->need('uid')));
             $balance = 0;
-            foreach ($drinkDeposits as $deposit) $balance += $deposit['amount'];
-            foreach ($drinkOrders as $o) if (empty($o['deleted'])) $balance -= $o['quantity'] * $o['price'];
+            foreach ($drinkDeposits as $deposit) {
+                $balance += $deposit['amount'];
+            }
+            foreach ($drinkOrders as $o) {
+                if (empty($o['deleted'])) {
+                    $balance -= $o['quantity'] * $o['price'];
+                }
+            }
             // Send cancellation email
             $subject = call_user_func($tCallback, 'Stornierung Deiner Getränkebestellung');
-            $lines = [];
-            $lines[] = sprintf('%s x %d = %.2f EUR', $order['drink_name'], $order['quantity'], $order['quantity'] * $order['price']);
-            $lines[] = '---------------------';
-            $lines[] = sprintf(call_user_func($tCallback, 'Storniert am:') . ' %s', date('d.m.Y H:i'));
-            $lines[] = sprintf(call_user_func($tCallback, 'Saldo nach Stornierung:') . '<b> %.2f EUR </b>', $balance);
+            $lines = [
+                sprintf('%s x %d = %.2f EUR', $order['drink_name'], $order['quantity'], $order['quantity'] * $order['price']),
+                '---------------------',
+                sprintf(call_user_func($tCallback, 'Storniert am:') . ' %s', date('d.m.Y H:i')),
+                '',
+                sprintf(call_user_func($tCallback, 'Saldo nach Stornierung:') . '<b> %.2f EUR </b>', $balance),
+            ];
             $text = call_user_func($tCallback, 'Deine Getränkebestellung wurde erfolgreich storniert.') . "<br><br>" . implode("<br>", $lines);
             if ($balance < 0) {
                 $text .= "<br><br>";
                 $text .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func($tCallback, 'Warnung: Dein Saldo ist negativ! Bitte überweise Geld auf das STC Paypal-Konto.') . '</span>';
             }
             $userMailService = $serviceManager->get('User\Service\MailService');
-            $userMailService->send($user, $subject, $text, array('isHtml' => true));
+            $userMailService->send($user, $subject, $text, ['isHtml' => true]);
             return true;
-        } else {
-            return false;
         }
+        return false;
     }
 
     /**
@@ -114,8 +120,14 @@ class DrinkManager
             $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($user->need('uid')));
             $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($user->need('uid')));
             $balance = 0;
-            foreach ($drinkDeposits as $deposit) $balance += $deposit['amount'];
-            foreach ($drinkOrders as $order) if (empty($order['deleted'])) $balance -= $order['quantity'] * $order['price'];
+            foreach ($drinkDeposits as $deposit) {
+                $balance += $deposit['amount'];
+            }
+            foreach ($drinkOrders as $order) {
+                if (empty($order['deleted'])) {
+                    $balance -= $order['quantity'] * $order['price'];
+                }
+            }
             $subject = call_user_func($tCallback, 'Bestätigung Deiner Getränkebestellung');
             $lines = [];
             $totalSum = 0;
@@ -133,10 +145,9 @@ class DrinkManager
                 $text .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func($tCallback, 'Warnung: Dein Saldo ist negativ! Bitte überweise Geld auf das STC Paypal-Konto.') . '</span>';
             }
             $userMailService = $serviceManager->get('User\Service\MailService');
-            $userMailService->send($user, $subject, $text, array('isHtml' => true));
+            $userMailService->send($user, $subject, $text, ['isHtml' => true]);
             return ['success' => true, 'balance' => $balance, 'error' => null];
-        } else {
-            return ['success' => false, 'balance' => 0, 'error' => call_user_func($tCallback, 'Bitte mindestens ein Getränk auswählen.')];
         }
+        return ['success' => false, 'balance' => 0, 'error' => call_user_func($tCallback, 'Bitte mindestens ein Getränk auswählen.')];
     }
 }
