@@ -372,7 +372,6 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
         if (isIOS()) {
             localStorage.setItem('barcodeCameraIndex', currentCameraIndex);
         } else {
-            // Store deviceId for robustness (in case device order changes)
             let deviceId = videoInputDevices[currentCameraIndex]?.deviceId;
             if (deviceId) localStorage.setItem('barcodeCameraDeviceId', deviceId);
         }
@@ -390,8 +389,10 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
         }
     }
 
+    let videoElem = null;
+
     async function startBarcodeScanner(cameraIndex = 0) {
-        // Show loading indicator and render modal UI
+        // Render modal UI only once
         scannerContainer.innerHTML = '<div id="barcode-video"></div>' +
             '<div style="margin-top:8px; text-align:center;">' +
             ((videoInputDevices.length > 1 || isIOS()) ? '<button id="switch-camera-btn" type="button" style="font-size:1em; margin-right:8px;">'+
@@ -399,80 +400,29 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
             '</button>' : '') +
             '<button id="close-barcode-scanner" type="button" style="font-size:1em;">'+
             '<?= $this->t('Close') ?>'+
-            '</button></div>' +
-            '<div id="barcode-loading" style="text-align:center; margin-top:12px; color:#2196f3; font-weight:bold;">'+
-            '<?= $this->t('Loading camera...') ?>'+
-            '</div>';
-        // Attach close and switch button handlers immediately after rendering UI
-        const closeBtn = document.getElementById('close-barcode-scanner');
-        if (closeBtn) closeBtn.onclick = stopBarcodeScanner;
-        const switchBtn = document.getElementById('switch-camera-btn');
-        if (switchBtn) {
-            switchBtn.onclick = function() {
-                if (isIOS()) {
-                    currentCameraIndex = (currentCameraIndex + 1) % 2;
-                } else {
-                    currentCameraIndex = (currentCameraIndex + 1) % videoInputDevices.length;
-                }
-                saveCameraSelection();
-                if (codeReader) { codeReader.reset(); codeReader = null; }
-                if (activeStream) { activeStream.getTracks().forEach(track => track.stop()); activeStream = null; }
-                // Show loading while switching
-                scannerContainer.innerHTML = '<div id="barcode-video"></div>' +
-                    '<div style="margin-top:8px; text-align:center;">' +
-                    ((videoInputDevices.length > 1 || isIOS()) ? '<button id="switch-camera-btn" type="button" style="font-size:1em; margin-right:8px;">'+
-                        '<?= $this->t('Switch Camera') ?>'+
-                    '</button>' : '') +
-                    '<button id="close-barcode-scanner" type="button" style="font-size:1em;">'+
-                    '<?= $this->t('Close') ?>'+
-                    '</button></div>' +
-                    '<div id="barcode-loading" style="text-align:center; margin-top:12px; color:#2196f3; font-weight:bold;">'+
-                    '<?= $this->t('Loading camera...') ?>'+
-                    '</div>';
-                // Attach handlers again after re-render
-                const closeBtn2 = document.getElementById('close-barcode-scanner');
-                if (closeBtn2) closeBtn2.onclick = stopBarcodeScanner;
-                const switchBtn2 = document.getElementById('switch-camera-btn');
-                if (switchBtn2) switchBtn2.onclick = switchBtn.onclick;
-                setTimeout(() => startBarcodeScanner(currentCameraIndex), isIOS() ? 500 : 0);
-            };
-        }
-        const ZXing = window.ZXing;
-        if (!ZXing || !ZXing.BrowserMultiFormatReader) {
-            scannerContainer.innerHTML = '<div style="color:red;">Barcode scanner library not loaded.</div>';
-            return;
-        }
-        const allowedFormats = [
-            ZXing.BarcodeFormat.CODE_128,
-            ZXing.BarcodeFormat.CODE_39,
-            ZXing.BarcodeFormat.CODE_93,
-            ZXing.BarcodeFormat.EAN_13,
-            ZXing.BarcodeFormat.EAN_8,
-            ZXing.BarcodeFormat.UPC_A,
-            ZXing.BarcodeFormat.UPC_E,
-            ZXing.BarcodeFormat.ITF,
-            ZXing.BarcodeFormat.CODABAR
-        ];
-        // Clean up previous codeReader and stream
-        if (codeReader) {
-            codeReader.reset();
-            codeReader = null;
-        }
-        if (activeStream) {
-            activeStream.getTracks().forEach(track => track.stop());
-            activeStream = null;
-        }
-        // Remove and recreate video element always
+            '</button></div>';
+        // Setup video element
         const barcodeVideoDiv = document.getElementById('barcode-video');
-        if (barcodeVideoDiv) barcodeVideoDiv.innerHTML = '';
-        let videoElem = document.createElement('video');
+        barcodeVideoDiv.innerHTML = '';
+        videoElem = document.createElement('video');
         videoElem.setAttribute('autoplay', 'true');
         videoElem.setAttribute('playsinline', 'true');
         videoElem.style.width = '100%';
         barcodeVideoDiv.appendChild(videoElem);
-        codeReader = new ZXing.BrowserMultiFormatReader();
-        const hints = new Map();
-        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, allowedFormats);
+        // Attach button handlers
+        const closeBtn = document.getElementById('close-barcode-scanner');
+        if (closeBtn) closeBtn.onclick = stopBarcodeScanner;
+        const switchBtn = document.getElementById('switch-camera-btn');
+        if (switchBtn) switchBtn.onclick = switchCamera;
+        // Start camera
+        await setupCameraStream(cameraIndex);
+    }
+
+    async function setupCameraStream(cameraIndex) {
+        // Clean up previous
+        if (codeReader) { codeReader.reset(); codeReader = null; }
+        if (activeStream) { activeStream.getTracks().forEach(track => track.stop()); activeStream = null; }
+        // Setup constraints
         let constraints;
         if (isIOS()) {
             constraints = { video: { facingMode: cameraIndex % 2 === 0 ? 'environment' : 'user' } };
@@ -480,67 +430,53 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
             let deviceId = videoInputDevices[cameraIndex]?.deviceId;
             constraints = deviceId ? { video: { deviceId: { exact: deviceId } } } : { video: true };
         }
-        // Add a longer delay on iOS to allow camera to reset
-        let delay = isIOS() ? 500 : 0;
-        setTimeout(async function() {
-            try {
-                activeStream = await navigator.mediaDevices.getUserMedia(constraints);
-                videoElem.srcObject = activeStream;
-                document.getElementById('barcode-loading')?.remove();
-                // Log stream info for debugging
-                if (activeStream && activeStream.getVideoTracks) {
-                    const track = activeStream.getVideoTracks()[0];
-                    console.log('Camera label:', track.label, 'facingMode:', track.getSettings().facingMode);
+        try {
+            activeStream = await navigator.mediaDevices.getUserMedia(constraints);
+            videoElem.srcObject = activeStream;
+            // Enable mirroring for front camera only
+            let isFrontCamera = false;
+            if (isIOS()) {
+                isFrontCamera = (cameraIndex % 2 === 1); // iOS: odd index = front
+            } else {
+                // Try to detect by label (not always available)
+                let device = videoInputDevices[cameraIndex];
+                if (device && device.label && /front|user/i.test(device.label)) {
+                    isFrontCamera = true;
                 }
-                // ZXing decode
-                const result = await codeReader.decodeOnceFromStream(activeStream, videoElem, hints);
-                if (result && result.text) {
-                    handleBarcodeResult(result.text);
-                }
-            } catch (e) {
-                scannerContainer.innerHTML = '<div style="color:red; margin:16px;">'+
-                    '<?= $this->t('Camera error or permission denied.') ?>'+
-                    '<br><span style="font-size:0.9em; color:#888;">'+(e && e.message ? e.message : e)+'</span>'+
-                    '</div>';
-                console.error('Camera error:', e);
             }
-            // Camera switch button logic
-            const switchBtn = document.getElementById('switch-camera-btn');
-            if (switchBtn) {
-                switchBtn.onclick = function() {
-                    alert('<?= $this->t('Switching camera...') ?>');
-                    if (isIOS()) {
-                        currentCameraIndex = (currentCameraIndex + 1) % 2; // Only two: environment/user
-                    } else {
-                        currentCameraIndex = (currentCameraIndex + 1) % videoInputDevices.length;
-                    }
-                    saveCameraSelection();
-                    if (codeReader) { codeReader.reset(); codeReader = null; }
-                    if (activeStream) { activeStream.getTracks().forEach(track => track.stop()); activeStream = null; }
-                    // Show loading while switching
-                    scannerContainer.innerHTML = '<div id="barcode-video"></div>' +
-                        '<div style="margin-top:8px; text-align:center;">' +
-                        ((videoInputDevices.length > 1 || isIOS()) ? '<button id="switch-camera-btn" type="button" style="font-size:1em; margin-right:8px;">'+
-                            '<?= $this->t('Switch Camera') ?>'+
-                        '</button>' : '') +
-                        '<button id="close-barcode-scanner" type="button" style="font-size:1em;">'+
-                        '<?= $this->t('Close') ?>'+
-                        '</button></div>' +
-                        '<div id="barcode-loading" style="text-align:center; margin-top:12px; color:#2196f3; font-weight:bold;">'+
-                        '<?= $this->t('Loading camera...') ?>'+
-                        '</div>';
-                    // Attach handlers again after re-render
-                    const closeBtn2 = document.getElementById('close-barcode-scanner');
-                    if (closeBtn2) closeBtn2.onclick = stopBarcodeScanner;
-                    const switchBtn2 = document.getElementById('switch-camera-btn');
-                    if (switchBtn2) switchBtn2.onclick = switchBtn.onclick;
-                    setTimeout(() => startBarcodeScanner(currentCameraIndex), isIOS() ? 500 : 0);
-                };
-            }
-            // Attach close button handler again in case DOM was re-rendered
-            const closeBtn3 = document.getElementById('close-barcode-scanner');
-            if (closeBtn3) closeBtn3.onclick = stopBarcodeScanner;
-        }, delay);
+            videoElem.style.transform = isFrontCamera ? 'scaleX(-1)' : 'none';
+            codeReader = new ZXing.BrowserMultiFormatReader();
+            const hints = new Map();
+            hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+                ZXing.BarcodeFormat.CODE_128,
+                ZXing.BarcodeFormat.CODE_39,
+                ZXing.BarcodeFormat.CODE_93,
+                ZXing.BarcodeFormat.EAN_13,
+                ZXing.BarcodeFormat.EAN_8,
+                ZXing.BarcodeFormat.UPC_A,
+                ZXing.BarcodeFormat.UPC_E,
+                ZXing.BarcodeFormat.ITF,
+                ZXing.BarcodeFormat.CODABAR
+            ]);
+            codeReader.decodeOnceFromStream(activeStream, videoElem, hints).then(result => {
+                if (result && result.text) handleBarcodeResult(result.text);
+            }).catch(() => {});
+        } catch (e) {
+            scannerContainer.innerHTML = '<div style="color:red; margin:16px;">'+
+                '<?= $this->t('Camera error or permission denied.') ?>'+
+                '<br><span style="font-size:0.9em; color:#888;">'+(e && e.message ? e.message : e)+'</span>'+ '</div>';
+            console.error('Camera error:', e);
+        }
+    }
+
+    function switchCamera() {
+        if (isIOS()) {
+            currentCameraIndex = (currentCameraIndex + 1) % 2;
+        } else {
+            currentCameraIndex = (currentCameraIndex + 1) % videoInputDevices.length;
+        }
+        saveCameraSelection();
+        setupCameraStream(currentCameraIndex);
     }
 
     scanBtn.addEventListener('click', async function() {
