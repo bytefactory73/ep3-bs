@@ -58,25 +58,15 @@ class SimpleLoginController extends AbstractActionController
             return $this->redirect()->toRoute('user/simple-login');
         }
         $userId = $session->user_id;
-        $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
-        // Example: fetch available drinks (customize as needed)
-        // Fetch available drinks with user_total_count for this user
         $drinkManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkManager');
-        $drinks = iterator_to_array($drinkManager->getAll($userId));
-        // Provide dummy or minimal data for booking.phtml compatibility
-        $drinkHistory = [];
-        $userName = 'Gast';
-        $currentBalance = 0;
-        $error = null;
-        $success = false;
-        $drinkOrderManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkOrderManager');
-        $drinkDepositManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkDepositManager');
         $userManager = $this->getServiceLocator()->get('User\Manager\UserManager');
         $user = $userManager->get($userId);
         $userName = $user ? $user->get('alias') : 'Gast';
-        // Fetch drink categories for category buttons in simple order UI
+        $drinks = $drinkManager->getAll($userId);
         $drinkCategoryManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkCategoryManager');
         $drinkCategories = iterator_to_array($drinkCategoryManager->getAll());
+        $drinkOrderManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkOrderManager');
+        $drinkDepositManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkDepositManager');
         $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($userId));
         $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($userId));
         // Calculate current balance
@@ -137,8 +127,8 @@ class SimpleLoginController extends AbstractActionController
             'drinkHistory' => $drinkHistory,
             'userName' => $userName,
             'currentBalance' => $currentBalance,
-            'error' => $error,
-            'success' => $success,
+            'error' => null,
+            'success' => false,
             'drinkOrderCancelWindow' => $drinkOrderCancelWindow,
             'drinkCategories' => $drinkCategories,
             'drinkStats' => $drinkStats,
