@@ -6,129 +6,19 @@
     <?= $this->render('user/simple-login/apple-webapp-meta') ?>
     <link rel="stylesheet" href="../css/simple-mode.css" />
     <style>
-    html, body {
-        font-family: Verdana, sans-serif !important;
-    }
-    body, html {
-        min-height: 100vh;
-        height: auto;
-        overflow-x: hidden;
-        font-size: 1.04em; /* Slightly above default */
-    }
-    .simple-login-bg {
-        position: fixed;
-        top: 0; left: 0; right: 0; bottom: 0;
-        background: linear-gradient(135deg, #e3f0fa 0%, #fafdff 100%);
-        z-index: -1;
-        width: 100vw;
-        min-height: 100vh;
-        height: 100%;
-    }
-    .simple-login-frame {
-        max-width: 600px;
-        width: 100%;
-        margin: 8vh auto 0 auto;
-        background: #fafdff;
-        border-radius: 18px;
-        box-shadow: 0 4px 32px rgba(33,150,243,0.10), 0 1.5px 6px rgba(33,150,243,0.08);
-        padding: 36px 32px 28px 32px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        border: 1.5px solid #2196f3;
-        font-size: 1em; /* Default size in login frame */
-    }
-    .simple-login-frame h1 {
-        color: #2196f3;
-        font-size: 1.25em; /* Slightly larger heading */
-        margin-bottom: 18px;
-        font-weight: bold;
-        text-align: center;
-    }
-    .simple-login-frame label {
-        font-size: 1.04em; /* Slightly larger label */
-        color: #333;
-        margin-bottom: 8px;
-        font-weight: 500;
-        display: block;
-        text-align: left;
-    }
-    .simple-login-frame input[type="password"],
-    .simple-login-frame input[type="text"] {
-        font-size: 1.04em; /* Slightly larger input text */
-        width: 100%;
-        padding: 10px 12px;
-        border-radius: 8px;
-        border: 1.5px solid #b0c4de;
-        margin-bottom: 18px;
-        outline: none;
-        transition: border 0.2s;
-    }
-    .simple-login-frame input[type="password"]:focus {
-        border-color: #2196f3;
-    }
-    .simple-login-frame button[type="submit"] {
-        font-size: 1.04em; /* Slightly larger button text */
-        width: 100%;
-        background: #2196f3;
-        color: #fff;
-        border: none;
-        border-radius: 8px;
-        padding: 12px 0;
-        font-weight: bold;
-        cursor: pointer;
-        box-shadow: 0 1px 4px rgba(33,150,243,0.08);
-        transition: background 0.18s;
-        margin-top: 6px;
-    }
-    .simple-login-frame button[type="submit"]:hover {
-        background: #1769aa;
-    }
-    .simple-login-frame .error-message {
-        font-size: 1em; /* Default error message size */
-        color: #d32f2f;
-        background: #fff3f3;
-        border: 1px solid #d32f2f;
-        border-radius: 6px;
-        padding: 8px 12px;
-        margin-bottom: 16px;
-        width: 100%;
-        text-align: center;
-    }
-    .simple-login-frame form {
-        width: 100%;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-    }
-    @media (max-width: 700px) {
-        .simple-login-frame,
-        .simple-order-history-frame {
-            max-width: 98vw;
-            padding: 18px 6vw 18px 6vw;
-        }
-    }
-    .simple-order-history-frame {
-        max-width: 600px;
-        width: 100%;
-        margin: 18px auto 0 auto;
-        background: #fafdff;
-        border-radius: 18px;
-        box-shadow: 0 4px 32px rgba(33,150,243,0.10), 0 1.5px 6px rgba(33,150,243,0.08);
-        padding: 36px 32px 28px 32px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        border: 1.5px solid #2196f3;
-        font-size: 1em; /* Default order history text */
-    }
-    .simple-order-history-frame h1 {
-        font-size: 1.15em; /* Slightly larger order history heading */
-        color: #2196f3;
-        margin-bottom: 18px;
-        font-weight: bold;
-        text-align: center;
-    }
+        html, body { font-family: Verdana, sans-serif !important; min-height: 100vh; height: auto; overflow-x: hidden; font-size: 1.04em; }
+        .simple-login-bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(135deg, #e3f0fa 0%, #fafdff 100%); z-index: -1; width: 100vw; min-height: 100vh; height: 100%; }
+        .simple-login-frame, .simple-order-history-frame { max-width: 600px; width: 100%; margin: 8vh auto 0 auto; background: #fafdff; border-radius: 18px; box-shadow: 0 4px 32px rgba(33,150,243,0.10), 0 1.5px 6px rgba(33,150,243,0.08); padding: 36px 32px 28px 32px; display: flex; flex-direction: column; align-items: center; border: 1.5px solid #2196f3; font-size: 1em; }
+        .simple-login-frame h1, .simple-order-history-frame h1 { color: #2196f3; font-size: 1.2em; margin-bottom: 18px; font-weight: bold; text-align: center; }
+        .simple-login-frame label { font-size: 1.04em; color: #333; margin-bottom: 8px; font-weight: 500; display: block; text-align: left; }
+        .simple-login-frame input[type="password"], .simple-login-frame input[type="text"] { font-size: 1.04em; width: 100%; padding: 10px 12px; border-radius: 8px; border: 1.5px solid #b0c4de; margin-bottom: 18px; outline: none; transition: border 0.2s; }
+        .simple-login-frame input[type="password"]:focus { border-color: #2196f3; }
+        .simple-login-frame button[type="submit"] { font-size: 1.04em; width: 100%; background: #2196f3; color: #fff; border: none; border-radius: 8px; padding: 12px 0; font-weight: bold; cursor: pointer; box-shadow: 0 1px 4px rgba(33,150,243,0.08); transition: background 0.18s; margin-top: 6px; }
+        .simple-login-frame button[type="submit"]:hover { background: #1769aa; }
+        .simple-login-frame .error-message { font-size: 1em; color: #d32f2f; background: #fff3f3; border: 1px solid #d32f2f; border-radius: 6px; padding: 8px 12px; margin-bottom: 16px; width: 100%; text-align: center; }
+        .simple-login-frame form { width: 100%; display: flex; flex-direction: column; align-items: center; }
+        @media (max-width: 700px) { .simple-login-frame, .simple-order-history-frame { max-width: 98vw; padding: 18px 6vw 18px 6vw; } }
+        .simple-order-history-frame { margin: 18px auto 0 auto; }
     </style>
 </head>
 <body>
@@ -153,18 +43,14 @@
         maskInput.addEventListener('input', function(e) {
             var prev = window._realAlias;
             var masked = maskInput.value;
-            // Figure out what changed
             if (masked.length < prev.length) {
-                // Character(s) deleted
                 window._realAlias = prev.substring(0, masked.length);
             } else {
-                // Character(s) added
                 var added = masked.length - prev.length;
                 var inputChar = e.data || '';
                 if (added > 0 && inputChar) {
                     window._realAlias += inputChar;
                 } else if (added > 0) {
-                    // Fallback: can't detect, just append *
                     window._realAlias += '*'.repeat(added);
                 }
             }
@@ -181,8 +67,6 @@
             window._realAlias += paste;
             maskInput.value = '*'.repeat(window._realAlias.length);
         });
-
-        // Standalone mode form submit fix for iOS
         document.getElementById('simple-login-form').addEventListener('submit', function(e) {
             realInput.value = window._realAlias || '';
             if (window.navigator.standalone) {
@@ -193,12 +77,10 @@
                 xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
                 xhr.onload = function() {
                     if (xhr.status >= 200 && xhr.status < 400) {
-                        // Replace the page content with the response
                         document.open();
                         document.write(xhr.responseText);
                         document.close();
                     } else {
-                        // fallback: reload
                         window.location.reload();
                     }
                 };
@@ -213,7 +95,7 @@
     Logge dich mit deiner <b>"Theken-ID"</b> ein. Diese kannst du in deinem Benutzer Profil des Buchungssystem selbst wählen.<br><br>
     <i>In der Testphase kannst du dich auch mit <b>"test"</b> einloggen um alles auszuprobieren</i>.
 </div>
-<div class="simple-order-history-frame" style="max-width:600px;width:100%;margin:18px auto 0 auto;background:#fafdff;border-radius:18px;box-shadow:0 4px 32px rgba(33,150,243,0.10), 0 1.5px 6px rgba(33,150,243,0.08);padding:36px 32px 28px 32px;display:flex;flex-direction:column;align-items:center;border:1.5px solid #2196f3;">
+<div class="simple-order-history-frame">
     <h1>Buchungshistorie</h1>
     <table style="font-size:1em; border-collapse:collapse; margin-bottom:24px; margin-left:auto; margin-right:auto; min-width:0; width:auto; max-width:100%;">
         <thead>
@@ -225,7 +107,6 @@
         <tbody>
         <?php
         if (!empty($this->recentOrders)):
-            // Group orders by date and alias
             $grouped = [];
             foreach ($this->recentOrders as $row) {
                 $dt = new DateTime($row['order_time']);
@@ -233,10 +114,8 @@
                 $alias = $row['alias'];
                 $drink = $row['drink_name'];
                 $isDeleted = isset($row['deleted']) && $row['deleted'];
-                $deletedKey = $isDeleted ? 'deleted' : 'active';
                 if (!isset($grouped[$date])) $grouped[$date] = [];
                 if (!isset($grouped[$date][$alias])) $grouped[$date][$alias] = ['drinks' => [], 'deleted' => $isDeleted, 'order_time' => $row['order_time']];
-                // If any order for this group is deleted, mark as deleted
                 $grouped[$date][$alias]['deleted'] = $grouped[$date][$alias]['deleted'] || $isDeleted;
                 $grouped[$date][$alias]['order_time'] = min($grouped[$date][$alias]['order_time'], $row['order_time']);
                 if (!isset($grouped[$date][$alias]['drinks'][$drink])) {
@@ -244,10 +123,8 @@
                 }
                 $grouped[$date][$alias]['drinks'][$drink] += (int)$row['quantity'];
             }
-            // Sort by date descending, then by order_time ascending
             krsort($grouped);
             foreach ($grouped as $date => $aliases) {
-                $firstAlias = true;
                 $datePrinted = false;
                 foreach ($aliases as $alias => $info) {
                     $dt = new DateTime($info['order_time']);

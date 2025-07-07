@@ -1,15 +1,11 @@
 <?php
 
 // Ensure $simpleOrderMode is defined at the top
-if (!isset($simpleOrderMode)) {
-    $simpleOrderMode = isset($this->simpleOrderMode) ? $this->simpleOrderMode : false;
-}
-
-// Always use a local variable for drinks to allow sorting/modification
-$drinks = isset($this->drinks) ? $this->drinks : [];
+$simpleOrderMode = $simpleOrderMode ?? ($this->simpleOrderMode ?? false);
+$drinks = $this->drinks ?? [];
 
 // Display user name at the top if available
-if (isset($this->userName) && $this->userName) {
+if (!empty($this->userName)) {
     echo '<div style="font-size:1.3em; color:#2196f3; font-weight:bold; margin-bottom:12px; text-align:center; position:relative;">' .
         $this->escapeHtml($this->userName) .
         '<span id="logout-timer" style="position:absolute; right:0; top:0; font-size:0.85em; color:#d32f2f; background:#fff3f3; border:1px solid #d32f2f; border-radius:6px; padding:2px 10px; margin-left:12px; display:none;"></span>' .
@@ -18,12 +14,11 @@ if (isset($this->userName) && $this->userName) {
 
 // Calculate current balance from bottom up (oldest to newest)
 $currentBalance = 0;
-if (isset($this->drinkHistory) && is_array($this->drinkHistory)) {
+if (!empty($this->drinkHistory) && is_array($this->drinkHistory)) {
     foreach ($this->drinkHistory as $entry) {
         if ($entry['type'] === 'deposit') {
             $currentBalance += $entry['amount'];
-        } else if ($entry['type'] === 'order') {
-            if (!empty($entry['deleted'])) continue; // skip deleted orders for balance
+        } else if ($entry['type'] === 'order' && empty($entry['deleted'])) {
             $currentBalance -= $entry['total'];
         }
     }
