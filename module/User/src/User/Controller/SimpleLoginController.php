@@ -151,49 +151,22 @@ class SimpleLoginController extends AbstractActionController
         $sessionManager = $this->getServiceLocator()->get('Zend\Session\SessionManager');
         $sessionManager->start();
         $session = new \Zend\Session\Container('SimpleLogin');
+
         if (empty($session->user_id)) {
             return $this->getResponse()->setStatusCode(403);
         }
-        $userId = $session->user_id;
         $orderId = (int)$this->params()->fromPost('order_id');
         if (!$orderId) {
             return $this->getResponse()->setStatusCode(400);
         }
-        $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
-        // Only allow deleting orders belonging to this user
-        $order = $db->query('SELECT * FROM drink_orders WHERE id = ? AND user_id = ?', [$orderId, $userId])->current();
-        if (!$order) {
-            return $this->getResponse()->setStatusCode(404);
-        }
-        // Mark as deleted
-        $result = $db->query('UPDATE drink_orders SET deleted = 1 WHERE id = ? AND user_id = ?', [$orderId, $userId]);
-        if ($result->getAffectedRows() > 0) {
-            // Send cancellation email (copied from AccountController)
-            $userManager = $this->getServiceLocator()->get('User\Manager\UserManager');
-            $user = $userManager->get($userId);
-            $userMailService = $this->getServiceLocator()->get('User\Service\MailService');
-            $drinkOrderManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkOrderManager');
-            $drinkDepositManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkDepositManager');
-            $dbAdapter = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
-            // Fetch order details before deletion
-            $sql = 'SELECT do.*, d.name as drink_name FROM drink_orders do JOIN drinks d ON do.drink_id = d.id WHERE do.id = ? AND do.user_id = ?';
-            $statement = $dbAdapter->createStatement($sql, [$orderId, $userId]);
-            $order = $statement->execute()->current();
-            $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($userId));
-            $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($userId));
-            $balance = 0;
-            foreach ($drinkDeposits as $deposit) $balance += $deposit['amount'];
-            foreach ($drinkOrders as $o) if (empty($o['deleted'])) $balance -= $o['quantity'] * $o['price'];
-            $subject = $this->t('Stornierung Deiner Getränkebestellung');
-            $lines = [];
-            if ($order) {
-                $lines[] = sprintf('%s x %d = %.2f EUR', $order['drink_name'], $order['quantity'], $order['quantity'] * $order['price']);
-            }
-            $lines[] = '---------------------';
-            $lines[] = sprintf($this->t('Storniert am:') . ' %s', date('d.m.Y H:i'));
-            $lines[] = sprintf($this->t('Saldo nach Stornierung:') . '<b> %.2f EUR </b>', $balance);
-            $text = $this->t('Deine Getränkebestellung wurde erfolgreich storniert.') . "<br><br>" . implode("<br>", $lines);
-            $userMailService->send($user, $subject, $text, array('isHtml' => true));
+
+        $userManager = $this->getServiceLocator()->get('User\Manager\UserManager');
+        $user = $userManager->get($session->user_id);
+
+        $drinkManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkManager');
+        $success = $drinkManager->dropOrderAndNotify($orderId, $user, [$this, 't'], $this->getServiceLocator());
+
+        if ($success) {
             return $this->getResponse()->setContent(json_encode(['success' => true]))->setStatusCode(200);
         } else {
             return $this->getResponse()->setContent(json_encode(['success' => false, 'error_message' => 'Update failed.']))->setStatusCode(500);
@@ -206,67 +179,23 @@ class SimpleLoginController extends AbstractActionController
         $sessionManager = $this->getServiceLocator()->get('Zend\Session\SessionManager');
         $sessionManager->start();
         $session = new \Zend\Session\Container('SimpleLogin');
+
         if (empty($session->user_id)) {
             return $this->getResponse()->setStatusCode(401)->setContent(json_encode(['success' => false, 'error' => 'Not authenticated.']));
         }
-        $userId = $session->user_id;
-        $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
-        $drinkOrderManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkOrderManager');
+
+        $userManager = $this->getServiceLocator()->get('User\Manager\UserManager');
+        $user = $userManager->get($session->user_id);
+
         $drinkManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkManager');
-        $drinkDepositManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkDepositManager');
         $drinkCounts = $this->params()->fromPost('drink_counts', []);
-        $anyOrdered = false;
-        $orderedDrinks = [];
-        if (is_array($drinkCounts)) {
-            foreach ($drinkCounts as $drinkId => $qty) {
-                $drinkId = (int)$drinkId;
-                $qty = (int)$qty;
-                if ($drinkId && $qty > 0) {
-                    $drink = $drinkManager->get($drinkId);
-                    if ($drink) {
-                        $db->query('INSERT INTO drink_orders (user_id, drink_id, quantity, price, order_time) VALUES (?, ?, ?, ?, NOW())', [$userId, $drinkId, $qty, $drink['price']]);
-                        $anyOrdered = true;
-                        $orderedDrinks[] = [
-                            'name' => $drink['name'],
-                            'quantity' => $qty,
-                            'price' => $drink['price'],
-                            'total' => $qty * $drink['price'],
-                        ];
-                    }
-                }
-            }
-        }
-        if ($anyOrdered) {
-            // Calculate new balance after order
-            $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($userId));
-            $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($userId));
-            $balance = 0;
-            foreach ($drinkDeposits as $deposit) $balance += $deposit['amount'];
-            foreach ($drinkOrders as $order) if (empty($order['deleted'])) $balance -= $order['quantity'] * $order['price'];
-            // Send confirmation email
-            $userManager = $this->getServiceLocator()->get('User\Manager\UserManager');
-            $user = $userManager->get($userId);
-            $subject = $this->t('Bestätigung Deiner Getränkebestellung');
-            $lines = [];
-            $totalSum = 0;
-            foreach ($orderedDrinks as $item) {
-                $lines[] = sprintf('%s x %d = %.2f EUR', $item['name'], $item['quantity'], $item['total']);
-                $totalSum += $item['total'];
-            }
-            $lines[] = '---------------------';
-            $lines[] = sprintf($this->t('Gesamt:') . ' %.2f EUR', $totalSum);
-            $lines[] = '';
-            $lines[] = sprintf($this->t('Saldo nach Bestellung:') . '<b> %.2f EUR </b>', $balance);
-            $text = $this->t('Vielen Dank für Deine Getränkebestellung!') . "<br><br>" . implode("<br>", $lines);
-            if ($balance < 0) {
-                $text .= "<br><br>";
-                $text .= '<span style="color:#d32f2f;font-weight:bold;">' . $this->t('Warnung: Dein Saldo ist negativ! Bitte überweise Geld auf das STC Paypal-Konto.') . '</span>';
-            }
-            $userMailService = $this->getServiceLocator()->get('User\Service\MailService');
-            $userMailService->send($user, $subject, $text, array('isHtml' => true));
-            return $this->getResponse()->setContent(json_encode(['success' => true, 'balance' => $balance]))->setStatusCode(200);
+
+        $result = $drinkManager->addOrdersAndNotify($user, $drinkCounts, [$this, 't'], $this->getServiceLocator());
+
+        if ($result['success']) {
+            return $this->getResponse()->setContent(json_encode(['success' => true, 'balance' => $result['balance']]))->setStatusCode(200);
         } else {
-            return $this->getResponse()->setContent(json_encode(['success' => false, 'error' => $this->t('Bitte mindestens ein Getränk auswählen.')]))->setStatusCode(400);
+            return $this->getResponse()->setContent(json_encode(['success' => false, 'error' => $result['error']]))->setStatusCode(400);
         }
     }
 }
