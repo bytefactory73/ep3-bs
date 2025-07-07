@@ -684,7 +684,7 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
                     $imgPath = $this->basePath('/imgs/branding/' . $imgFile);
                     ?>
                     <div class="drink-controls">
-                        <button type="button" class="drink-minus" data-drink-id="<?= (int)$drink['id'] ?>" style="background: #eee; border: none; border-radius: 4px; width: 32px; height: 32px; font-size: 19.8px; font-weight: bold; color: #2196f3; cursor: pointer; margin-right: 0; position:relative; z-index:2;">–</button>
+                        <button type="button" class="drink-minus" data-drink-id="<?= (int)$drink['id'] ?>" style="background: #eee; border: none; border-radius: 4px; width: 32px; height: 32px; font-size: 19.8px; font-weight: bold; color: #2196f3; cursor: pointer; margin-right: 0; position:relative; z-index:2; visibility:hidden;">–</button>
                     </div>
                     <span class="drink-count-badge" id="badge-<?= (int)$drink['id'] ?>" style="position:absolute; top:4px; right:4px; z-index:2; visibility:hidden;">0</span>
                     <div class="drink-image-frame">
