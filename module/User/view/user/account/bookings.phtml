@@ -371,209 +371,210 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
     <script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
     <script>
     // Barcode scan logic with camera switch
-    const scanBtn = document.getElementById('scan-barcode-btn');
-    const scannerModal = document.getElementById('barcode-scanner-modal');
-    const scannerContainer = document.getElementById('barcode-scanner-container');
-    let codeReader = null;
-    let videoInputDevices = [];
-    let currentCameraIndex = 0;
-    let activeStream = null;
+    document.addEventListener('DOMContentLoaded', function() {
+        var scanBtn = document.getElementById('scan-barcode-btn');
+        var scannerModal = document.getElementById('barcode-scanner-modal');
+        var scannerContainer = document.getElementById('barcode-scanner-container');
+        var codeReader = null;
+        var videoInputDevices = [];
+        var currentCameraIndex = 0;
+        var activeStream = null;
+        var videoElem = null;
 
-    async function listVideoInputDevices() {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        return devices.filter(device => device.kind === 'videoinput');
-    }
-
-    function isIOS() {
-        return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-    }
-
-    // Helper: persist and restore camera selection
-    function saveCameraSelection() {
-        if (isIOS()) {
-            localStorage.setItem('barcodeCameraIndex', currentCameraIndex);
-        } else {
-            let deviceId = videoInputDevices[currentCameraIndex]?.deviceId;
-            if (deviceId) localStorage.setItem('barcodeCameraDeviceId', deviceId);
-        }
-    }
-    function restoreCameraSelection() {
-        if (isIOS()) {
-            let idx = parseInt(localStorage.getItem('barcodeCameraIndex'));
-            if (!isNaN(idx)) currentCameraIndex = idx;
-        } else {
-            let savedId = localStorage.getItem('barcodeCameraDeviceId');
-            if (savedId && videoInputDevices.length > 0) {
-                let idx = videoInputDevices.findIndex(d => d.deviceId === savedId);
-                if (idx >= 0) currentCameraIndex = idx;
-            }
-        }
-    }
-
-    let videoElem = null;
-
-    async function startBarcodeScanner(cameraIndex = 0) {
-        // Render modal UI only once
-        scannerContainer.innerHTML = '<div id="barcode-video"></div>' +
-            '<div style="margin-top:8px; text-align:center;">' +
-            ((videoInputDevices.length > 1 || isIOS()) ? '<button id="switch-camera-btn" type="button" style="font-size:1em; margin-right:8px;">'+
-                '<?= $this->t('Switch Camera') ?>'+
-            '</button>' : '') +
-            '<button id="close-barcode-scanner" type="button" style="font-size:1em;">'+
-            '<?= $this->t('Close') ?>'+
-            '</button></div>';
-        // Setup video element
-        const barcodeVideoDiv = document.getElementById('barcode-video');
-        barcodeVideoDiv.innerHTML = '';
-        videoElem = document.createElement('video');
-        videoElem.setAttribute('autoplay', 'true');
-        videoElem.setAttribute('playsinline', 'true');
-        videoElem.style.width = '100%';
-        barcodeVideoDiv.appendChild(videoElem);
-        // Attach button handlers
-        const closeBtn = document.getElementById('close-barcode-scanner');
-        if (closeBtn) closeBtn.onclick = stopBarcodeScanner;
-        const switchBtn = document.getElementById('switch-camera-btn');
-        if (switchBtn) switchBtn.onclick = switchCamera;
-        // Start camera
-        await setupCameraStream(cameraIndex);
-    }
-
-    async function setupCameraStream(cameraIndex) {
-        // Clean up previous
-        if (codeReader) { codeReader.reset(); codeReader = null; }
-        if (activeStream) { activeStream.getTracks().forEach(track => track.stop()); activeStream = null; }
-        // Setup constraints
-        let constraints;
-        if (isIOS()) {
-            constraints = { video: { facingMode: cameraIndex % 2 === 0 ? 'environment' : 'user' } };
-        } else {
-            let deviceId = videoInputDevices[cameraIndex]?.deviceId;
-            constraints = deviceId ? { video: { deviceId: { exact: deviceId } } } : { video: true };
-        }
-        try {
-            activeStream = await navigator.mediaDevices.getUserMedia(constraints);
-            videoElem.srcObject = activeStream;
-            // Enable mirroring for front camera only
-            let isFrontCamera = false;
-            if (isIOS()) {
-                isFrontCamera = (cameraIndex % 2 === 1); // iOS: odd index = front
-            } else {
-                // Try to detect by label (not always available)
-                let device = videoInputDevices[cameraIndex];
-                if (device && device.label && /front|user/i.test(device.label)) {
-                    isFrontCamera = true;
+        function listVideoInputDevices() {
+            return navigator.mediaDevices.enumerateDevices().then(function(devices) {
+                var result = [];
+                for (var i = 0; i < devices.length; i++) {
+                    if (devices[i].kind === 'videoinput') result.push(devices[i]);
                 }
-            }
-            videoElem.style.transform = isFrontCamera ? 'scaleX(-1)' : 'none';
-            codeReader = new ZXing.BrowserMultiFormatReader();
-            const hints = new Map();
-            hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
-                ZXing.BarcodeFormat.CODE_128,
-                ZXing.BarcodeFormat.CODE_39,
-                ZXing.BarcodeFormat.CODE_93,
-                ZXing.BarcodeFormat.EAN_13,
-                ZXing.BarcodeFormat.EAN_8,
-                ZXing.BarcodeFormat.UPC_A,
-                ZXing.BarcodeFormat.UPC_E,
-                ZXing.BarcodeFormat.ITF,
-                ZXing.BarcodeFormat.CODABAR
-            ]);
-            codeReader.decodeOnceFromStream(activeStream, videoElem, hints).then(result => {
-                if (result && result.text) handleBarcodeResult(result.text);
-            }).catch(() => {});
-        } catch (e) {
-            scannerContainer.innerHTML = '<div style="color:red; margin:16px;">'+
-                '<?= $this->t('Camera error or permission denied.') ?>'+
-                '<br><span style="font-size:0.9em; color:#888;">'+(e && e.message ? e.message : e)+'</span>'+ '</div>';
-            console.error('Camera error:', e);
-        }
-    }
-
-    function switchCamera() {
-        if (isIOS()) {
-            currentCameraIndex = (currentCameraIndex + 1) % 2;
-        } else {
-            currentCameraIndex = (currentCameraIndex + 1) % videoInputDevices.length;
-        }
-        saveCameraSelection();
-        setupCameraStream(currentCameraIndex);
-    }
-
-    scanBtn.addEventListener('click', async function() {
-        // Simulation mode: if ?simulate_barcode=1 is in the URL, feed test code directly and do NOT open scanner UI
-        if (window.location.search.indexOf('simulate_barcode=1') !== -1) {
-            handleBarcodeResult('4002798021294');
-            return;
-        }
-        if (scannerModal.style.display === 'flex') {
-            stopBarcodeScanner();
-            return;
-        }
-        scannerModal.style.display = 'flex';
-        videoInputDevices = await listVideoInputDevices();
-        currentCameraIndex = 0;
-        restoreCameraSelection();
-        startBarcodeScanner(currentCameraIndex);
-    });
-    function stopBarcodeScanner() {
-        scannerModal.style.display = 'none';
-        scannerContainer.innerHTML = '';
-        if (codeReader) {
-            codeReader.reset();
-            codeReader = null;
-        }
-        if (activeStream) {
-            activeStream.getTracks().forEach(track => track.stop());
-            activeStream = null;
-        }
-    }
-    document.addEventListener('click', function(e) {
-        if (e.target && e.target.id === 'close-barcode-scanner') {
-            stopBarcodeScanner();
-        }
-        // Also close modal if user clicks outside the scanner box
-        if (e.target && e.target.id === 'barcode-scanner-modal') {
-            stopBarcodeScanner();
-        }
-    });
-    function handleBarcodeResult(barcode) {
-        stopBarcodeScanner();
-        fetch('account/barcode-lookup?barcode=' + encodeURIComponent(barcode))
-            .then(response => response.json())
-            .then(data => {
-                if (data && data.drink_id) {
-                    var input = document.getElementById('input-' + data.drink_id);
-                    var badge = document.getElementById('badge-' + data.drink_id);
-                    var tile = input ? input.closest('.drink-tile') : null;
-                    // If tile is hidden, switch to 'All' group
-                    if (tile && tile.style.display === 'none') {
-                        var allBtn = document.querySelector('.category-btn[data-category="all"]');
-                        if (allBtn) allBtn.click();
-                        // After switching, reselect elements (DOM may have changed)
-                        input = document.getElementById('input-' + data.drink_id);
-                        badge = document.getElementById('badge-' + data.drink_id);
-                        tile = input ? input.closest('.drink-tile') : null;
-                        // Sort by order count after switching group
-                        sortDrinkTiles();
-                    }
-                    var val = parseInt(input.value) || 0;
-                    val++;
-                    input.value = val;
-                    badge.textContent = val;
-                    badge.style.visibility = val > 0 ? 'visible' : 'hidden';
-                    var minusBtn = tile ? tile.querySelector('.drink-minus') : null;
-                    if (minusBtn) minusBtn.style.visibility = val > 0 ? 'visible' : 'hidden';
-                    if (typeof updateDrinkOrderTotal === 'function') updateDrinkOrderTotal();
-                    sortDrinkTiles(); // Only sort after barcode scan
-                } else {
-                    alert('<?= $this->t('Unknown barcode:') ?> ' + barcode);
-                }
-            })
-            .catch(() => {
-                alert('<?= $this->t('Unknown barcode:') ?> ' + barcode);
+                return result;
             });
-    }
+        }
+        function isIOS() {
+            return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        }
+        function saveCameraSelection() {
+            if (isIOS()) {
+                localStorage.setItem('barcodeCameraIndex', currentCameraIndex);
+            } else {
+                var deviceId = videoInputDevices[currentCameraIndex] && videoInputDevices[currentCameraIndex].deviceId;
+                if (deviceId) localStorage.setItem('barcodeCameraDeviceId', deviceId);
+            }
+        }
+        function restoreCameraSelection() {
+            if (isIOS()) {
+                var idx = parseInt(localStorage.getItem('barcodeCameraIndex'));
+                if (!isNaN(idx)) currentCameraIndex = idx;
+            } else {
+                var savedId = localStorage.getItem('barcodeCameraDeviceId');
+                if (savedId && videoInputDevices.length > 0) {
+                    for (var i = 0; i < videoInputDevices.length; i++) {
+                        if (videoInputDevices[i].deviceId === savedId) {
+                            currentCameraIndex = i;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        function startBarcodeScanner(cameraIndex) {
+            if (typeof cameraIndex === 'undefined') cameraIndex = 0;
+            scannerContainer.innerHTML = '<div id="barcode-video"></div>' +
+                '<div style="margin-top:8px; text-align:center;">' +
+                ((videoInputDevices.length > 1 || isIOS()) ? '<button id="switch-camera-btn" type="button" style="font-size:1em; margin-right:8px;">'+
+                    '<?= $this->t('Switch Camera') ?>'+
+                '</button>' : '') +
+                '<button id="close-barcode-scanner" type="button" style="font-size:1em;">'+
+                '<?= $this->t('Close') ?>'+
+                '</button></div>';
+            var barcodeVideoDiv = document.getElementById('barcode-video');
+            barcodeVideoDiv.innerHTML = '';
+            videoElem = document.createElement('video');
+            videoElem.setAttribute('autoplay', 'true');
+            videoElem.setAttribute('playsinline', 'true');
+            videoElem.style.width = '100%';
+            barcodeVideoDiv.appendChild(videoElem);
+            var closeBtn = document.getElementById('close-barcode-scanner');
+            if (closeBtn) closeBtn.onclick = stopBarcodeScanner;
+            var switchBtn = document.getElementById('switch-camera-btn');
+            if (switchBtn) switchBtn.onclick = switchCamera;
+            setupCameraStream(cameraIndex);
+        }
+        function setupCameraStream(cameraIndex) {
+            if (codeReader) { codeReader.reset(); codeReader = null; }
+            if (activeStream) { var tracks = activeStream.getTracks(); for (var i=0;i<tracks.length;i++) tracks[i].stop(); activeStream = null; }
+            var constraints;
+            if (isIOS()) {
+                constraints = { video: { facingMode: cameraIndex % 2 === 0 ? 'environment' : 'user' } };
+            } else {
+                var deviceId = videoInputDevices[cameraIndex] && videoInputDevices[cameraIndex].deviceId;
+                constraints = deviceId ? { video: { deviceId: { exact: deviceId } } } : { video: true };
+            }
+            navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
+                activeStream = stream;
+                videoElem.srcObject = activeStream;
+                var isFrontCamera = false;
+                if (isIOS()) {
+                    isFrontCamera = (cameraIndex % 2 === 1);
+                } else {
+                    var device = videoInputDevices[cameraIndex];
+                    if (device && device.label && /front|user/i.test(device.label)) {
+                        isFrontCamera = true;
+                    }
+                }
+                videoElem.style.transform = isFrontCamera ? 'scaleX(-1)' : 'none';
+                codeReader = new ZXing.BrowserMultiFormatReader();
+                var hints = new Map();
+                hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+                    ZXing.BarcodeFormat.CODE_128,
+                    ZXing.BarcodeFormat.CODE_39,
+                    ZXing.BarcodeFormat.CODE_93,
+                    ZXing.BarcodeFormat.EAN_13,
+                    ZXing.BarcodeFormat.EAN_8,
+                    ZXing.BarcodeFormat.UPC_A,
+                    ZXing.BarcodeFormat.UPC_E,
+                    ZXing.BarcodeFormat.ITF,
+                    ZXing.BarcodeFormat.CODABAR
+                ]);
+                codeReader.decodeOnceFromStream(activeStream, videoElem, hints).then(function(result) {
+                    if (result && result.text) handleBarcodeResult(result.text);
+                }).catch(function(){});
+            }).catch(function(e) {
+                scannerContainer.innerHTML = '<div style="color:red; margin:16px;">'+
+                    '<?= $this->t('Camera error or permission denied.') ?>'+
+                    '<br><span style="font-size:0.9em; color:#888;">'+(e && e.message ? e.message : e)+'</span>'+ '</div>';
+                console.error('Camera error:', e);
+            });
+        }
+        function switchCamera() {
+            if (isIOS()) {
+                currentCameraIndex = (currentCameraIndex + 1) % 2;
+            } else {
+                currentCameraIndex = (currentCameraIndex + 1) % videoInputDevices.length;
+            }
+            saveCameraSelection();
+            setupCameraStream(currentCameraIndex);
+        }
+        function stopBarcodeScanner() {
+            scannerModal.style.display = 'none';
+            scannerContainer.innerHTML = '';
+            if (codeReader) {
+                codeReader.reset();
+                codeReader = null;
+            }
+            if (activeStream) {
+                var tracks = activeStream.getTracks();
+                for (var i=0;i<tracks.length;i++) tracks[i].stop();
+                activeStream = null;
+            }
+        }
+        function handleBarcodeResult(barcode) {
+            stopBarcodeScanner();
+            fetch('account/barcode-lookup?barcode=' + encodeURIComponent(barcode))
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    if (data && data.drink_id) {
+                        var input = document.getElementById('input-' + data.drink_id);
+                        var badge = document.getElementById('badge-' + data.drink_id);
+                        var tile = input ? input.closest('.drink-tile') : null;
+                        if (tile && tile.style.display === 'none') {
+                            var allBtn = document.querySelector('.category-btn[data-category="all"]');
+                            if (allBtn) allBtn.click();
+                            input = document.getElementById('input-' + data.drink_id);
+                            badge = document.getElementById('badge-' + data.drink_id);
+                            tile = input ? input.closest('.drink-tile') : null;
+                            sortDrinkTiles();
+                        }
+                        var val = parseInt(input.value) || 0;
+                        val++;
+                        input.value = val;
+                        badge.textContent = val;
+                        badge.style.visibility = val > 0 ? 'visible' : 'hidden';
+                        var minusBtn = tile ? tile.querySelector('.drink-minus') : null;
+                        if (minusBtn) minusBtn.style.visibility = val > 0 ? 'visible' : 'hidden';
+                        if (typeof updateDrinkOrderTotal === 'function') updateDrinkOrderTotal();
+                        sortDrinkTiles();
+                    } else {
+                        alert('<?= $this->t('Unknown barcode:') ?> ' + barcode);
+                    }
+                })
+                .catch(function() {
+                    alert('<?= $this->t('Unknown barcode:') ?> ' + barcode);
+                });
+        }
+        // Add both click and touchstart for iOS compatibility
+        if (scanBtn) {
+            scanBtn.addEventListener('click', function() {
+                if (window.location.search.indexOf('simulate_barcode=1') !== -1) {
+                    handleBarcodeResult('4002798021294');
+                    return;
+                }
+                if (scannerModal.style.display === 'flex') {
+                    stopBarcodeScanner();
+                    return;
+                }
+                scannerModal.style.display = 'flex';
+                listVideoInputDevices().then(function(devices) {
+                    videoInputDevices = devices;
+                    currentCameraIndex = 0;
+                    restoreCameraSelection();
+                    startBarcodeScanner(currentCameraIndex);
+                });
+            }, false);
+            scanBtn.addEventListener('touchstart', function(e) {
+                e.preventDefault();
+                scanBtn.click();
+            }, {passive: false});
+        }
+        document.addEventListener('click', function(e) {
+            if (e.target && e.target.id === 'close-barcode-scanner') {
+                stopBarcodeScanner();
+            }
+            if (e.target && e.target.id === 'barcode-scanner-modal') {
+                stopBarcodeScanner();
+            }
+        });
+    });
     </script>
     <style>
     @media (max-width: 900px) {
