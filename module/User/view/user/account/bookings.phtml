@@ -41,6 +41,12 @@ $this->setup(array(
 ?>
 
 <style type="text/css">
+html, body {
+    font-family: Verdana, sans-serif !important;
+}
+button, .category-btn, input, select, textarea {
+    font-family: Verdana, sans-serif !important;
+}
 #current-balance-display.negative-balance {
     background: #fff3f3 !important;
     color: #d32f2f !important;
@@ -325,7 +331,7 @@ $this->setup(array(
             </div>
         </div>
         <div class="order-actions" style="flex: 1 1 auto; display: flex; justify-content: center; align-items: center;">
-            <button type="submit" form="drink-order-form" name="drink_order_submit" value="1" class="default-button stc-main-button" style="background: #2196f3; color: #fff; border: 1px solid #2196f3; border-radius: 6px; padding: 4px 14px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 0; width: 120px; height: 44px; justify-content: center; font-family: inherit; font-size: 1.1em; font-weight: bold;">
+            <button type="submit" form="drink-order-form" name="drink_order_submit" value="1" class="default-button stc-main-button" style="background: #2196f3; color: #fff; border: 1px solid #2196f3; border-radius: 6px; padding: 4px 14px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 0; width: 120px; height: 44px; justify-content: center; font-size: 1.1em; font-weight: bold;">
                 <span style="font-weight: bold;"><?= $this->t('Buchen') ?></span>
                 <span id="drink-order-total" style="font-weight: bold; color: #fff; background: #2196f3; border-radius: 3px; padding: 2px 12px; font-size: 1em; margin-left: 8px; min-width: 60px; display: inline-block; text-align: center; transition: background 0.2s, color 0.2s;">&nbsp;<?= $this->priceFormat(0) ?>&nbsp;</span>
             </button>
