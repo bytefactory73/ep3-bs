@@ -2,27 +2,47 @@
 <html lang="de">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <?= $this->render('user/simple-login/apple-webapp-meta') ?>
     <link rel="stylesheet" href="../css/simple-mode.css" />
     <style>
-        html, body { font-family: Verdana, sans-serif !important; min-height: 100vh; height: auto; overflow-x: hidden; font-size: 1.04em; }
+        html, body { font-family: Verdana, sans-serif !important; min-height: 100vh; height: auto; overflow-x: hidden; font-size: 1.04em; margin: 0; padding: 0; }
+        body { box-sizing: border-box; padding: 3vw 0 3vw 0; }
         .simple-login-bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(135deg, #e3f0fa 0%, #fafdff 100%); z-index: -1; width: 100vw; min-height: 100vh; height: 100%; }
-        .simple-login-frame, .simple-order-history-frame { max-width: 600px; width: 100%; margin: 8vh auto 0 auto; background: #fafdff; border-radius: 18px; box-shadow: 0 4px 32px rgba(33,150,243,0.10), 0 1.5px 6px rgba(33,150,243,0.08); padding: 36px 32px 28px 32px; display: flex; flex-direction: column; align-items: center; border: 1.5px solid #2196f3; font-size: 1em; }
+        .simple-login-wrapper { width: 100%; max-width: 100vw; padding: 0 32px; box-sizing: border-box; }
+        @media (max-width: 900px) { .simple-login-wrapper { padding: 0 4vw; } }
+        @media (max-width: 700px) { .simple-login-wrapper { padding: 0 3vw; } }
+        @media (max-width: 480px) { .simple-login-wrapper { padding: 0 2vw; } }
+        .simple-login-frame, .simple-order-history-frame { max-width: 600px; width: 100%; margin: 8vh auto 0 auto; background: #fafdff; border-radius: 18px; box-shadow: 0 4px 32px rgba(33,150,243,0.10), 0 1.5px 6px rgba(33,150,243,0.08); padding: 36px 32px 28px 32px; display: flex; flex-direction: column; align-items: center; border: 1.5px solid #2196f3; font-size: 1em; box-sizing: border-box; }
         .simple-login-frame h1, .simple-order-history-frame h1 { color: #2196f3; font-size: 1.2em; margin-bottom: 18px; font-weight: bold; text-align: center; }
         .simple-login-frame label { font-size: 1.04em; color: #333; margin-bottom: 8px; font-weight: 500; display: block; text-align: left; }
-        .simple-login-frame input[type="password"], .simple-login-frame input[type="text"] { font-size: 1.04em; width: 100%; padding: 10px 12px; border-radius: 8px; border: 1.5px solid #b0c4de; margin-bottom: 18px; outline: none; transition: border 0.2s; }
-        .simple-login-frame input[type="password"]:focus { border-color: #2196f3; }
-        .simple-login-frame button[type="submit"] { font-size: 1.04em; width: 100%; background: #2196f3; color: #fff; border: none; border-radius: 8px; padding: 12px 0; font-weight: bold; cursor: pointer; box-shadow: 0 1px 4px rgba(33,150,243,0.08); transition: background 0.18s; margin-top: 6px; }
-        .simple-login-frame button[type="submit"]:hover { background: #1769aa; }
+        .simple-login-frame input[type="password"], .simple-login-frame input[type="text"] { font-size: 1.04em; width: 100%; padding: 10px 12px; border-radius: 8px; border: 1.5px solid #b0c4de; margin-bottom: 18px; outline: none; transition: border 0.2s; box-sizing: border-box; }
+        .simple-login-frame input[type="password"]:focus, .simple-login-frame input[type="text"]:focus { border-color: #2196f3; }
+        .simple-login-frame button[type="submit"] { font-size: 1.04em; width: 100%; background: #2196f3; color: #fff; border: none; border-radius: 8px; padding: 14px 0; font-weight: bold; cursor: pointer; box-shadow: 0 1px 4px rgba(33,150,243,0.08); transition: background 0.18s; margin-top: 6px; }
+        .simple-login-frame button[type="submit"]:hover, .simple-login-frame button[type="submit"]:focus { background: #1769aa; }
         .simple-login-frame .error-message { font-size: 1em; color: #d32f2f; background: #fff3f3; border: 1px solid #d32f2f; border-radius: 6px; padding: 8px 12px; margin-bottom: 16px; width: 100%; text-align: center; }
         .simple-login-frame form { width: 100%; display: flex; flex-direction: column; align-items: center; }
-        @media (max-width: 700px) { .simple-login-frame, .simple-order-history-frame { max-width: 98vw; padding: 18px 6vw 18px 6vw; } }
+        @media (max-width: 700px) {
+            .simple-login-frame, .simple-order-history-frame { max-width: 98vw; padding: 18px 4vw 18px 4vw; border-radius: 10px; }
+            .simple-login-info { padding: 12px 4vw; font-size: 1em; }
+        }
+        @media (max-width: 480px) {
+            .simple-login-frame, .simple-order-history-frame { margin: 4vw auto 0 auto; padding: 10vw 2vw 10vw 2vw; box-shadow: 0 2px 8px rgba(33,150,243,0.10); }
+            .simple-login-frame input[type="password"], .simple-login-frame input[type="text"] { font-size: 1.1em; padding: 12px 10px; }
+            .simple-login-frame button[type="submit"] { font-size: 1.1em; padding: 16px 0; }
+            header { font-size: 1.2em; padding: 2vh 0 1vh 0; }
+        }
         .simple-order-history-frame { margin: 18px auto 0 auto; }
+        /* Prevent horizontal scroll on iPhone */
+        body, html { max-width: 100vw; overflow-x: hidden; }
+        .simple-login-info { max-width: 600px; width: 100%; background: #e3f0fa; border-radius: 12px; border: 1.5px solid #2196f3; padding: 18px 22px; color: #1769aa; font-size: 1.08em; text-align: center; box-shadow: 0 2px 12px rgba(33,150,243,0.07); margin: 18px auto 0 auto; box-sizing: border-box; }
+        @media (max-width: 700px) { .simple-login-info { max-width: 98vw; } }
+        @media (max-width: 480px) { .simple-login-info { max-width: 99vw; padding: 12px 2vw; } }
     </style>
 </head>
 <body>
 <div class="simple-login-bg"></div>
+<div class="simple-login-wrapper">
 <header style="width:100vw;text-align:center;padding:2.5vh 0 1.5vh 0;">
     <span style="font-size:2.1em;font-weight:bold;color:#2196f3;letter-spacing:0.5px;">STC Butzbach - SB-Theke</span>
 </header>
@@ -91,7 +111,7 @@
     })();
     </script>
 </div>
-<div class="simple-login-info" style="max-width:600px;width:100%;background:#e3f0fa;border-radius:12px;border:1.5px solid #2196f3;padding:18px 22px;color:#1769aa;font-size:1.08em;text-align:center;box-shadow:0 2px 12px rgba(33,150,243,0.07);margin:18px auto 0 auto;">
+<div class="simple-login-info" style="">
     Logge dich mit deiner <b>"Theken-ID"</b> ein. Diese kannst du in deinem Benutzer Profil des Buchungssystem selbst wählen.<br><br>
     <i>In der Testphase kannst du dich auch mit <b>"test"</b> einloggen um alles auszuprobieren</i>.
 </div>
@@ -158,6 +178,7 @@
         <?php endif; ?>
         </tbody>
     </table>
+</div>
 </div>
 </body>
 </html>
