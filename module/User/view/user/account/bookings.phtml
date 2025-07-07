@@ -855,15 +855,6 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
                 if (minusBtn) minusBtn.style.visibility = val > 0 ? 'visible' : 'hidden';
                 updateDrinkOrderTotal();
             });
-            // Prevent double-tap zoom and trigger click for accessibility only if not a button
-            tiles[i].addEventListener('touchstart', function(e) {
-                if (e.touches.length > 1) return;
-                e.preventDefault();
-                // Only trigger click if the touch target is the tile itself, not a button inside
-                if (e.target === this || e.target.closest('.drink-tile') === this && !e.target.closest('button')) {
-                    this.click();
-                }
-            }, { passive: false });
         }
         // Initialize minus button visibility on page load
         for (var i = 0; i < tiles.length; i++) {
@@ -1401,18 +1392,6 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-        // Prevent double-tap zoom on iOS for drink plus/minus buttons
-        var plusMinusBtns = document.querySelectorAll('.drink-plus, .drink-minus');
-        plusMinusBtns.forEach(function(btn) {
-            btn.addEventListener('touchstart', function(e) {
-                // Prevent double-tap zoom
-                if (e.touches.length > 1) return;
-                e.preventDefault();
-                // Manually trigger click for accessibility
-                btn.click();
-            }, { passive: false });
-        });
-
         // --- Simple order mode: auto-logout after 1 minute of inactivity ---
         if (window.SIMPLE_ORDER_MODE) {
             var logoutTimeout = null;
