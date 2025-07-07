@@ -3,7 +3,6 @@ namespace User\Controller;
 
 use Zend\Mvc\Controller\AbstractActionController;
 use Zend\View\Model\ViewModel;
-use Zend\Stdlib\Parameters;
 
 class SimpleLoginController extends AbstractActionController
 {
@@ -11,10 +10,8 @@ class SimpleLoginController extends AbstractActionController
     {
         $request = $this->getRequest();
         $error = null;
-        // Ensure session manager is started
         $sessionManager = $this->getServiceLocator()->get('Zend\Session\SessionManager');
         $sessionManager->start();
-        // Fetch last 48h drink orders for the history box
         $recentOrders = [];
         try {
             $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
@@ -30,7 +27,6 @@ class SimpleLoginController extends AbstractActionController
                 $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
                 $row = $db->query('SELECT user_id FROM drink_aliases WHERE alias = ?', [$alias])->current();
                 if ($row && $row['user_id']) {
-                    // Store user_id in session with limited rights
                     $session = new \Zend\Session\Container('SimpleLogin');
                     $session->user_id = $row['user_id'];
                     return $this->redirect()->toRoute('user/simple-order');
@@ -50,7 +46,6 @@ class SimpleLoginController extends AbstractActionController
 
     public function orderAction()
     {
-        // Disable layout for simple order mode (render only the view, no layout)
         $viewModel = new ViewModel();
         $viewModel->setTerminal(true);
         $sessionManager = $this->getServiceLocator()->get('Zend\Session\SessionManager');
@@ -71,7 +66,6 @@ class SimpleLoginController extends AbstractActionController
         $drinkDepositManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkDepositManager');
         $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($userId));
         $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($userId));
-        // Calculate current balance
         $currentBalance = 0;
         foreach ($drinkDeposits as $deposit) {
             $currentBalance += $deposit['amount'];
@@ -80,7 +74,6 @@ class SimpleLoginController extends AbstractActionController
             if (!empty($order['deleted'])) continue;
             $currentBalance -= $order['quantity'] * $order['price'];
         }
-        // Merge drink orders and deposits into a single history array with 'type' key
         $drinkHistory = [];
         foreach ($drinkDeposits as $deposit) {
             $drinkHistory[] = [
@@ -105,11 +98,9 @@ class SimpleLoginController extends AbstractActionController
                 'deleted' => $order['deleted'],
             ];
         }
-        // Sort by created_at descending
         usort($drinkHistory, function($a, $b) {
             return strtotime($b['created_at']) - strtotime($a['created_at']);
         });
-        // Fetch drink statistics for the user
         $drinkOrderCancelWindow = \Drinks\Manager\DrinkOrderManager::CANCEL_WINDOW_SECONDS;
         return $viewModel->setVariables([
             'drinks' => $drinks,
@@ -121,7 +112,7 @@ class SimpleLoginController extends AbstractActionController
             'drinkOrderCancelWindow' => $drinkOrderCancelWindow,
             'drinkCategories' => $drinkCategories,
             'drinkStats' => [],
-            'simpleOrderMode' => true // Add this line to enable simple-order mode in the view
+            'simpleOrderMode' => true
         ]);
     }
 
@@ -130,7 +121,6 @@ class SimpleLoginController extends AbstractActionController
         $sessionManager = $this->getServiceLocator()->get('Zend\Session\SessionManager');
         $sessionManager->start();
         $session = new \Zend\Session\Container('SimpleLogin');
-
         if (empty($session->user_id)) {
             return $this->getResponse()->setStatusCode(403);
         }
@@ -138,18 +128,14 @@ class SimpleLoginController extends AbstractActionController
         if (!$orderId) {
             return $this->getResponse()->setStatusCode(400);
         }
-
         $userManager = $this->getServiceLocator()->get('User\Manager\UserManager');
         $user = $userManager->get($session->user_id);
-
         $drinkManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkManager');
         $success = $drinkManager->dropOrderAndNotify($orderId, $user, [$this, 't'], $this->getServiceLocator());
-
         if ($success) {
             return $this->getResponse()->setContent(json_encode(['success' => true]))->setStatusCode(200);
-        } else {
-            return $this->getResponse()->setContent(json_encode(['success' => false, 'error_message' => 'Update failed.']))->setStatusCode(500);
         }
+        return $this->getResponse()->setContent(json_encode(['success' => false, 'error_message' => 'Update failed.']))->setStatusCode(500);
     }
 
     public function submitOrderAction()
@@ -158,23 +144,17 @@ class SimpleLoginController extends AbstractActionController
         $sessionManager = $this->getServiceLocator()->get('Zend\Session\SessionManager');
         $sessionManager->start();
         $session = new \Zend\Session\Container('SimpleLogin');
-
         if (empty($session->user_id)) {
             return $this->getResponse()->setStatusCode(401)->setContent(json_encode(['success' => false, 'error' => 'Not authenticated.']));
         }
-
         $userManager = $this->getServiceLocator()->get('User\Manager\UserManager');
         $user = $userManager->get($session->user_id);
-
         $drinkManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkManager');
         $drinkCounts = $this->params()->fromPost('drink_counts', []);
-
         $result = $drinkManager->addOrdersAndNotify($user, $drinkCounts, [$this, 't'], $this->getServiceLocator());
-
         if ($result['success']) {
             return $this->getResponse()->setContent(json_encode(['success' => true, 'balance' => $result['balance']]))->setStatusCode(200);
-        } else {
-            return $this->getResponse()->setContent(json_encode(['success' => false, 'error' => $result['error']]))->setStatusCode(400);
         }
+        return $this->getResponse()->setContent(json_encode(['success' => false, 'error' => $result['error']]))->setStatusCode(400);
     }
 }

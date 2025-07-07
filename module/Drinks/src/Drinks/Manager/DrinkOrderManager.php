@@ -1,8 +1,6 @@
 <?php
-
 namespace Drinks\Manager;
 
-use RuntimeException;
 use Zend\Db\Adapter\Adapter;
 
 class DrinkOrderManager
@@ -24,16 +22,13 @@ class DrinkOrderManager
 
     public function addOrder($userId, $drinkId, $quantity)
     {
-        // Fetch the current price from the drinks table
         $sql = 'SELECT price FROM drinks WHERE id = ?';
         $statement = $this->dbAdapter->createStatement($sql, [$drinkId]);
-        $result = $statement->execute();
-        $row = $result->current();
+        $row = $statement->execute()->current();
         if (!$row) {
             throw new \RuntimeException('Drink not found');
         }
         $price = $row['price'];
-        // Insert order with price at time of order
         $sql = 'INSERT INTO drink_orders (user_id, drink_id, quantity, price) VALUES (?, ?, ?, ?)';
         $statement = $this->dbAdapter->createStatement($sql, [$userId, $drinkId, $quantity, $price]);
         return $statement->execute();
@@ -41,7 +36,6 @@ class DrinkOrderManager
 
     public function dropOrder($orderId, $userId = null)
     {
-        // Fetch order time and deleted status
         if ($userId) {
             $sql = 'SELECT order_time, deleted FROM drink_orders WHERE id = ? AND user_id = ?';
             $params = [$orderId, $userId];
@@ -50,8 +44,7 @@ class DrinkOrderManager
             $params = [$orderId];
         }
         $statement = $this->dbAdapter->createStatement($sql, $params);
-        $result = $statement->execute();
-        $row = $result->current();
+        $row = $statement->execute()->current();
         if (!$row) {
             throw new \RuntimeException('Order not found');
         }
@@ -59,11 +52,9 @@ class DrinkOrderManager
             throw new \RuntimeException('Order already deleted');
         }
         $orderTime = strtotime($row['order_time']);
-        $now = time();
-        if ($now - $orderTime > self::CANCEL_WINDOW_SECONDS) {
+        if (time() - $orderTime > self::CANCEL_WINDOW_SECONDS) {
             throw new \RuntimeException('Order can only be deleted within 10 minutes');
         }
-        // Soft-delete the order
         if ($userId) {
             $sql = 'UPDATE drink_orders SET deleted = 1 WHERE id = ? AND user_id = ?';
             $params = [$orderId, $userId];
