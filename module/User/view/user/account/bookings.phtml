@@ -998,10 +998,14 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
             var badge = document.getElementById('badge-' + id);
             badge.textContent = 0;
             badge.style.visibility = 'hidden';
-            var tile = document.getElementById('input-' + id);
-            if (tile) {
-                var minusBtn = tile.parentNode.parentNode.querySelector('.drink-minus');
-                if (minusBtn) minusBtn.style.visibility = 'hidden';
+            // FIX: Hide minus button for each tile correctly
+            var inputElem = document.getElementById('input-' + id);
+            if (inputElem) {
+                var tileElem = inputElem.closest('.drink-tile');
+                if (tileElem) {
+                    var minusBtn = tileElem.querySelector('.drink-minus');
+                    if (minusBtn) minusBtn.style.visibility = 'hidden';
+                }
             }
         }
         if (typeof updateDrinkOrderTotal === 'function') updateDrinkOrderTotal();
