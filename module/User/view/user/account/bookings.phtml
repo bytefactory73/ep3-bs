@@ -1271,13 +1271,28 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
                         'Content-Type': 'application/x-www-form-urlencoded',
                         'X-Requested-With': 'XMLHttpRequest'
                     },
-                    body: 'order_id=' + encodeURIComponent(orderId)
+                    body: 'order_id=' + encodeURIComponent(orderId),
+                    credentials: 'same-origin' // <-- Ensure cookies/session are sent, fixes iOS in-app logout
                 })
                 .then(function(response) { return response.json(); })
                 .then(function(data) {
                     if (data && data.success) {
-                        // Refresh the page after successful cancellation, like after confirming an order
-                        window.location.reload();
+                        alert('<?= $this->t('Stornierung erfolgreich.') ?>');
+                        // Remove the cancelled order row from the table
+                        var row = button.closest('tr');
+                        if (row) {
+                            var group = row.getAttribute('data-group');
+                            row.parentNode.removeChild(row);
+                            // Check if any rows remain in this group
+                            var groupRows = document.querySelectorAll('.order-day-row[data-group="' + group + '"]');
+                            if (groupRows.length === 0) {
+                                // Remove the group header if no rows remain
+                                var header = document.querySelector('.order-day-header[data-group="' + group + '"]');
+                                if (header) header.parentNode.removeChild(header);
+                            }
+                        }
+                        // Optionally, show a temporary feedback message
+                        // (You can implement a nicer UI feedback if desired)
                     } else {
                         var msg = '<?= $this->t('Stornierung fehlgeschlagen.') ?>';
                         if (data && data.error_message) {
