@@ -72,6 +72,7 @@ button, .category-btn, input, select, textarea {
     overflow: visible;
     border: 1px solid #ccc;
     border-radius: 8px;
+    margin: 8px !important; /* Uniform margin for spacing */
 }
 .drink-info {
     flex: 1 1 auto;
@@ -235,18 +236,17 @@ button, .category-btn, input, select, textarea {
     align-items: flex-start;
     display: flex;
     flex-wrap: wrap;
-    gap: 24px;
+    border: none !important;
 }
 @media (max-width: 700px) {
     .drink-tiles-wrapper {
-        gap: 24px;
         justify-content: center;
     }
     .drink-tile {
-        width: calc(50% - 12px) !important;
-        flex: 0 0 calc(50% - 12px) !important;
+        width: calc(50% - 16px) !important;
+        flex: 0 0 calc(50% - 16px) !important;
         height: auto;
-        margin: 0 !important;
+        margin: 8px !important;
         box-sizing: border-box;
     }
     #drink-category-selection {
@@ -255,13 +255,12 @@ button, .category-btn, input, select, textarea {
 }
 @media (max-width: 500px) {
     .drink-tiles-wrapper {
-        gap: 8px;
         justify-content: center !important;
     }
     .drink-tile {
-        width: calc(50% - 4px) !important;
-        flex: 0 0 calc(50% - 4px) !important;
-        margin: 0 !important;
+        width: calc(50% - 16px) !important;
+        flex: 0 0 calc(50% - 16px) !important;
+        margin: 8px !important;
         box-sizing: border-box;
     }
 }
