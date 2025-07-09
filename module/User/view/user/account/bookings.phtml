@@ -8,25 +8,149 @@ $drinks = $this->drinks ?? [];
 <?php if (!empty($this->userName)) : ?>
     <div class="user-info-bar<?= $simpleOrderMode ? ' sticky-user-info-bar' : '' ?>"
         style="
-            display: flex; align-items: center; justify-content: space-between;
-            font-size:<?= $simpleOrderMode ? '2.0em' : '1.5em' ?>;
+            display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start;
             color:#2196f3; font-weight:bold; margin-bottom:0; background:#fff;
-            box-shadow:0 4px 8px rgba(33,150,243,0.12); padding: 8px 24px 8px 0px;
+            box-shadow:0 4px 8px rgba(33,150,243,0.12); padding: 8px 0px 8px 0px;
             <?= $simpleOrderMode ? 'position:sticky; top:0; left:0; right:0; width:100%; z-index:2000;' : '' ?>
         ">
-        <span style="margin-left:16px; flex:1; text-align:left; display:block; text-overflow:ellipsis; overflow:hidden; min-width:0; white-space:nowrap;">
-            <?= $this->escapeHtml($this->userName) ?>
-        </span>
-        <?php if (!$simpleOrderMode): ?>
-            <div id="current-balance-display" class="<?= $currentBalance < 0 ? 'negative-balance' : '' ?>" style="color: #2196f3; display: inline-flex; align-items: center;">
-                <?= $this->t('Guthaben:') ?>
-                <span id="current-balance-value" style="margin-left: 8px"></span>
+        <div style="font-size:<?= $simpleOrderMode ? '2.0em' : '1.5em' ?>; margin-left: 16px; margin-right: 16px; margin-bottom: 8px; width: 100%-32px; display: flex; align-items: center;">
+            <span style="flex:1; text-align:left; display:block; text-overflow:ellipsis; overflow:hidden; min-width:0; white-space:nowrap;">
+                <?= $this->escapeHtml($this->userName) ?>
+            </span>
+            <?php if (!$simpleOrderMode): ?>
+                <div id="current-balance-display" class="<?= $currentBalance < 0 ? 'negative-balance' : '' ?>" style="color: #2196f3; display: inline-flex; align-items: center;">
+                    <?= $this->t('Guthaben:') ?>
+                    <span id="current-balance-value" style="margin-left: 8px"></span>
+                </div>
+            <?php else: ?>
+                <span id="logout-timer" style="display:inline-flex; align-items:center; margin-left:16px; font-size:0.85em; color:#d32f2f; background:#fff3f3; border:1px solid #d32f2f; border-radius:6px; padding:2px 10px; display:none; white-space:nowrap;"></span>
+            <?php endif; ?>
+        </div>
+        <?php if (isset($drinks)): ?>
+            <div style="margin-left:16px; margin-right:16px; margin-bottom: 8px; width: 100%-32px; min-height: 24px; display: flex; align-items: center;">
+                <!-- Placeholder for line 2 (e.g., navigation, info, etc.) -->
+                <?php if ($simpleOrderMode): ?>
+                    <!-- Guthaben aufladen ribbon overlay (cleaned up, CSS classes only) -->
+                    <div id="balance-recharge-btn-container" class="balance-recharge-ribbon-container">
+                        <div class="balance-recharge-ribbon">
+                            <span class="balance-recharge-ribbon-label">
+                                Guthaben aufladen
+                            </span>
+                            <span class="balance-recharge-ribbon-subtext">
+                                Du kannst die Bestellung trotzdem abschließen
+                            </span>
+                        </div>
+                    </div>
+                <?php endif; ?>
+                <div class="drink-order-top-bar" style="width: 100%; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0 8px;">
+                    <div class="order-actions" style="flex: 1 1 auto; display: flex; justify-content: center; align-items: center;">
+                        <button id="scan-barcode-btn" type="button" class="default-button" title="<?= $this->t('Scan Barcode') ?>" style="font-size: 1.1em; font-weight: bold; background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; padding: 4px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 0; width: 52px; height: 44px; justify-content: center;">
+                            <svg width="36" height="28" viewBox="0 0 28 22" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <rect x="4" y="4" width="2" height="14" fill="#2196f3"/>
+                                <rect x="8" y="4" width="1" height="14" fill="#2196f3"/>
+                                <rect x="11" y="4" width="2" height="14" fill="#2196f3"/>
+                                <rect x="15" y="4" width="1" height="14" fill="#2196f3"/>
+                                <rect x="18" y="4" width="2" height="14" fill="#2196f3"/>
+                                <rect x="22" y="4" width="1" height="14" fill="#2196f3"/>
+                            </svg>
+                            <span class="sr-only" style="position:absolute;left:-9999px;"> <?= $this->t('Scan Barcode') ?> </span>
+                        </button>
+                        <button type="submit" form="drink-order-form" name="drink_order_submit" value="1" class="default-button stc-main-button" style="background: #2196f3; color: #fff; border: 1px solid #2196f3; border-radius: 6px; padding: 4px 14px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 1em; height: 44px; justify-content: center; font-weight: bold;">
+                            <span id="drink-order-total" style="color: #fff; background: transparent; border-radius: 3px; font-size: clamp(0.5em, 5vw, 2.0em); min-width: 8em; display: inline-block; text-align: center; transition: background 0.2s, color 0.2s;"></span>
+                        </button>
+                        <button type="button" id="clear-drink-selection" title="<?= $this->escapeHtmlAttr($this->t('Clear selection')) ?>" class="default-button" style="background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; padding: 4px; min-width: 0; width: 52px; height: 44px; display: flex; align-items: center; justify-content: center; margin-right: 0; cursor: pointer;">
+                            <svg width="32" height="32" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <line x1="6" y1="6" x2="16" y2="16" stroke="#2196f3" stroke-width="2.2" stroke-linecap="round"/>
+                                <line x1="16" y1="6" x2="6" y2="16" stroke="#2196f3" stroke-width="2.2" stroke-linecap="round"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div id="barcode-scanner-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.45); z-index:2000; align-items:center; justify-content:center;">
+                    <div id="barcode-scanner-container" style="background:#fff; border:2px solid #2196f3; border-radius:8px; padding:12px; max-width:400px; width:90vw; margin:auto; position:relative; box-shadow:0 8px 32px rgba(0,0,0,0.18);">
+                        <!-- Scanner UI will be injected here -->
+                    </div>
+                </div>
             </div>
-        <?php else: ?>
-            <span id="logout-timer" style="display:inline-flex; align-items:center; margin-left:16px; font-size:0.85em; color:#d32f2f; background:#fff3f3; border:1px solid #d32f2f; border-radius:6px; padding:2px 10px; display:none; white-space:nowrap;"></span>
         <?php endif; ?>
+        <div style="margin-left:16px; margin-right:16px; font-size: clamp(0.3em, 3vw, 1.0em); width: 100%-32px; min-height: 24px; display: flex; align-items: center; justify-content: center;">
+            <!-- Category selection UI and logic moved here -->
+            <?php if (isset($this->drinkCategories) && count($this->drinkCategories) > 0): ?>
+                <div id="drink-category-selection" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; width: 100%; justify-content: center;">
+                    <button type="button" class="category-btn" data-category="all" style="padding: 6px 18px; border-radius: 6px; border: 1px solid #2196f3; background: #e3f0fa; color: #2196f3; font-weight: bold; cursor: pointer;">All</button>
+                    <button type="button" class="category-btn" data-category="favourites" style="padding: 6px 18px; border-radius: 6px; border: 1px solid #2196f3; background: #fff; color: #2196f3; font-weight: bold; cursor: pointer;">Meine Favoriten</button>
+                    <?php foreach ($this->drinkCategories as $cat): ?>
+                        <button type="button" class="category-btn" data-category="<?= (int)$cat['id'] ?>" style="padding: 6px 18px; border-radius: 6px; border: 1px solid #2196f3; background: #fff; color: #2196f3; font-weight: bold; cursor: pointer;">
+                            <?= $this->escapeHtml($cat['name']) ?>
+                        </button>
+                    <?php endforeach; ?>
+                </div>
+                <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    var catBtns = document.querySelectorAll('.category-btn');
+                    var wrapper = document.querySelector('.drink-tiles-wrapper');
+                    if (!wrapper) return;
+                    var tiles = Array.prototype.slice.call(wrapper.querySelectorAll('.drink-tile'));
+                    // Store original order
+                    tiles.forEach(function(tile, idx) {
+                        tile.setAttribute('data-original-index', idx);
+                    });
+                    catBtns.forEach(function(btn) {
+                        btn.addEventListener('click', function() {
+                            catBtns.forEach(function(b) { b.style.background = '#fff'; });
+                            this.style.background = '#e3f0fa';
+                            var cat = this.getAttribute('data-category');
+                            var allTiles = Array.prototype.slice.call(wrapper.querySelectorAll('.drink-tile'));
+                            if (cat === 'favourites') {
+                                // Show only favourites, sort by current order count, then favourite-count, then name
+                                var favTiles = allTiles.filter(function(tile) {
+                                    return parseInt(tile.getAttribute('favourite-count')) > 0;
+                                });
+                                favTiles.sort(function(a, b) {
+                                    var inputA = a.querySelector('input[type="hidden"]');
+                                    var inputB = b.querySelector('input[type="hidden"]');
+                                    var countA = parseInt(inputA.value) || 0;
+                                    var countB = parseInt(inputB.value) || 0;
+                                    if (countA !== countB) return countB - countA;
+                                    var fa = parseInt(a.getAttribute('favourite-count')) || 0;
+                                    var fb = parseInt(b.getAttribute('favourite-count')) || 0;
+                                    if (fa !== fb) return fb - fa;
+                                    var na = a.querySelector('.drink-name').textContent.trim().toLowerCase();
+                                    var nb = b.querySelector('.drink-name').textContent.trim().toLowerCase();
+                                    return na.localeCompare(nb);
+                                });
+                                // Hide all, then show and append sorted favs
+                                allTiles.forEach(function(tile) { tile.style.display = 'none'; });
+                                favTiles.forEach(function(tile) {
+                                    tile.style.display = '';
+                                    wrapper.appendChild(tile);
+                                });
+                            } else {
+                                // Show all or by category, restore original order
+                                allTiles.sort(function(a, b) {
+                                    return (parseInt(a.getAttribute('data-original-index')) || 0) - (parseInt(b.getAttribute('data-original-index')) || 0);
+                                });
+                                allTiles.forEach(function(tile) {
+                                    if (cat === 'all' || tile.getAttribute('data-category') === cat) {
+                                        tile.style.display = '';
+                                    } else {
+                                        tile.style.display = 'none';
+                                    }
+                                    wrapper.appendChild(tile);
+                                });
+                                // Sort by order count after switching group
+                                sortDrinkTiles();
+                            }
+                        });
+                    });
+                    // Optionally, trigger click on 'All' to initialize
+                    var allBtn = document.querySelector('.category-btn[data-category="all"]');
+                    if (allBtn) allBtn.click();
+                });
+                </script>
+            <?php endif; ?>
+        </div>
     </div>
-    <div style="height: 16px;"></div>
 <?php endif; ?>
 
 <?php
@@ -318,7 +442,7 @@ button, .category-btn, input, select, textarea {
 }
 .stc-main-button {
     font-family: inherit !important;
-    font-size: 1.18em;
+    font-size: 1em;
     font-weight: bold;
     color: #fff;
     background: #2196f3;
@@ -402,49 +526,6 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
 </style>
 
 <?php if (isset($drinks)): ?>
-    <div class="separator-small"></div>
-    <?php if ($simpleOrderMode): ?>
-        <!-- Guthaben aufladen ribbon overlay (cleaned up, CSS classes only) -->
-        <div id="balance-recharge-btn-container" class="balance-recharge-ribbon-container">
-            <div class="balance-recharge-ribbon">
-                <span class="balance-recharge-ribbon-label">
-                    Guthaben aufladen
-                </span>
-                <span class="balance-recharge-ribbon-subtext">
-                    Du kannst die Bestellung trotzdem abschließen
-                </span>
-            </div>
-        </div>
-    <?php endif; ?>
-    <div class="drink-order-top-bar" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0 8px;">
-        <div class="order-actions" style="flex: 1 1 auto; display: flex; justify-content: center; align-items: center;">
-            <button id="scan-barcode-btn" type="button" class="default-button" title="<?= $this->t('Scan Barcode') ?>" style="font-size: 1.1em; font-weight: bold; background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; padding: 4px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 0; width: 52px; height: 44px; justify-content: center;">
-                <svg width="36" height="28" viewBox="0 0 28 22" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <rect x="4" y="4" width="2" height="14" fill="#2196f3"/>
-                    <rect x="8" y="4" width="1" height="14" fill="#2196f3"/>
-                    <rect x="11" y="4" width="2" height="14" fill="#2196f3"/>
-                    <rect x="15" y="4" width="1" height="14" fill="#2196f3"/>
-                    <rect x="18" y="4" width="2" height="14" fill="#2196f3"/>
-                    <rect x="22" y="4" width="1" height="14" fill="#2196f3"/>
-                </svg>
-                <span class="sr-only" style="position:absolute;left:-9999px;"> <?= $this->t('Scan Barcode') ?> </span>
-            </button>
-            <button type="submit" form="drink-order-form" name="drink_order_submit" value="1" class="default-button stc-main-button" style="background: #2196f3; color: #fff; border: 1px solid #2196f3; border-radius: 6px; padding: 4px 14px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 1em; height: 44px; justify-content: center; font-size: 1.35em; font-weight: bold;">
-                <span id="drink-order-total" style="color: #fff; background: transparent; border-radius: 3px; font-size: 1em; min-width: 8em; display: inline-block; text-align: center; transition: background 0.2s, color 0.2s;"></span>
-            </button>
-            <button type="button" id="clear-drink-selection" title="<?= $this->escapeHtmlAttr($this->t('Clear selection')) ?>" class="default-button" style="background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; padding: 4px; min-width: 0; width: 52px; height: 44px; display: flex; align-items: center; justify-content: center; margin-right: 0; cursor: pointer;">
-                <svg width="32" height="32" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <line x1="6" y1="6" x2="16" y2="16" stroke="#2196f3" stroke-width="2.2" stroke-linecap="round"/>
-                    <line x1="16" y1="6" x2="6" y2="16" stroke="#2196f3" stroke-width="2.2" stroke-linecap="round"/>
-                </svg>
-            </button>
-        </div>
-    </div>
-    <div id="barcode-scanner-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.45); z-index:2000; align-items:center; justify-content:center;">
-        <div id="barcode-scanner-container" style="background:#fff; border:2px solid #2196f3; border-radius:8px; padding:12px; max-width:400px; width:90vw; margin:auto; position:relative; box-shadow:0 8px 32px rgba(0,0,0,0.18);">
-            <!-- Scanner UI will be injected here -->
-        </div>
-    </div>
     <script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
     <script>
     // Barcode scan logic with camera switch
@@ -677,82 +758,6 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
         }
     }
     </style>
-    <?php if (isset($this->drinkCategories) && count($this->drinkCategories) > 0): ?>
-    <div style="height: 18px;"></div>
-    <div style="display: flex; justify-content: center; width: 100%;">
-        <div id="drink-category-selection" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px;">
-            <button type="button" class="category-btn" data-category="all" style="padding: 6px 18px; border-radius: 6px; border: 1px solid #2196f3; background: #e3f0fa; color: #2196f3; font-weight: bold; cursor: pointer;">All</button>
-            <button type="button" class="category-btn" data-category="favourites" style="padding: 6px 18px; border-radius: 6px; border: 1px solid #2196f3; background: #fff; color: #2196f3; font-weight: bold; cursor: pointer;">Meine Favoriten</button>
-            <?php foreach ($this->drinkCategories as $cat): ?>
-                <button type="button" class="category-btn" data-category="<?= (int)$cat['id'] ?>" style="padding: 6px 18px; border-radius: 6px; border: 1px solid #2196f3; background: #fff; color: #2196f3; font-weight: bold; cursor: pointer;">
-                    <?= $this->escapeHtml($cat['name']) ?>
-                </button>
-            <?php endforeach; ?>
-        </div>
-    </div>
-    <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        var catBtns = document.querySelectorAll('.category-btn');
-        var wrapper = document.querySelector('.drink-tiles-wrapper');
-        var tiles = Array.prototype.slice.call(wrapper.querySelectorAll('.drink-tile'));
-        // Store original order
-        tiles.forEach(function(tile, idx) {
-            tile.setAttribute('data-original-index', idx);
-        });
-        catBtns.forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                catBtns.forEach(function(b) { b.style.background = '#fff'; });
-                this.style.background = '#e3f0fa';
-                var cat = this.getAttribute('data-category');
-                var allTiles = Array.prototype.slice.call(wrapper.querySelectorAll('.drink-tile'));
-                if (cat === 'favourites') {
-                    // Show only favourites, sort by current order count, then favourite-count, then name
-                    var favTiles = allTiles.filter(function(tile) {
-                        return parseInt(tile.getAttribute('favourite-count')) > 0;
-                    });
-                    favTiles.sort(function(a, b) {
-                        var inputA = a.querySelector('input[type="hidden"]');
-                        var inputB = b.querySelector('input[type="hidden"]');
-                        var countA = parseInt(inputA.value) || 0;
-                        var countB = parseInt(inputB.value) || 0;
-                        if (countA !== countB) return countB - countA;
-                        var fa = parseInt(a.getAttribute('favourite-count')) || 0;
-                        var fb = parseInt(b.getAttribute('favourite-count')) || 0;
-                        if (fa !== fb) return fb - fa;
-                        var na = a.querySelector('.drink-name').textContent.trim().toLowerCase();
-                        var nb = b.querySelector('.drink-name').textContent.trim().toLowerCase();
-                        return na.localeCompare(nb);
-                    });
-                    // Hide all, then show and append sorted favs
-                    allTiles.forEach(function(tile) { tile.style.display = 'none'; });
-                    favTiles.forEach(function(tile) {
-                        tile.style.display = '';
-                        wrapper.appendChild(tile);
-                    });
-                } else {
-                    // Show all or by category, restore original order
-                    allTiles.sort(function(a, b) {
-                        return (parseInt(a.getAttribute('data-original-index')) || 0) - (parseInt(b.getAttribute('data-original-index')) || 0);
-                    });
-                    allTiles.forEach(function(tile) {
-                        if (cat === 'all' || tile.getAttribute('data-category') === cat) {
-                            tile.style.display = '';
-                        } else {
-                            tile.style.display = 'none';
-                        }
-                        wrapper.appendChild(tile);
-                    });
-                    // Sort by order count after switching group
-                    sortDrinkTiles();
-                }
-            });
-        });
-        // Optionally, trigger click on 'All' to initialize
-        var allBtn = document.querySelector('.category-btn[data-category="all"]');
-        if (allBtn) allBtn.click();
-    });
-    </script>
-    <?php endif; ?>
     <form method="post" id="drink-order-form" onsubmit="return false;">
         <div style="height: 16px;"></div>
         <div class="drink-tiles-wrapper">
@@ -1498,7 +1503,9 @@ document.addEventListener('DOMContentLoaded', function() {
             // Reset timer on any user interaction (only clicks, keydown, touchstart)
             ['click', 'keydown', 'touchstart'].forEach(function(evt) {
                 document.addEventListener(evt, function() {
+
                     if (logoutTimeout) clearInterval(logoutTimeout);
+
                     resetLogoutTimer();
                 }, true);
             });
