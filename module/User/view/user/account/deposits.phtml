@@ -126,6 +126,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             html += '<div style="margin-bottom:1px; color:#388e3c; font-weight:bold; line-height:1.1;">'
                                 + '<?= $this->t('Einzahlung:') ?> ' + formatCurrency(entry.amount)
                                 + (entry.desc ? ' <span style="color:#888;font-weight:normal;">' + entry.desc + '</span>' : '')
+                                + (entry.createdby ? ' <span style="color:#888;font-weight:normal;">(' + entry.createdby + ')</span>' : '')
                                 + (timeStr ? ' <span style="color:#888;font-size:90%;margin-left:8px;">' + timeStr + '</span>' : '')
                                 + (typeof entry.balance !== 'undefined' ? ' <span style="color:#2196f3;">Saldo: ' + formatCurrency(entry.balance) + '</span>' : '')
                                 + '</div>';

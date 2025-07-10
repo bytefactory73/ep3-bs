@@ -354,6 +354,7 @@ class AccountController extends AbstractActionController
         $drinkCategoryManager = $serviceManager->get('Drinks\Manager\DrinkCategoryManager');
         $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
         $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
+        $userManager = $serviceManager->get('User\Manager\UserManager'); // Ensure userManager is defined
 
         $user = $userSessionManager->getSessionUser();
 
@@ -387,10 +388,18 @@ class AccountController extends AbstractActionController
             ];
         }
         foreach ($drinkDeposits as $deposit) {
+            $creatorName = null;
+            if (!empty($deposit['createdbyuserid'])) {
+                $creatorUser = $userManager->get($deposit['createdbyuserid'], false);
+                if ($creatorUser) {
+                    $creatorName = $creatorUser->get('alias') ?: $creatorUser->get('name');
+                }
+            }
             $drinkHistory[] = [
                 'type' => 'deposit',
                 'amount' => $deposit['amount'],
                 'datetime' => $deposit['deposit_time'],
+                'createdby' => $creatorName,
             ];
         }
         usort($drinkHistory, function($a, $b) {
@@ -845,8 +854,9 @@ class AccountController extends AbstractActionController
                 $depositUserId = intval($post['deposit_user_id']);
                 $depositAmount = floatval($post['deposit_amount']);
                 $depositComment = isset($post['deposit_comment']) ? trim($post['deposit_comment']) : null;
+                $createdByUserId = $user ? $user->need('uid') : null;
                 if ($depositUserId > 0 && $depositAmount > 0) {
-                    $serviceManager->get('Drinks\Manager\DrinkDepositManager')->addDeposit($depositUserId, $depositAmount, $depositComment);
+                    $serviceManager->get('Drinks\Manager\DrinkDepositManager')->addDeposit($depositUserId, $depositAmount, $depositComment, $createdByUserId);
                     return $this->redirect()->toRoute(null, [], ['query' => ['message' => 'Deposit added.']], true);
                 } else {
                     $message = 'Invalid deposit data.';
@@ -883,12 +893,20 @@ class AccountController extends AbstractActionController
         $deposits = iterator_to_array($drinkDepositManager->getByUser($uid));
         $history = [];
         foreach ($deposits as $d) {
+            $creatorName = null;
+            if (!empty($d['createdbyuserid'])) {
+                $creatorUser = $userManager->get($d['createdbyuserid'], false);
+                if ($creatorUser) {
+                    $creatorName = $creatorUser->get('alias') ?: $creatorUser->get('name');
+                }
+            }
             $history[] = [
                 'type' => 'Einzahlung',
                 'amount' => $d['amount'],
                 'desc' => $d['comment'],
                 'datetime' => $d['deposit_time'],
                 'deleted' => 0,
+                'createdby' => $creatorName,
             ];
         }
         foreach ($orders as $o) {
