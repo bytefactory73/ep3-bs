@@ -914,8 +914,10 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
                 var minusBtn = this.querySelector('.drink-minus');
                 if (minusBtn && e.target === minusBtn) return;
                 var id = this.getAttribute('data-drink-id');
+                if (!id) return;
                 var input = document.getElementById('input-' + id);
                 var badge = document.getElementById('badge-' + id);
+                if (!input || !badge) return;
                 var val = parseInt(input.value, 10) || 0;
                 val++;
                 input.value = val;
@@ -1037,16 +1039,16 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
             var count = parseInt(input.value, 10) || 0;
             if (count > 0) {
                 var id = input.id.replace('input-', '');
-                var nameElem = document.querySelector('.drink-tile [id="input-' + id + '"]');
-                if (nameElem) {
-                    var tile = nameElem.parentNode.parentNode;
-                    var nameDiv = tile.querySelector('.drink-name');
-                    var name = nameDiv ? nameDiv.textContent.replace(/^\s+|\s+$/g, '') : id;
-                    var price = parseFloat(input.getAttribute('data-price')) || 0;
-                    var itemTotal = count * price;
-                    total += itemTotal;
-                    items.push(name + ' x ' + count + ' = ' + itemTotal.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }));
-                }
+                var tile = input.closest('.drink-tile');
+                var nameDiv = tile ? tile.querySelector('.drink-name') : null;
+                var name = nameDiv ? nameDiv.textContent.replace(/^\s+|\s+$/g, '') : id;
+                var price = parseFloat(input.getAttribute('data-price')) || 0;
+                var itemTotal = count * price;
+                total += itemTotal;
+                if (count > 1)
+                    items.push(count + ' x ' + name + ' á ' + price.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) + ' = ' + itemTotal.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }));
+                else
+                    items.push(count + ' x ' + name + ' = ' + itemTotal.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }));
             }
         }
         if (items.length === 0) {
