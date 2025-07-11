@@ -1060,6 +1060,15 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
     </script>
 <?php endif; ?>
 
+<?php if ($simpleOrderMode): ?>
+<script>
+// Clear any old logout deadline on successful login/page load
+try {
+    localStorage.removeItem('simpleOrderLogoutDeadline');
+} catch (e) {}
+</script>
+<?php endif; ?>
+
 <?php
 $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
 ?>
@@ -1477,47 +1486,101 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-        // --- Simple order mode: auto-logout after 1 minute of inactivity ---
+        // --- Simple order mode: auto-logout after 5 minutes of inactivity, persistent across sleep ---
         if (window.SIMPLE_ORDER_MODE) {
-            var logoutTimeout = null;
-            var LOGOUT_DELAY = 5 * 60 * 1000; // 1 minute
-            var remaining = LOGOUT_DELAY / 1000;
+            var LOGOUT_DELAY = 5 * 60 * 1000; // 5 minutes
             var timerElem = document.getElementById('logout-timer');
-            if (timerElem) timerElem.style.display = '';
-            function updateTimerDisplay() {
+            var logoutInterval = null;
+            var deadlineKey = 'simpleOrderLogoutDeadline';
+
+            function setLogoutDeadline() {
+                var deadline = Date.now() + LOGOUT_DELAY;
+                localStorage.setItem(deadlineKey, deadline);
+                return deadline;
+            }
+            function getLogoutDeadline() {
+                var val = localStorage.getItem(deadlineKey);
+                return val ? parseInt(val, 10) : null;
+            }
+
+            function clearLogoutDeadline() {
+                localStorage.removeItem(deadlineKey);
+            }
+            function updateTimerDisplay(remaining) {
                 if (!timerElem) return;
                 var min = Math.floor(remaining / 60);
                 var sec = remaining % 60;
                 timerElem.textContent = 'Logout in ' + min + ':' + (sec < 10 ? '0' : '') + sec;
             }
-            function resetLogoutTimer() {
-                if (logoutTimeout) clearTimeout(logoutTimeout);
-                remaining = LOGOUT_DELAY / 1000;
-                updateTimerDisplay();
-                logoutTimeout = setInterval(function() {
-                    remaining--;
-                    updateTimerDisplay();
-                    if (remaining <= 0) {
-                        clearInterval(logoutTimeout);
-                        window.location.replace('<?= $this->url("user/simple-login") ?>');
+            function performLogout() {
+                clearLogoutDeadline();
+                if (typeof clearSelectionAndLogout === 'function') {
+                    clearSelectionAndLogout(true);
+                } else {
+                    window.location.replace('<?= $this->url("user/simple-login") ?>');
+                }
+            }
+            function startLogoutTimer() {
+                if (logoutInterval) clearInterval(logoutInterval);
+                var deadline = getLogoutDeadline();
+                if (!deadline) deadline = setLogoutDeadline();
+                function tick() {
+                    var now = Date.now();
+                    var remainingMs = deadline - now;
+                    if (remainingMs <= 0) {
+                        performLogout();
+                        return;
+                    }
+                    var remaining = Math.ceil(remainingMs / 1000);
+                    updateTimerDisplay(remaining);
+                }
+                tick();
+                logoutInterval = setInterval(function() {
+                    var deadline = getLogoutDeadline();
+                    var now = Date.now();
+                    var remainingMs = deadline - now;
+                    if (remainingMs <= 0) {
+                        clearInterval(logoutInterval);
+                        performLogout();
+                    } else {
+                        var remaining = Math.ceil(remainingMs / 1000);
+                        updateTimerDisplay(remaining);
                     }
                 }, 1000);
             }
-            // Reset timer on any user interaction (only clicks, keydown, touchstart)
+            function resetLogoutTimer() {
+                setLogoutDeadline();
+                startLogoutTimer();
+            }
+            // On any user interaction, reset the timer and deadline
             ['click', 'keydown', 'touchstart'].forEach(function(evt) {
                 document.addEventListener(evt, function() {
-
-                    if (logoutTimeout) clearInterval(logoutTimeout);
-
                     resetLogoutTimer();
                 }, true);
             });
+            // On page load/resume, check deadline
+            window.addEventListener('focus', function() {
+                var deadline = getLogoutDeadline();
+                if (deadline && Date.now() > deadline) {
+                    performLogout();
+                } else {
+                    startLogoutTimer();
+                }
+            });
             if (timerElem) {
+                timerElem.style.display = '';
                 timerElem.addEventListener('click', function(e) {
+                    clearLogoutDeadline();
                     clearSelectionAndLogout(true);
                 });
             }
-            resetLogoutTimer();
+            // Initial check
+            var deadline = getLogoutDeadline();
+            if (deadline && Date.now() > deadline) {
+                performLogout();
+            } else {
+                startLogoutTimer();
+            }
         }
     });
 </script>
