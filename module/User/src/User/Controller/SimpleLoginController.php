@@ -25,13 +25,18 @@ class SimpleLoginController extends AbstractActionController
             $alias = trim($request->getPost('alias'));
             if ($alias) {
                 $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
-                $row = $db->query('SELECT user_id FROM drink_aliases WHERE alias = ?', [$alias])->current();
+                $row = $db->query('SELECT user_id, enabled FROM drink_aliases WHERE alias = ?', [$alias])->current();
                 if ($row && $row['user_id']) {
-                    $session = new \Zend\Session\Container('SimpleLogin');
-                    $session->user_id = $row['user_id'];
-                    return $this->redirect()->toRoute('user/simple-order');
+                    if ((int)$row['enabled'] === 1) {
+                        $session = new \Zend\Session\Container('SimpleLogin');
+                        $session->user_id = $row['user_id'];
+                        return $this->redirect()->toRoute('user/simple-order');
+                    } else {
+                        $error = 'Benutzer gesperrt.';
+                    }
+                } else {
+                    $error = 'Theken-ID nicht gefunden.';
                 }
-                $error = 'Theken-ID nicht gefunden.';
             } else {
                 $error = 'Bitte geben Sie eine Theken-ID ein.';
             }

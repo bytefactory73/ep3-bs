@@ -21,21 +21,29 @@ $this->setup([
         <select name="deposit_user_id" id="deposit_user_id" required>
             <option value="">-- <?= $this->t('Select User') ?> --</option>
             <?php foreach ($this->users as $user): ?>
-                <option value="<?= (int)$user->get('uid') ?>">
+                <option value="<?= (int)$user->get('uid') ?>" data-drinks-enabled="<?= (int)$user->getExtra('drinks_enabled') ?>" data-alias="<?= $this->escapeHtml($user->get('alias')) ?>">
                     <?= $this->escapeHtml($user->get('alias')) ?> (<?= $this->escapeHtml($user->get('email')) ?>)
                 </option>
             <?php endforeach; ?>
         </select>
         <br>
-        <label for="deposit_amount">Amount:</label>
+        <label for="deposit_drinks_enabled" style="margin-top:8px;display:inline-block;">Theke erlaubt:</label>
+        <input type="checkbox" id="deposit_drinks_enabled" name="deposit_drinks_enabled" value="1" style="vertical-align:middle;">
+        <br>
+        <div id="alias-row" style="display:none; margin-top:8px;">
+            <label for="deposit_alias">Alias:</label>
+            <input type="text" id="deposit_alias" name="deposit_alias" maxlength="50" style="width:200px;">
+            <button type="button" id="set-alias-btn" class="mini-button" style="margin-left:8px;">Set Alias</button>
+        </div>
+        <div id="current-balance-box" style="display:none; margin-bottom:10px; margin-top:16px; font-weight:bold; color:#2196f3;"></div>
+        <label for="deposit_amount">Guthaben aufladen:</label>
         <input type="number" name="deposit_amount" id="deposit_amount" min="0.01" step="0.01" placeholder="<?= $this->t('Amount') ?>" required />
-        <label for="deposit_comment">Kommentar:</label>
+        <label for="deposit_comment">Bemerkung:</label>
         <input type="text" name="deposit_comment" id="deposit_comment" maxlength="255" placeholder="<?= $this->t('Kommentar (optional)') ?>" />
         <button type="submit" name="add_deposit" class="default-button mini-button">
             <?= $this->t('Add Deposit') ?>
         </button>
     </form>
-    <div id="current-balance-box" style="display:none; margin-top:10px; font-weight:bold; color:#2196f3;"></div>
 </div>
 
 <div id="user-history-section"></div>
@@ -46,15 +54,125 @@ function formatCurrency(amount) {
 }
 document.addEventListener('DOMContentLoaded', function() {
     var userSelect = document.getElementById('deposit_user_id');
+    var drinksEnabledCheckbox = document.getElementById('deposit_drinks_enabled');
+    var aliasRow = document.getElementById('alias-row');
+    var aliasInput = document.getElementById('deposit_alias');
     var balanceBox = document.getElementById('current-balance-box');
     var historySection = document.getElementById('user-history-section');
     // Restore last selected user from localStorage
     var lastUid = localStorage.getItem('deposits_selected_uid');
     if (lastUid && userSelect.querySelector('option[value="' + lastUid + '"]')) {
         userSelect.value = lastUid;
+        updateDrinksFields();
     }
     // Persist showStorno state in localStorage
     var showStorno = localStorage.getItem('deposits_show_storno') === '1';
+    function updateDrinksFields(drinksEnabledFromApi, drinksAliasFromApi) {
+        var selected = userSelect.options[userSelect.selectedIndex];
+        var drinksEnabled = typeof drinksEnabledFromApi === 'boolean'
+            ? drinksEnabledFromApi
+            : (selected ? selected.getAttribute('data-drinks-enabled') === '1' : false);
+        var alias = typeof drinksAliasFromApi === 'string'
+            ? drinksAliasFromApi
+            : (selected ? selected.getAttribute('data-alias') : '');
+        drinksEnabledCheckbox.checked = drinksEnabled;
+        drinksEnabledCheckbox.disabled = false;
+        // Always update the alias input with the correct value for the selected user
+        if (typeof drinksAliasFromApi === 'string') {
+            aliasInput.value = drinksAliasFromApi;
+        } else if (selected) {
+            aliasInput.value = selected.getAttribute('data-alias') || '';
+        } else {
+            aliasInput.value = '';
+        }
+        if (drinksEnabled) {
+            aliasRow.style.display = '';
+        } else {
+            aliasRow.style.display = 'none';
+        }
+    }
+    userSelect.addEventListener('change', function() {
+        updateDrinksFields();
+        updateUserInfo();
+    });
+    drinksEnabledCheckbox.addEventListener('change', async function() {
+        var selected = userSelect.options[userSelect.selectedIndex];
+        var uid = userSelect.value;
+        var drinksEnabled = drinksEnabledCheckbox.checked;
+        // Update the data-drinks-enabled attribute for the selected option
+        if (selected) {
+            selected.setAttribute('data-drinks-enabled', drinksEnabled ? '1' : '0');
+        }
+        if (drinksEnabled) {
+            aliasRow.style.display = '';
+        } else {
+            aliasRow.style.display = 'none';
+            // Do NOT clear aliasInput.value here; keep alias in input and database
+        }
+        // Save to backend (only update enabled flag)
+        if (uid) {
+            try {
+                const resp = await fetch('<?= $this->url('user/set-user-drinks-settings') ?>', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    credentials: 'same-origin',
+                    body: new URLSearchParams({
+                        uid: uid,
+                        drinks_enabled: drinksEnabled ? '1' : '0'
+                    })
+                });
+                const data = await resp.json();
+                if (!data.success) {
+                    alert('Fehler beim Speichern: ' + (data.error || 'Unbekannter Fehler'));
+                }
+            } catch (e) {
+                alert('Netzwerkfehler beim Speichern der Drinks-Einstellung.');
+            }
+        }
+    });
+    // Remove implicit save on alias input change
+    // Add explicit save on Set Alias button click
+    var setAliasBtn = document.getElementById('set-alias-btn');
+    setAliasBtn.addEventListener('click', async function() {
+        var selected = userSelect.options[userSelect.selectedIndex];
+        var uid = userSelect.value;
+        var drinksEnabled = drinksEnabledCheckbox.checked;
+        var alias = aliasInput.value;
+        // Only allow alias update if drinksEnabled is true
+        if (!drinksEnabled) {
+            alert('Alias kann nur geändert werden, wenn Drinks aktiviert ist.');
+            return;
+        }
+        // Update the data-alias attribute for the selected option
+        if (selected) {
+            selected.setAttribute('data-alias', alias);
+        }
+        // Save to backend (only update alias)
+        if (uid) {
+            try {
+                setAliasBtn.disabled = true;
+                setAliasBtn.textContent = '...';
+                const resp = await fetch('<?= $this->url('user/set-user-drinks-settings') ?>', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    credentials: 'same-origin',
+                    body: new URLSearchParams({
+                        uid: uid,
+                        drinks_alias: alias
+                    })
+                });
+                const data = await resp.json();
+                if (!data.success) {
+                    alert('Fehler beim Speichern: ' + (data.error || 'Unbekannter Fehler'));
+                }
+            } catch (e) {
+                alert('Netzwerkfehler beim Speichern des Alias.');
+            } finally {
+                setAliasBtn.disabled = false;
+                setAliasBtn.textContent = 'Set Alias';
+            }
+        }
+    });
     async function updateUserInfo() {
         var uid = userSelect.value;
         // Save selected user to localStorage
@@ -67,6 +185,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 const resp = await fetch('<?= $this->url('user/get-user-deposits-data') ?>?uid=' + encodeURIComponent(uid), { credentials: 'same-origin' });
                 if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 const data = await resp.json();
+                // Use drinks_enabled and drinks_alias from API response
+                if (typeof data.drinks_enabled !== 'undefined' || typeof data.drinks_alias !== 'undefined') {
+                    updateDrinksFields(data.drinks_enabled, data.drinks_alias);
+                    // Also update the data-drinks-enabled and data-alias attributes for the selected option
+                    var selected = userSelect.options[userSelect.selectedIndex];
+                    if (selected) {
+                        if (typeof data.drinks_enabled !== 'undefined') selected.setAttribute('data-drinks-enabled', data.drinks_enabled ? '1' : '0');
+                        if (typeof data.drinks_alias !== 'undefined') selected.setAttribute('data-alias', data.drinks_alias || '');
+                    }
+                } else {
+                    updateDrinksFields();
+                }
                 if (typeof data.balance !== 'undefined' && data.balance !== null) {
                     balanceBox.style.display = '';
                     balanceBox.textContent = '<?= $this->t('Aktueller Kontostand:') ?> ' + formatCurrency(data.balance);
@@ -156,7 +286,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     }
-    userSelect.addEventListener('change', updateUserInfo);
+    // No need for initial update here; handled after restoring user selection
+    userSelect.addEventListener('change', function() {
+        updateDrinksFields();
+    });
     // Only update if a user is preselected
     if (userSelect.value) updateUserInfo();
 });

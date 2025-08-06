@@ -27,7 +27,7 @@ class UniqueDrinksAlias extends AbstractValidator implements AdapterAwareInterfa
             return true;
         }
         $userId = isset($context['user_id']) ? (int)$context['user_id'] : null;
-        $sql = 'SELECT user_id FROM drink_aliases WHERE alias = ?';
+        $sql = 'SELECT user_id FROM drink_aliases WHERE alias = ? AND enabled = 1';
         $params = [$value];
         $result = $this->adapter->query($sql, $params);
         $row = $result->current();

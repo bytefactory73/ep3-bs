@@ -10,6 +10,16 @@ return array(
                 ),
                 'may_terminate' => false,
                 'child_routes' => array(
+                    'set-user-drinks-settings' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/set-user-drinks-settings',
+                            'defaults' => array(
+                                'controller' => 'User\Controller\Account',
+                                'action' => 'setUserDrinksSettings',
+                            ),
+                        ),
+                    ),
                     'login' => array(
                         'type' => 'Literal',
                         'options' => array(

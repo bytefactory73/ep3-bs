@@ -9,6 +9,70 @@ use Zend\Mvc\Controller\AbstractActionController;
 
 class AccountController extends AbstractActionController
 {
+    /**
+     * AJAX endpoint to update drinks_enabled and drinks_alias for a user
+     * POST: uid, drinks_enabled (bool), drinks_alias (string)
+     * Returns JSON: { success: true } or { error: ... }
+     */
+    public function setUserDrinksSettingsAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $admin = $userSessionManager->getSessionUser();
+        if (!$admin || $admin->get('status') !== 'admin') {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['error' => 'No permission']));
+        }
+        $request = $this->getRequest();
+        if (!$request->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['error' => 'POST required']));
+        }
+        $uid = (int)$this->params()->fromPost('uid');
+        $drinksEnabled = $this->params()->fromPost('drinks_enabled', null);
+        $drinksAlias = $this->params()->fromPost('drinks_alias', null);
+        if (!$uid) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'No user selected']));
+        }
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+        // Validate alias: allow empty or up to 50 chars, no dangerous chars
+        if ($drinksAlias !== null) {
+            $drinksAlias = trim($drinksAlias);
+            if ($drinksAlias !== '' && !preg_match('/^[\w\-\s]{1,50}$/u', $drinksAlias)) {
+                return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'Invalid alias']));
+            }
+        }
+        try {
+            $row = $dbAdapter->query('SELECT * FROM drink_aliases WHERE user_id = ?', [$uid])->current();
+            if ($row) {
+                // Build dynamic update
+                $fields = [];
+                $params = [];
+                if ($drinksEnabled !== null) {
+                    $enabledVal = ($drinksEnabled === '1' || $drinksEnabled === 1 || $drinksEnabled === true || $drinksEnabled === 'true') ? 1 : 0;
+                    $fields[] = 'enabled = ?';
+                    $params[] = $enabledVal;
+                }
+                if ($drinksAlias !== null) {
+                    $fields[] = 'alias = ?';
+                    $params[] = $drinksAlias;
+                }
+                if (!empty($fields)) {
+                    $params[] = $uid;
+                    $dbAdapter->query('UPDATE drink_aliases SET ' . implode(', ', $fields) . ' WHERE user_id = ?', $params);
+                }
+            } else {
+                // Insert: require both fields
+                if ($drinksAlias === null || $drinksEnabled === null) {
+                    return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'Alias and enabled required for new entry']));
+                }
+                $enabledVal = ($drinksEnabled === '1' || $drinksEnabled === 1 || $drinksEnabled === true || $drinksEnabled === 'true') ? 1 : 0;
+                $dbAdapter->query('INSERT INTO drink_aliases (user_id, alias, enabled) VALUES (?, ?, ?)', [$uid, $drinksAlias, $enabledVal]);
+            }
+        } catch (\Exception $e) {
+            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['error' => 'DB error', 'details' => $e->getMessage()]));
+        }
+        return $this->getResponse()->setContent(json_encode(['success' => true]));
+    }
 
     public function passwordAction()
     {
@@ -673,30 +737,35 @@ class AccountController extends AbstractActionController
         }
 
         /* Drinks Alias form */
-        $editDrinksAliasForm = $formElementManager->get('User\Form\EditDrinksAliasForm');
         $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
         $userId = $user->need('uid');
-        // Load current alias
-        $aliasRow = $dbAdapter->query('SELECT alias FROM drink_aliases WHERE user_id = ?', [$userId])->current();
+        // Load current alias and enabled flag
+        $aliasRow = $dbAdapter->query('SELECT alias, enabled FROM drink_aliases WHERE user_id = ?', [$userId])->current();
         $currentAlias = $aliasRow ? $aliasRow['alias'] : '';
-        if ($this->getRequest()->isPost() && $editParam == 'drinks-alias') {
-            $editDrinksAliasForm->setData($this->params()->fromPost());
-            if ($editDrinksAliasForm->isValid()) {
-                $data = $editDrinksAliasForm->getData();
-                $alias = $data['edaf-alias'];
-                // Check uniqueness again in controller (defense-in-depth)
-                $existing = $dbAdapter->query('SELECT user_id FROM drink_aliases WHERE alias = ? AND user_id != ?', [$alias, $userId])->current();
-                if ($existing) {
-                    $editDrinksAliasForm->get('edaf-alias')->setMessages([$this->t('Diese Theken-ID ist bereits vergeben.')]);
-                } else {
-                    // Upsert alias
-                    $dbAdapter->query('INSERT INTO drink_aliases (user_id, alias) VALUES (?, ?) ON DUPLICATE KEY UPDATE alias = VALUES(alias)', [$userId, $alias]);
-                    $this->flashMessenger()->addSuccessMessage($this->t('Theken-ID wurde gespeichert.'));
-                    return $this->redirect()->toRoute('user/settings');
+        $drinksEnabled = ($aliasRow && isset($aliasRow['enabled']) && (int)$aliasRow['enabled'] === 1);
+        $editDrinksAliasForm = null;
+        if ($drinksEnabled) {
+            $editDrinksAliasForm = $formElementManager->get('User\Form\EditDrinksAliasForm');
+            $editDrinksAliasForm->init();
+            if ($this->getRequest()->isPost() && $editParam == 'drinks-alias') {
+                $editDrinksAliasForm->setData($this->params()->fromPost());
+                if ($editDrinksAliasForm->isValid()) {
+                    $data = $editDrinksAliasForm->getData();
+                    $alias = $data['edaf-alias'];
+                    // Check uniqueness again in controller (defense-in-depth)
+                    $existing = $dbAdapter->query('SELECT user_id FROM drink_aliases WHERE alias = ? AND user_id != ?', [$alias, $userId])->current();
+                    if ($existing) {
+                        $editDrinksAliasForm->get('edaf-alias')->setMessages([$this->t('Diese Theken-ID ist bereits vergeben.')]);
+                    } else {
+                        // Upsert alias
+                        $dbAdapter->query('INSERT INTO drink_aliases (user_id, alias) VALUES (?, ?) ON DUPLICATE KEY UPDATE alias = VALUES(alias)', [$userId, $alias]);
+                        $this->flashMessenger()->addSuccessMessage($this->t('Theken-ID wurde gespeichert.'));
+                        return $this->redirect()->toRoute('user/settings');
+                    }
                 }
+            } else {
+                $editDrinksAliasForm->get('edaf-alias')->setValue($currentAlias);
             }
-        } else {
-            $editDrinksAliasForm->get('edaf-alias')->setValue($currentAlias);
         }
 
         return array(
@@ -885,10 +954,16 @@ class AccountController extends AbstractActionController
         $userManager = $serviceManager->get('User\Manager\UserManager');
         $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
         $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
         $user = $userManager->get($uid);
         if (!$user) {
             return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['error' => 'User not found']));
         }
+        // Query drinks_enabled and alias from drink_aliases
+        $drinksAliasRow = $dbAdapter->query('SELECT enabled, alias FROM drink_aliases WHERE user_id = ?', [$uid])->current();
+        $drinksEnabled = $drinksAliasRow ? (bool)$drinksAliasRow['enabled'] : false;
+        $drinksAlias = $drinksAliasRow ? $drinksAliasRow['alias'] : null;
+
         $orders = iterator_to_array($drinkOrderManager->getByUser($uid));
         $deposits = iterator_to_array($drinkDepositManager->getByUser($uid));
         $history = [];
@@ -942,6 +1017,8 @@ class AccountController extends AbstractActionController
         return $this->getResponse()->setContent(json_encode([
             'balance' => $userBalance,
             'history' => $userHistory,
+            'drinks_enabled' => $drinksEnabled,
+            'drinks_alias' => $drinksAlias,
         ]));
     }
 
