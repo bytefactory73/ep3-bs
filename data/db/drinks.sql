@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS drink_categories (
 -- Table for user drinks aliases
 CREATE TABLE IF NOT EXISTS drink_aliases (
     user_id INT UNSIGNED NOT NULL PRIMARY KEY,
-    alias VARCHAR(50) NOT NULL UNIQUE,
-    enabled TINYINT(1) NOT NULL DEFAULT 0,
+    alias VARCHAR(50) UNIQUE DEFAULT '',
+    enabled TINYINT(1) DEFAULT 0,
     FOREIGN KEY (user_id) REFERENCES bs_users(uid) ON DELETE CASCADE
 );

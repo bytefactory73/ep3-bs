@@ -21,7 +21,7 @@ $this->setup([
         <select name="deposit_user_id" id="deposit_user_id" required>
             <option value="">-- <?= $this->t('Select User') ?> --</option>
             <?php foreach ($this->users as $user): ?>
-                <option value="<?= (int)$user->get('uid') ?>" data-drinks-enabled="<?= (int)$user->getExtra('drinks_enabled') ?>" data-alias="<?= $this->escapeHtml($user->get('alias')) ?>">
+                <option value="<?= (int)$user->get('uid') ?>" data-drinks-enabled="<?= (int)$user->getExtra('drinks_enabled') ?>" data-alias="<?= $this->escapeHtml($user->getExtra('drinks_alias')) ?>">
                     <?= $this->escapeHtml($user->get('alias')) ?> (<?= $this->escapeHtml($user->get('email')) ?>)
                 </option>
             <?php endforeach; ?>

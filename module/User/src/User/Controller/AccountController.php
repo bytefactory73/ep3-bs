@@ -58,11 +58,28 @@ class AccountController extends AbstractActionController
                 }
                 if (!empty($fields)) {
                     $params[] = $uid;
-                    $dbAdapter->query('UPDATE drink_aliases SET ' . implode(', ', $fields) . ' WHERE user_id = ?', $params);
+                    // Build upsert query for drink_aliases
+                    $columns = [];
+                    $values = [];
+                    $updates = [];
+                    if ($drinksEnabled !== null) {
+                        $columns[] = 'enabled';
+                        $values[] = $enabledVal;
+                        $updates[] = 'enabled = VALUES(enabled)';
+                    }
+                    if ($drinksAlias !== null) {
+                        $columns[] = 'alias';
+                        $values[] = $drinksAlias;
+                        $updates[] = 'alias = VALUES(alias)';
+                    }
+                    $columns = array_merge(['user_id'], $columns);
+                    $values = array_merge([$uid], $values);
+                    $sql = 'INSERT INTO drink_aliases (' . implode(', ', $columns) . ') VALUES (' . rtrim(str_repeat('?, ', count($columns)), ', ') . ') ON DUPLICATE KEY UPDATE ' . implode(', ', $updates);
+                    $dbAdapter->query($sql, $values);
                 }
             } else {
                 // Insert: require both fields
-                if ($drinksAlias === null || $drinksEnabled === null) {
+                if ($drinksAlias === null && $drinksEnabled === null) {
                     return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'Alias and enabled required for new entry']));
                 }
                 $enabledVal = ($drinksEnabled === '1' || $drinksEnabled === 1 || $drinksEnabled === true || $drinksEnabled === 'true') ? 1 : 0;
