@@ -75,12 +75,12 @@ class DrinkManager
                 '---------------------',
                 sprintf(call_user_func($tCallback, 'Storniert am:') . ' %s', date('d.m.Y H:i')),
                 '',
-                sprintf(call_user_func($tCallback, 'Saldo nach Stornierung:') . '<b> %.2f EUR </b>', $balance),
+                sprintf(call_user_func($tCallback, 'Kontostand nach Stornierung:') . '<b> %.2f EUR </b>', $balance),
             ];
             $text = call_user_func($tCallback, 'Deine Getränkebestellung wurde erfolgreich storniert.') . "<br><br>" . implode("<br>", $lines);
             if ($balance < 0) {
                 $text .= "<br><br>";
-                $text .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func($tCallback, 'Warnung: Dein Saldo ist negativ! Bitte überweise Geld auf das STC Paypal-Konto.') . '</span>';
+                $text .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func($tCallback, 'Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das STC Paypal-Konto.') . '</span>';
             }
             $userMailService = $serviceManager->get('User\Service\MailService');
             $userMailService->send($user, $subject, $text, ['isHtml' => true]);
@@ -138,11 +138,11 @@ class DrinkManager
             $lines[] = '---------------------';
             $lines[] = sprintf(call_user_func($tCallback, 'Gesamt:') . ' %.2f EUR', $totalSum);
             $lines[] = '';
-            $lines[] = sprintf(call_user_func($tCallback, 'Saldo nach Bestellung:') . '<b> %.2f EUR </b>', $balance);
+            $lines[] = sprintf(call_user_func($tCallback, 'Kontostand nach Bestellung:') . '<b> %.2f EUR </b>', $balance);
             $text = call_user_func($tCallback, 'Vielen Dank für Deine Getränkebestellung!') . "<br><br>" . implode("<br>", $lines);
             if ($balance < 0) {
                 $text .= "<br><br>";
-                $text .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func($tCallback, 'Warnung: Dein Saldo ist negativ! Bitte überweise Geld auf das STC Paypal-Konto.') . '</span>';
+                $text .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func($tCallback, 'Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das STC Paypal-Konto.') . '</span>';
             }
             $userMailService = $serviceManager->get('User\Service\MailService');
             $userMailService->send($user, $subject, $text, ['isHtml' => true]);
