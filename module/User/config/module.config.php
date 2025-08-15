@@ -20,6 +20,16 @@ return array(
                             ),
                         ),
                     ),
+                    'add-drink-booking' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/user/add-drink-booking',
+                            'defaults' => array(
+                                'controller' => 'User\Controller\Account',
+                                'action'     => 'addDrinkBooking',
+                            ),
+                        ),
+                    ),
                     'login' => array(
                         'type' => 'Literal',
                         'options' => array(

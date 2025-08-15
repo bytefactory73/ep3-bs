@@ -46,6 +46,20 @@ $this->setup([
         <button type="submit" name="add_deposit" class="default-button mini-button" style="grid-column:1 / span 2; justify-self: start;">
             <?= $this->t('Einzahlung hinzufügen') ?>
         </button>
+
+        <!-- Drink selection row -->
+        <label for="drink_select" style="grid-column:1;">Buchung nachtragen:</label>
+        <select id="drink_select" name="drink_select" style="grid-column:2; width:220px;"></select>
+
+        <label for="drink_count" style="grid-column:1;">Anzahl:</label>
+        <input type="number" id="drink_count" name="drink_count" min="1" value="1" style="grid-column:2; width:80px;" />
+
+        <label style="grid-column:1;">Gesamtpreis:</label>
+        <span id="drink_total_price" style="grid-column:2; font-weight:bold; color:#388e3c;">0,00 €</span>
+
+        <button type="button" id="add-drink-btn" class="default-button mini-button" style="grid-column:1 / span 2; justify-self: start;">
+            <?= $this->t('Getränk buchen') ?>
+        </button>
     </form>
 </div>
 
@@ -68,6 +82,23 @@ document.addEventListener('DOMContentLoaded', function() {
         },
         <?php endforeach; ?>
     ];
+
+    // Build drinks list from PHP for JS
+    var drinks = <?php
+        if (isset($this->drinks) && is_array($this->drinks)) {
+            $drinksArr = [];
+            foreach ($this->drinks as $drink) {
+                $drinksArr[] = [
+                    'id' => (int)$drink['id'],
+                    'name' => $drink['name'] ?? '',
+                    'price' => (float)$drink['price'],
+                ];
+            }
+            echo json_encode($drinksArr, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+        } else {
+            echo '[]';
+        }
+    ?>;
     var userSearch = document.getElementById('deposit_user_search');
     var userIdInput = document.getElementById('deposit_user_id');
     var userSearchList = document.getElementById('user-search-list');
@@ -76,6 +107,93 @@ document.addEventListener('DOMContentLoaded', function() {
     var aliasInput = document.getElementById('deposit_alias');
     var balanceBox = document.getElementById('current-balance-box');
     var historySection = document.getElementById('user-history-section');
+    var drinkSelect = document.getElementById('drink_select');
+    var drinkCount = document.getElementById('drink_count');
+    var drinkTotalPrice = document.getElementById('drink_total_price');
+    var addDrinkBtn = document.getElementById('add-drink-btn');
+    // Populate drinks combobox
+    function renderDrinkOptions() {
+        drinkSelect.innerHTML = '';
+        var opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = '<?= $this->t('Bitte wählen...') ?>';
+        drinkSelect.appendChild(opt);
+        if (!Array.isArray(drinks) || drinks.length === 0) {
+            var emptyOpt = document.createElement('option');
+            emptyOpt.value = '';
+            emptyOpt.textContent = '[Keine Getränke verfügbar]';
+            emptyOpt.disabled = true;
+            drinkSelect.appendChild(emptyOpt);
+        } else {
+            drinks.forEach(function(drink) {
+                var option = document.createElement('option');
+                option.value = drink.id;
+                option.textContent = drink.name + ' (' + formatCurrency(drink.price) + ')';
+                option.setAttribute('data-price', drink.price);
+                drinkSelect.appendChild(option);
+            });
+        }
+    }
+    renderDrinkOptions();
+
+    // Update total price
+    function updateDrinkTotal() {
+        var selected = drinkSelect.options[drinkSelect.selectedIndex];
+        var price = selected && selected.getAttribute('data-price') ? parseFloat(selected.getAttribute('data-price')) : 0;
+        var count = parseInt(drinkCount.value, 10) || 1;
+        var total = price * count;
+        drinkTotalPrice.textContent = formatCurrency(total);
+    }
+    drinkSelect.addEventListener('change', updateDrinkTotal);
+    drinkCount.addEventListener('input', updateDrinkTotal);
+    updateDrinkTotal();
+
+    // Add drink booking handler
+    addDrinkBtn.addEventListener('click', async function() {
+        var uid = userIdInput.value;
+        var drinkId = drinkSelect.value;
+        var count = parseInt(drinkCount.value, 10) || 1;
+        if (!uid) {
+            alert('<?= $this->t('Bitte zuerst einen Benutzer auswählen.') ?>');
+            return;
+        }
+        if (!drinkId) {
+            alert('<?= $this->t('Bitte ein Getränk auswählen.') ?>');
+            return;
+        }
+        if (count < 1) {
+            alert('<?= $this->t('Bitte eine gültige Anzahl eingeben.') ?>');
+            return;
+        }
+        addDrinkBtn.disabled = true;
+        addDrinkBtn.textContent = '...';
+        try {
+            const resp = await fetch('<?= $this->url('user/add-drink-booking') ?>', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                credentials: 'same-origin',
+                body: new URLSearchParams({
+                    uid: uid,
+                    drink_id: drinkId,
+                    count: count
+                })
+            });
+            const data = await resp.json();
+            if (!data.success) {
+                alert('<?= $this->t('Fehler beim Buchen:') ?> ' + (data.error || 'Unbekannter Fehler'));
+            } else {
+                updateUserInfo();
+                drinkSelect.value = '';
+                drinkCount.value = 1;
+                updateDrinkTotal();
+            }
+        } catch (e) {
+            alert('<?= $this->t('Netzwerkfehler beim Buchen des Getränks.') ?>');
+        } finally {
+            addDrinkBtn.disabled = false;
+            addDrinkBtn.textContent = '<?= $this->t('Getränk buchen') ?>';
+        }
+    });
     // Persist showStorno state in localStorage
     var showStorno = localStorage.getItem('deposits_show_storno') === '1';
 

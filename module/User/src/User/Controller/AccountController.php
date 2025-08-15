@@ -10,6 +10,43 @@ use Zend\Mvc\Controller\AbstractActionController;
 class AccountController extends AbstractActionController
 {
     /**
+     * AJAX endpoint to add a drink booking for a user
+     * POST: uid, drink_id, count
+     * Returns JSON: { success: true } or { error: ... }
+     */
+    public function addDrinkBookingAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $admin = $userSessionManager->getSessionUser();
+        if (!$admin || $admin->get('status') !== 'admin') {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'No permission']));
+        }
+        $request = $this->getRequest();
+        if (!$request->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required']));
+        }
+        $uid = (int)$this->params()->fromPost('uid');
+        $drinkId = (int)$this->params()->fromPost('drink_id');
+        $count = (int)$this->params()->fromPost('count', 1);
+        if (!$uid || !$drinkId || $count < 1) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Invalid input']));
+        }
+        $userManager = $serviceManager->get('User\Manager\UserManager');
+        $user = $userManager->get($uid);
+        if (!$user) {
+            return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'User not found']));
+        }
+        $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
+        try {
+            $drinkOrderManager->addOrder($uid, $drinkId, $count);
+        } catch (\Exception $e) {
+            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => $e->getMessage()]));
+        }
+        return $this->getResponse()->setContent(json_encode(['success' => true]));
+    }
+    /**
      * AJAX endpoint to update drinks_enabled and drinks_alias for a user
      * POST: uid, drinks_enabled (bool), drinks_alias (string)
      * Returns JSON: { success: true } or { error: ... }
@@ -933,6 +970,8 @@ class AccountController extends AbstractActionController
         }
         $userManager = $serviceManager->get('User\Manager\UserManager');
         $users = $userManager->getAll('alias ASC');
+        $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
+        $drinks = iterator_to_array($drinkManager->getAll('name ASC'));
         $message = null;
         if ($this->getRequest()->isPost()) {
             $post = $this->params()->fromPost();
@@ -951,6 +990,7 @@ class AccountController extends AbstractActionController
         }
         return [
             'users' => $users,
+            'drinks' => $drinks,
             'message' => $message,
         ];
     }
