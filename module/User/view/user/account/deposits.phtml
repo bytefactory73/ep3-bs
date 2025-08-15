@@ -17,15 +17,10 @@ $this->setup([
 <div id="add-deposit-section" style="margin-top: 20px; margin-bottom: 20px; padding: 16px 14px 14px 14px; background: #f7faff; border-radius: 8px; box-shadow: 0 1px 6px rgba(30,60,120,0.06);">
     <h2 id="add-deposit-section-title" style="margin-top: 0; margin-bottom: 12px;"> <?= $this->t('Nutzerübersicht') ?> </h2>
     <form method="post" id="deposit-form" style="margin-bottom:2em; display: grid; grid-template-columns: 160px 1fr; gap: 10px 18px; align-items: center;">
-        <label for="deposit_user_id" style="grid-column:1;">Benutzer:</label>
-        <select name="deposit_user_id" id="deposit_user_id" required style="grid-column:2;">
-            <option value="">-- <?= $this->t('Select User') ?> --</option>
-            <?php foreach ($this->users as $user): ?>
-                <option value="<?= (int)$user->get('uid') ?>" data-drinks-enabled="<?= (int)$user->getExtra('drinks_enabled') ?>" data-alias="<?= $this->escapeHtml($user->getExtra('drinks_alias')) ?>">
-                    <?= $this->escapeHtml($user->get('alias')) ?> (<?= $this->escapeHtml($user->get('email')) ?>)
-                </option>
-            <?php endforeach; ?>
-        </select>
+        <label for="deposit_user_search" style="grid-column:1;">Benutzer:</label>
+        <input type="text" id="deposit_user_search" name="deposit_user_search" autocomplete="off" placeholder="<?= $this->t('Benutzer suchen...') ?>" style="grid-column:2;" required />
+        <input type="hidden" name="deposit_user_id" id="deposit_user_id" />
+        <div id="user-search-list" style="position:relative; grid-column:2; z-index:10;"></div>
 
         <label for="deposit_drinks_enabled" style="grid-column:1;">Theke erlaubt:</label>
         <input type="checkbox" id="deposit_drinks_enabled" name="deposit_drinks_enabled" value="1" style="vertical-align:middle; grid-column:2; justify-self: start;">
@@ -61,35 +56,113 @@ function formatCurrency(amount) {
     return amount != null ? amount.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) : '';
 }
 document.addEventListener('DOMContentLoaded', function() {
-    var userSelect = document.getElementById('deposit_user_id');
+    // Build user list from PHP for JS
+    var users = [
+        <?php foreach ($this->users as $user): ?>
+        {
+            uid: "<?= (int)$user->get('uid') ?>",
+            alias: "<?= $this->escapeJs($user->get('alias')) ?>",
+            email: "<?= $this->escapeJs($user->get('email')) ?>",
+            drinks_enabled: <?= (int)$user->getExtra('drinks_enabled') ?>,
+            drinks_alias: "<?= $this->escapeJs($user->getExtra('drinks_alias')) ?>"
+        },
+        <?php endforeach; ?>
+    ];
+    var userSearch = document.getElementById('deposit_user_search');
+    var userIdInput = document.getElementById('deposit_user_id');
+    var userSearchList = document.getElementById('user-search-list');
     var drinksEnabledCheckbox = document.getElementById('deposit_drinks_enabled');
     var aliasRow = document.getElementById('alias-row');
     var aliasInput = document.getElementById('deposit_alias');
     var balanceBox = document.getElementById('current-balance-box');
     var historySection = document.getElementById('user-history-section');
-    // Restore last selected user from localStorage
-    var lastUid = localStorage.getItem('deposits_selected_uid');
-    if (lastUid && userSelect.querySelector('option[value="' + lastUid + '"]')) {
-        userSelect.value = lastUid;
-        updateDrinksFields();
-    }
     // Persist showStorno state in localStorage
     var showStorno = localStorage.getItem('deposits_show_storno') === '1';
+
+    // Helper: find user by uid
+    function findUserByUid(uid) {
+        return users.find(u => u.uid === uid);
+    }
+    // Helper: find user by alias/email string
+    function findUserByString(str) {
+        str = str.trim().toLowerCase();
+        return users.find(u => (u.alias + ' (' + u.email + ')').toLowerCase() === str);
+    }
+    // Autocomplete logic
+    function renderUserList(filter) {
+        userSearchList.innerHTML = '';
+        if (!filter) return;
+        var matches = users.filter(u =>
+            u.alias.toLowerCase().includes(filter) ||
+            u.email.toLowerCase().includes(filter)
+        );
+        if (matches.length === 0) return;
+        var list = document.createElement('div');
+        list.style.position = 'absolute';
+        list.style.background = '#fff';
+        list.style.border = '1px solid #ccc';
+        list.style.width = '100%';
+        list.style.maxHeight = '180px';
+        list.style.overflowY = 'auto';
+        matches.forEach(function(u) {
+            var item = document.createElement('div');
+            item.textContent = u.alias + ' (' + u.email + ')';
+            item.style.padding = '4px 8px';
+            item.style.cursor = 'pointer';
+            item.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                userSearch.value = u.alias + ' (' + u.email + ')';
+                userIdInput.value = u.uid;
+                userSearchList.innerHTML = '';
+                updateDrinksFields();
+                updateUserInfo();
+            });
+            list.appendChild(item);
+        });
+        userSearchList.appendChild(list);
+    }
+    userSearch.addEventListener('input', function() {
+        var val = userSearch.value.trim().toLowerCase();
+        renderUserList(val);
+        // If input matches exactly, set userIdInput
+        var user = findUserByString(userSearch.value);
+        if (user) {
+            userIdInput.value = user.uid;
+            updateDrinksFields();
+            updateUserInfo();
+        } else {
+            userIdInput.value = '';
+        }
+    });
+    userSearch.addEventListener('blur', function() {
+        setTimeout(function() { userSearchList.innerHTML = ''; }, 150);
+    });
+    // Restore last selected user from localStorage
+    var lastUid = localStorage.getItem('deposits_selected_uid');
+    if (lastUid) {
+        var user = findUserByUid(lastUid);
+        if (user) {
+            userSearch.value = user.alias + ' (' + user.email + ')';
+            userIdInput.value = user.uid;
+            updateDrinksFields();
+            updateUserInfo();
+        }
+    }
     function updateDrinksFields(drinksEnabledFromApi, drinksAliasFromApi) {
-        var selected = userSelect.options[userSelect.selectedIndex];
+        var uid = userIdInput.value;
+        var user = findUserByUid(uid);
         var drinksEnabled = typeof drinksEnabledFromApi === 'boolean'
             ? drinksEnabledFromApi
-            : (selected ? selected.getAttribute('data-drinks-enabled') === '1' : false);
+            : (user ? user.drinks_enabled === 1 : false);
         var alias = typeof drinksAliasFromApi === 'string'
             ? drinksAliasFromApi
-            : (selected ? selected.getAttribute('data-alias') : '');
+            : (user ? user.drinks_alias : '');
         drinksEnabledCheckbox.checked = drinksEnabled;
-        drinksEnabledCheckbox.disabled = false;
-        // Always update the alias input with the correct value for the selected user
+        drinksEnabledCheckbox.disabled = !user;
         if (typeof drinksAliasFromApi === 'string') {
             aliasInput.value = drinksAliasFromApi;
-        } else if (selected) {
-            aliasInput.value = selected.getAttribute('data-alias') || '';
+        } else if (user) {
+            aliasInput.value = user.drinks_alias || '';
         } else {
             aliasInput.value = '';
         }
@@ -99,25 +172,18 @@ document.addEventListener('DOMContentLoaded', function() {
             aliasRow.style.display = 'none';
         }
     }
-    userSelect.addEventListener('change', function() {
-        updateDrinksFields();
-        updateUserInfo();
-    });
     drinksEnabledCheckbox.addEventListener('change', async function() {
-        var selected = userSelect.options[userSelect.selectedIndex];
-        var uid = userSelect.value;
+        var uid = userIdInput.value;
+        var user = findUserByUid(uid);
         var drinksEnabled = drinksEnabledCheckbox.checked;
-        // Update the data-drinks-enabled attribute for the selected option
-        if (selected) {
-            selected.setAttribute('data-drinks-enabled', drinksEnabled ? '1' : '0');
+        if (user) {
+            user.drinks_enabled = drinksEnabled ? 1 : 0;
         }
         if (drinksEnabled) {
             aliasRow.style.display = '';
         } else {
             aliasRow.style.display = 'none';
-            // Do NOT clear aliasInput.value here; keep alias in input and database
         }
-        // Save to backend (only update enabled flag)
         if (uid) {
             try {
                 const resp = await fetch('<?= $this->url('user/set-user-drinks-settings') ?>', {
@@ -138,24 +204,19 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     });
-    // Remove implicit save on alias input change
-    // Add explicit save on Set Alias button click
     var setAliasBtn = document.getElementById('set-alias-btn');
     setAliasBtn.addEventListener('click', async function() {
-        var selected = userSelect.options[userSelect.selectedIndex];
-        var uid = userSelect.value;
+        var uid = userIdInput.value;
+        var user = findUserByUid(uid);
         var drinksEnabled = drinksEnabledCheckbox.checked;
         var alias = aliasInput.value;
-        // Only allow alias update if drinksEnabled is true
         if (!drinksEnabled) {
             alert('Alias kann nur geändert werden, wenn Drinks aktiviert ist.');
             return;
         }
-        // Update the data-alias attribute for the selected option
-        if (selected) {
-            selected.setAttribute('data-alias', alias);
+        if (user) {
+            user.drinks_alias = alias;
         }
-        // Save to backend (only update alias)
         if (uid) {
             try {
                 setAliasBtn.disabled = true;
@@ -182,8 +243,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     async function updateUserInfo() {
-        var uid = userSelect.value;
-        // Save selected user to localStorage
+        var uid = userIdInput.value;
         localStorage.setItem('deposits_selected_uid', uid);
         balanceBox.style.display = 'none';
         balanceBox.textContent = '';
@@ -193,14 +253,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 const resp = await fetch('<?= $this->url('user/get-user-deposits-data') ?>?uid=' + encodeURIComponent(uid), { credentials: 'same-origin' });
                 if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 const data = await resp.json();
-                // Use drinks_enabled and drinks_alias from API response
                 if (typeof data.drinks_enabled !== 'undefined' || typeof data.drinks_alias !== 'undefined') {
                     updateDrinksFields(data.drinks_enabled, data.drinks_alias);
-                    // Also update the data-drinks-enabled and data-alias attributes for the selected option
-                    var selected = userSelect.options[userSelect.selectedIndex];
-                    if (selected) {
-                        if (typeof data.drinks_enabled !== 'undefined') selected.setAttribute('data-drinks-enabled', data.drinks_enabled ? '1' : '0');
-                        if (typeof data.drinks_alias !== 'undefined') selected.setAttribute('data-alias', data.drinks_alias || '');
+                    var user = findUserByUid(uid);
+                    if (user) {
+                        if (typeof data.drinks_enabled !== 'undefined') user.drinks_enabled = data.drinks_enabled ? 1 : 0;
+                        if (typeof data.drinks_alias !== 'undefined') user.drinks_alias = data.drinks_alias || '';
                     }
                 } else {
                     updateDrinksFields();
@@ -215,7 +273,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     for (var day of history) {
                         var deposits = day.entries.filter(e => e.type === 'Einzahlung' && !e.deleted);
                         var orders = day.entries.filter(e => e.type !== 'Einzahlung' && (showStorno || !e.deleted));
-                        // Only show the day if there are visible entries
                         if (orders.length === 0 && deposits.length === 0) continue;
                         var runningBalance = 0;
                         var daySum = day.entries.filter(e => e.type !== 'Einzahlung' && (showStorno || !e.deleted)).reduce((sum, e) => (e.deleted ? sum : sum + e.amount), 0);
@@ -294,11 +351,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     }
-    // No need for initial update here; handled after restoring user selection
-    userSelect.addEventListener('change', function() {
-        updateDrinksFields();
-    });
     // Only update if a user is preselected
-    if (userSelect.value) updateUserInfo();
+    if (userIdInput.value) updateUserInfo();
 });
+// ...existing code...
 </script>
