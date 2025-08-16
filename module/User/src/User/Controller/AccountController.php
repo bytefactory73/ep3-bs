@@ -10,6 +10,49 @@ use Zend\Mvc\Controller\AbstractActionController;
 class AccountController extends AbstractActionController
 {
     /**
+     * AJAX endpoint to toggle deleted flag for a deposit or order entry
+     * POST: entry_id
+     * Returns JSON: { success: true } or { error: ... }
+     */
+    public function toggleDepositOrderDeletedAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $admin = $userSessionManager->getSessionUser();
+        if (!$admin || $admin->get('status') !== 'admin') {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'No permission']));
+        }
+        $request = $this->getRequest();
+        if (!$request->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required']));
+        }
+        $entryId = $this->params()->fromPost('entry_id');
+        $entryType = $this->params()->fromPost('entry_type');
+        if (!$entryId || !$entryType) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'No entry_id or entry_type']));
+        }
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+        if ($entryType === 'deposit') {
+            $row = $dbAdapter->query('SELECT id, deleted FROM drink_deposits WHERE id = ?', [$entryId])->current();
+            if ($row) {
+                $newDeleted = empty($row['deleted']) ? 1 : 0;
+                $dbAdapter->query('UPDATE drink_deposits SET deleted = ? WHERE id = ?', [$newDeleted, $entryId]);
+                return $this->getResponse()->setContent(json_encode(['success' => true]));
+            }
+        } elseif ($entryType === 'order') {
+            $row = $dbAdapter->query('SELECT id, deleted FROM drink_orders WHERE id = ?', [$entryId])->current();
+            if ($row) {
+                $newDeleted = empty($row['deleted']) ? 1 : 0;
+                $dbAdapter->query('UPDATE drink_orders SET deleted = ? WHERE id = ?', [$newDeleted, $entryId]);
+                return $this->getResponse()->setContent(json_encode(['success' => true]));
+            }
+        } else {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Invalid entry_type']));
+        }
+        return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'Entry not found']));
+    }
+    /**
      * AJAX endpoint to add a drink booking for a user
      * POST: uid, drink_id, count
      * Returns JSON: { success: true } or { error: ... }
@@ -1051,6 +1094,7 @@ class AccountController extends AbstractActionController
         foreach ($orders as $o) {
             $history[] = [
                 'type' => empty($o['deleted']) ? 'Buchung' : 'Storno',
+                'id' => isset($o['id']) ? (int)$o['id'] : null, // Always include order id
                 'amount' => -1 * $o['quantity'] * $o['price'],
                 'desc' => $o['quantity'] . ' x ' . $o['name'],
                 'datetime' => $o['order_time'],

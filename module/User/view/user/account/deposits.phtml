@@ -388,101 +388,131 @@ document.addEventListener('DOMContentLoaded', function() {
                 function renderHistory(history, showStorno) {
                     var html = '<h2><?= $this->t('Buchungs- und Einzahlungsverlauf') ?></h2>' +
                         '<div style="margin-bottom:10px;"><label><input type="checkbox" id="show-storno-checkbox"' + (showStorno ? ' checked' : '') + '> <?= $this->t('Zeige Storno') ?></label></div>';
-        // Calculate running balance in chronological order and attach to each entry
-        var allEntries = [];
-        for (var day of history) {
-            for (var entry of day.entries) {
-                allEntries.push(entry);
-            }
-        }
-        // Sort all entries by date+time ascending (oldest first)
-        allEntries.sort(function(a, b) {
-            var ad = (a.datetime || a.date || '');
-            var bd = (b.datetime || b.date || '');
-            return ad.localeCompare(bd);
-        });
-        var runningBalance = 0;
-        for (var i = 0; i < allEntries.length; i++) {
-            var entry = allEntries[i];
-            var amount = parseFloat(entry.amount);
-            if (isNaN(amount)) amount = 0;
-            if (entry.type === 'Einzahlung' && !entry.deleted) {
-                runningBalance += amount;
-            } else if (entry.type !== 'Einzahlung' && (!entry.deleted || showStorno)) {
-                runningBalance += amount;
-            }
-            entry.displayBalance = runningBalance;
-        }
-        // Reverse days for display
-        var reversedDays = history.slice().reverse();
-        for (var day of reversedDays) {
-            var deposits = day.entries.filter(e => e.type === 'Einzahlung' && !e.deleted);
-            var orders = day.entries.filter(e => e.type !== 'Einzahlung' && (showStorno || !e.deleted));
-            if (orders.length === 0 && deposits.length === 0) continue;
-            var daySum = day.entries.filter(e => e.type !== 'Einzahlung' && (showStorno || !e.deleted)).reduce((sum, e) => (e.deleted ? sum : sum + e.amount), 0);
-            html += '<div style="margin-top:18px; margin-bottom:8px; font-weight:bold; color:#1769aa;">' + day.date + '</div>';
-            html += '<div style="margin-left:32px;">';
-            // Show deposits (reverse for most recent first)
-            for (var i = deposits.length - 1; i >= 0; i--) {
-                var entry = deposits[i];
-                var timeStr = '';
-                if (entry.datetime) {
-                    var match = entry.datetime.match(/\b(\d{2}:\d{2})/);
-                    if (match) timeStr = match[1];
-                }
-                html += '<div style="margin-bottom:1px; color:#388e3c; font-weight:bold; line-height:1.1;">'
-                    + '<?= $this->t('Einzahlung:') ?> ' + formatCurrency(entry.amount)
-                    + (entry.desc ? ' <span style="color:#888;font-weight:normal;">' + entry.desc + '</span>' : '')
-                    + (entry.createdby ? ' <span style="color:#888;font-weight:normal;">(' + entry.createdby + ')</span>' : '')
-                    + (timeStr ? ' <span style="color:#888;font-size:90%;margin-left:8px;">' + timeStr + '</span>' : '')
-                    + (typeof entry.displayBalance !== 'undefined' ? ' <span style="color:#2196f3;">Kontostand: ' + formatCurrency(entry.displayBalance) + '</span>' : '')
-                    + '</div>';
-            }
-            if (orders.length > 0) {
-                html += '<table class="default-table" style="margin-bottom:4px; text-align:left; margin-left:0; padding-left:16px;">';
-                // Show orders (reverse for most recent first)
-                for (var i = day.entries.length - 1; i >= 0; i--) {
-                    var entry = day.entries[i];
-                    if (entry.type === 'Einzahlung') continue;
-                    if (entry.deleted && !showStorno) continue;
-                    var isDeleted = entry.deleted;
-                    var color = entry.type === 'Buchung' ? '#1769aa' : '#b71c1c';
-                    var style = 'color:' + color + ';';
-                    if (isDeleted) style += ' text-decoration:line-through;color:#b0b0b0;';
-                    style += ' padding-top:1px; padding-bottom:1px; line-height:1; text-align:left;';
-                    var timeStr = '';
-                    if (entry.datetime) {
-                        var match = entry.datetime.match(/\b(\d{2}:\d{2})/);
-                        if (match) timeStr = match[1];
-                    }
-                    html += '<tr style="' + style + '">';
-                    html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + entry.type + '</td>';
-                    html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + formatCurrency(entry.amount) + '</td>';
-                    html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + (entry.desc || '') + (timeStr ? ' <span style="color:#888;font-size:90%;margin-left:8px;">' + timeStr + '</span>' : '') + '</td>';
-                    html += '</tr>';
-                }
-                // Find last non-deleted order for correct balance
-                var lastBalance = null;
-                for (var i = day.entries.length - 1; i >= 0; i--) {
-                    var entry = day.entries[i];
-                    if (entry.type !== 'Einzahlung' && (!entry.deleted || showStorno)) {
-                        lastBalance = entry.displayBalance;
-                        break;
+                // Calculate running balance in chronological order and attach to each entry
+                var allEntries = [];
+                for (var day of history) {
+                    for (var entry of day.entries) {
+                        allEntries.push(entry);
                     }
                 }
-                html += '<tr style="font-weight:bold;background:#fafdff;">' +
-                    '<td style="text-align:left;">Tagessumme</td>' +
-                    '<td style="text-align:left;">' + formatCurrency(daySum) + '</td>' +
-                    '<td style="text-align:left;">';
-                if (lastBalance !== null) {
-                    html += '<span style="color:#2196f3;">Kontostand: ' + formatCurrency(lastBalance) + '</span>';
+                // Sort all entries by date+time ascending (oldest first)
+                allEntries.sort(function(a, b) {
+                    var ad = (a.datetime || a.date || '');
+                    var bd = (b.datetime || b.date || '');
+                    return ad.localeCompare(bd);
+                });
+                var runningBalance = 0;
+                for (var i = 0; i < allEntries.length; i++) {
+                    var entry = allEntries[i];
+                    var amount = parseFloat(entry.amount);
+                    if (isNaN(amount)) amount = 0;
+                    if (entry.type === 'Einzahlung') {
+                        // Only count non-deleted deposits, regardless of showStorno
+                        if (!entry.deleted) {
+                            runningBalance += amount;
+                        }
+                    } else {
+                        // For orders, include deleted if showStorno is enabled
+                        if (!entry.deleted || showStorno) {
+                            runningBalance += amount;
+                        }
+                    }
+                    entry.displayBalance = runningBalance;
                 }
-                html += '</td></tr>';
-                html += '</table>';
-            }
-            html += '</div>';
-        }
-        return html;
+                // Reverse days for display
+                var reversedDays = history.slice().reverse();
+                for (var day of reversedDays) {
+                    var deposits = day.entries.filter(e => e.type === 'Einzahlung' && !e.deleted);
+                    var orders = day.entries.filter(e => e.type !== 'Einzahlung' && (showStorno || !e.deleted));
+                    if (orders.length === 0 && deposits.length === 0) continue;
+                    var daySum = day.entries
+                        .filter(e => !e.deleted)
+                        .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+                    html += '<div style="margin-top:18px; margin-bottom:8px; font-weight:bold; color:#1769aa;">' + day.date + '</div>';
+                    html += '<div style="margin-left:32px;">';
+                    // Render deposits as table rows for alignment
+                    // (Removed duplicate table rendering block)
+                    // Calculate per-day Kontostand: sum all non-deleted entries up to and including this day
+                    var dayEnd = day.date + ' 23:59:59';
+                    var dayBalance = 0;
+                    for (var j = 0; j < allEntries.length; j++) {
+                        var entry = allEntries[j];
+                        if (entry.deleted) continue; // Only sum non-deleted entries
+                        var entryDate = (entry.datetime || entry.date || '').slice(0, 10);
+                        if ((entry.datetime && entry.datetime <= dayEnd) || (entry.date && entry.date <= day.date)) {
+                            var amount = parseFloat(entry.amount);
+                            if (isNaN(amount)) amount = 0;
+                            dayBalance += amount;
+                        }
+                    }
+                    if (orders.length > 0 || deposits.length > 0) {
+                        html += '<table class="default-table" style="margin-bottom:4px; text-align:left; margin-left:0; padding-left:16px;">';
+                        // Show deposits (Einzahlung) first, oldest first
+                        for (var i = 0; i < day.entries.length; i++) {
+                            var entry = day.entries[i];
+                            if (entry.type !== 'Einzahlung') continue;
+                            if (entry.deleted && !showStorno) continue; // show deleted only if showStorno
+                            var isDeleted = entry.deleted;
+                            var style = 'color:#388e3c;';
+                            if (isDeleted) style += ' text-decoration:line-through;color:#b0b0b0;';
+                            style += ' padding-top:1px; padding-bottom:1px; line-height:1; text-align:left;';
+                            var timeStr = '';
+                            if (entry.datetime) {
+                                var match = entry.datetime.match(/\b(\d{2}:\d{2})/);
+                                if (match) timeStr = match[1];
+                            }
+                            var xBtn = '';
+                            if (isDeleted) {
+                                xBtn = '<button class="entry-cancel-btn" data-entry-id="' + entry.id + '" data-entry-type="deposit" data-reactivate="1" title="<?= $this->t('Reaktivieren') ?>" style="margin-right:6px; color:#388e3c; background:none; border:none; font-size:15px; font-weight:bold; cursor:pointer; line-height:1;">&times;</button>';
+                            } else {
+                                xBtn = '<button class="entry-cancel-btn" data-entry-id="' + entry.id + '" data-entry-type="deposit" title="<?= $this->t('Stornieren') ?>" style="margin-right:6px; color:#d32f2f; background:none; border:none; font-size:15px; font-weight:bold; cursor:pointer; line-height:1;">&times;</button>';
+                            }
+                            html += '<tr style="' + style + '">';
+                            html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + xBtn + entry.type + '</td>';
+                            html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + formatCurrency(entry.amount) + '</td>';
+                            html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + (entry.desc || '') + (timeStr ? ' <span style=\"color:#888;font-size:90%;margin-left:8px;\">' + timeStr + '</span>' : '') + '</td>';
+                            html += '</tr>';
+                        }
+                        // Show orders (reverse for most recent first)
+                        for (var i = day.entries.length - 1; i >= 0; i--) {
+                            var entry = day.entries[i];
+                            if (entry.type === 'Einzahlung') continue;
+                            if (entry.deleted && !showStorno) continue;
+                            var isDeleted = entry.deleted;
+                            var color = entry.type === 'Buchung' ? '#1769aa' : '#b71c1c';
+                            var style = 'color:' + color + ';';
+                            if (isDeleted) style += ' text-decoration:line-through;color:#b0b0b0;';
+                            style += ' padding-top:1px; padding-bottom:1px; line-height:1; text-align:left;';
+                            var timeStr = '';
+                            if (entry.datetime) {
+                                var match = entry.datetime.match(/\b(\d{2}:\d{2})/);
+                                if (match) timeStr = match[1];
+                            }
+                            var xBtn = '';
+                            // Use entry.id if present, else fallback to entry.order_id (for legacy data)
+                            var orderId = (typeof entry.id !== 'undefined') ? entry.id : (typeof entry.order_id !== 'undefined' ? entry.order_id : '');
+                            if (isDeleted) {
+                                xBtn = '<button class="entry-cancel-btn" data-entry-id="' + orderId + '" data-entry-type="order" data-reactivate="1" title="<?= $this->t('Reaktivieren') ?>" style="margin-right:6px; color:#388e3c; background:none; border:none; font-size:15px; font-weight:bold; cursor:pointer; line-height:1;">&times;</button>';
+                            } else {
+                                xBtn = '<button class="entry-cancel-btn" data-entry-id="' + orderId + '" data-entry-type="order" title="<?= $this->t('Stornieren') ?>" style="margin-right:6px; color:#d32f2f; background:none; border:none; font-size:15px; font-weight:bold; cursor:pointer; line-height:1;">&times;</button>';
+                            }
+                            html += '<tr style="' + style + '">';
+                            html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + xBtn + entry.type + '</td>';
+                            html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + formatCurrency(entry.amount) + '</td>';
+                            html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + (entry.desc || '') + (timeStr ? ' <span style="color:#888;font-size:90%;margin-left:8px;">' + timeStr + '</span>' : '') + '</td>';
+                            html += '</tr>';
+                        }
+                        html += '<tr style="font-weight:bold;background:#fafdff;">' +
+                            '<td style="text-align:left;">Tagessumme</td>' +
+                            '<td style="text-align:left;">' + formatCurrency(daySum) + '</td>' +
+                            '<td style="text-align:left;">';
+                        html += '<span style="color:#2196f3;">Kontostand: ' + formatCurrency(dayBalance) + '</span>';
+                        html += '</td></tr>';
+                        html += '</table>';
+                    }
+                    html += '</div>';
+                }
+                return html;
                 }
                 if (Array.isArray(data.history)) {
                     var history = data.history;
@@ -494,19 +524,61 @@ document.addEventListener('DOMContentLoaded', function() {
                                 localStorage.setItem('deposits_show_storno', showStorno ? '1' : '0');
                                 historySection.innerHTML = renderHistory(history, showStorno);
                                 attachStornoHandler();
+                                attachEntryCancelHandlers();
                             });
                         }
                     }
                     historySection.innerHTML = renderHistory(history, showStorno);
                     attachStornoHandler();
+                    attachEntryCancelHandlers();
                 }
             } catch (e) {
                 historySection.innerHTML = '<div style="color:red;">Fehler beim Laden der Daten.</div>';
+                if (window.console && console.error) {
+                    console.error('Fehler beim Laden der Daten:', e);
+                }
             }
         }
     }
     // Only update if a user is preselected
     if (userIdInput.value) updateUserInfo();
+// Ensure attachEntryCancelHandlers is defined to prevent JS errors
+function attachEntryCancelHandlers() {
+    var buttons = document.querySelectorAll('.entry-cancel-btn');
+    buttons.forEach(function(btn) {
+        btn.addEventListener('click', async function(e) {
+            e.preventDefault();
+            var entryId = btn.getAttribute('data-entry-id');
+            var entryType = btn.getAttribute('data-entry-type');
+            var reactivate = btn.getAttribute('data-reactivate') === '1';
+            if (!entryId || !entryType) return;
+            btn.disabled = true;
+            btn.textContent = '...';
+            try {
+                const resp = await fetch('<?= $this->url('user/toggle-deposit-order-deleted') ?>', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    credentials: 'same-origin',
+                    body: new URLSearchParams({
+                        entry_id: entryId,
+                        entry_type: entryType
+                    })
+                });
+                const data = await resp.json();
+                if (!data.success) {
+                    alert('<?= $this->t('Fehler beim Ändern des Status:') ?> ' + (data.error || 'Unbekannter Fehler'));
+                } else {
+                    updateUserInfo();
+                }
+            } catch (e) {
+                alert('<?= $this->t('Netzwerkfehler beim Ändern des Status.') ?>');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '×';
+            }
+        });
+    });
+}
 });
 // ...existing code...
 </script>

@@ -10,6 +10,16 @@ return array(
                 ),
                 'may_terminate' => false,
                 'child_routes' => array(
+                    'toggle-deposit-order-deleted' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/toggle-deposit-order-deleted',
+                            'defaults' => array(
+                                'controller' => 'User\Controller\Account',
+                                'action' => 'toggleDepositOrderDeleted',
+                            ),
+                        ),
+                    ),
                     'set-user-drinks-settings' => array(
                         'type' => 'Literal',
                         'options' => array(
