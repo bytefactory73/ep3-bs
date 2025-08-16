@@ -82,6 +82,7 @@ $drinksEnabled = isset($this->drinksEnabled) ? (bool)$this->drinksEnabled : true
                     <button type="button" class="category-btn" data-category="all" style="padding: 6px 18px; border-radius: 6px; border: 1px solid #2196f3; background: #e3f0fa; color: #2196f3; font-weight: bold; cursor: pointer;">All</button>
                     <button type="button" class="category-btn" data-category="favourites" style="padding: 6px 18px; border-radius: 6px; border: 1px solid #2196f3; background: #fff; color: #2196f3; font-weight: bold; cursor: pointer;">Meine Favoriten</button>
                     <?php foreach ($this->drinkCategories as $cat): ?>
+                        <?php if ((int)$cat['id'] === 0) continue; // skip hidden category ?>
                         <button type="button" class="category-btn" data-category="<?= (int)$cat['id'] ?>" style="padding: 6px 18px; border-radius: 6px; border: 1px solid #2196f3; background: #fff; color: #2196f3; font-weight: bold; cursor: pointer;">
                             <?= $this->escapeHtml($cat['name']) ?>
                         </button>
@@ -784,6 +785,7 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
                 });
             }
             foreach ($drinks as $drink): ?>
+                <?php if ((int)($drink['category'] ?? 0) === 0) continue; // skip hidden drinks ?>
                 <div class="drink-tile" data-category="<?= (int)($drink['category'] ?? 0) ?>" favourite-count="<?= (int)($drink['user_total_count'] ?? 0) ?>" data-drink-id="<?= (int)$drink['id'] ?>" style="position:relative; cursor:pointer;">
                     <?php
                     $imgFile = isset($drink['image']) && $drink['image'] ? $drink['image'] : 'drink-placeholder.png';
