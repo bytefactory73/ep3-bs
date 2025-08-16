@@ -2,10 +2,12 @@
 // Cleaned up: removed unused variables and redundant code, improved formatting
 $simpleOrderMode = $simpleOrderMode ?? ($this->simpleOrderMode ?? false);
 $drinks = $this->drinks ?? [];
+// drinksEnabled: should be set by controller, fallback to true for BC
+$drinksEnabled = isset($this->drinksEnabled) ? (bool)$this->drinksEnabled : true;
 ?>
 
 <!-- Display user name at the top if available -->
-<?php if (!empty($this->userName)) : ?>
+<?php if (!empty($this->userName) && $drinksEnabled) : ?>
     <div class="user-info-bar<?= $simpleOrderMode ? ' sticky-user-info-bar' : '' ?>"
         style="
             display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start;
@@ -26,7 +28,7 @@ $drinks = $this->drinks ?? [];
                 <span id="logout-timer" style="display:inline-flex; align-items:center; margin-left:16px; font-size:0.85em; color:#d32f2f; background:#fff3f3; border:1px solid #d32f2f; border-radius:6px; padding:2px 10px; display:none; white-space:nowrap;"></span>
             <?php endif; ?>
         </div>
-        <?php if (isset($drinks)): ?>
+        <?php if (isset($drinks) && $drinksEnabled): ?>
             <div style="margin-left:16px; margin-right:16px; margin-bottom: 8px; width: 100%-32px; min-height: 24px; display: flex; align-items: center;">
                 <!-- Placeholder for line 2 (e.g., navigation, info, etc.) -->
                 <?php if ($simpleOrderMode): ?>
@@ -525,7 +527,7 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
 }
 </style>
 
-<?php if (isset($drinks)): ?>
+<?php if (isset($drinks) && $drinksEnabled): ?>
     <script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
     <script>
     // Barcode scan logic with camera switch
@@ -1072,7 +1074,7 @@ try {
 <?php
 $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
 ?>
-<?php if ($showHistory && (!$simpleOrderMode || $simpleOrderMode)) : ?>
+<?php if ($showHistory && $drinksEnabled && (!$simpleOrderMode || $simpleOrderMode)) : ?>
 <div id="order-history-section">
     <h2 style="text-align: center;"><?= $this->t('Käufe und Einzahlungen') ?></h2>
     <div style="margin-bottom: 18px;"></div>
@@ -1347,7 +1349,7 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
 </div>
 <?php endif; ?>
 
-<?php if (!$simpleOrderMode): ?>
+<?php if (!$simpleOrderMode && $drinksEnabled): ?>
 <div id="drink-stats-section">
 <h2><?= $this->t('Getränke-Statistik') ?></h2>
 <?php if (!isset($drinkStats) || empty($drinkStats)): ?>
@@ -1370,31 +1372,36 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
 <?php endif; ?>
 
 <?php 
-// Only show the Buchungen section if not in simple-order mode
+// Always show the Buchungen section if not in simple-order mode
 ?>
 <?php if (!$simpleOrderMode): ?>
-<div id="buchungen-section">
-    <h1><?= $this->t('My bookings') ?></h1>
-
-    <div class="separator-small"></div>
-
-    <?php if (count($this->bookings) == 0): ?>
-        <p><?= sprintf($this->t('You have not booked any %s yet.'), $this->option('subject.square.type.plural')) ?></p>
-    <?php elseif (count($this->bookings) == 1): ?>
-        <p><?= sprintf($this->t('You have already booked one %s.'), $this->option('subject.square.type')) ?></p>
-    <?php else: ?>
-        <p><?= sprintf($this->t('You have already booked %s %s.'), count($this->bookings), $this->option('subject.square.type.plural')) ?></p>
+    <?php if (!$drinksEnabled): ?>
+        <div style="margin: 32px auto; max-width: 480px; background: #fff3f3; color: #d32f2f; border: 1px solid #d32f2f; border-radius: 8px; padding: 24px; text-align: center; font-size: 1.2em;">
+            <?= $this->t('Getränkebuchungen sind für dich im Moment nicht verfügbar.') ?>
+        </div>
     <?php endif; ?>
+    <div id="buchungen-section">
+        <h1><?= $this->t('My bookings') ?></h1>
 
-    <?php if (count($this->bookings) > 0): ?>
+        <div class="separator-small"></div>
 
-        <div class="separator separator-line"></div>
+        <?php if (count($this->bookings) == 0): ?>
+            <p><?= sprintf($this->t('You have not booked any %s yet.'), $this->option('subject.square.type.plural')) ?></p>
+        <?php elseif (count($this->bookings) == 1): ?>
+            <p><?= sprintf($this->t('You have already booked one %s.'), $this->option('subject.square.type')) ?></p>
+        <?php else: ?>
+            <p><?= sprintf($this->t('You have already booked %s %s.'), count($this->bookings), $this->option('subject.square.type.plural')) ?></p>
+        <?php endif; ?>
 
-        <style type="text/css">
-            .default-table td { padding-right: 16px; padding-bottom: 8px; height: 24px; }
-        </style>
+        <?php if (count($this->bookings) > 0): ?>
 
-        <table class="default-table middle-table">
+            <div class="separator separator-line"></div>
+
+            <style type="text/css">
+                .default-table td { padding-right: 16px; padding-bottom: 8px; height: 24px; }
+            </style>
+
+            <table class="default-table middle-table">
             <?php
 
             $todayMentioned = false;

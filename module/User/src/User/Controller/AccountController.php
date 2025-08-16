@@ -490,6 +490,12 @@ class AccountController extends AbstractActionController
         $drinkCategories = $drinkCategoryManager->getAll();
         $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($user->need('uid')));
         $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($user->need('uid')));
+
+        // Query drink_aliases for enabled flag
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+        $userId = $user->need('uid');
+        $aliasRow = $dbAdapter->query('SELECT enabled FROM drink_aliases WHERE user_id = ?', [$userId])->current();
+        $drinksEnabled = ($aliasRow && isset($aliasRow['enabled']) && (int)$aliasRow['enabled'] === 1);
         // Merge and sort by date descending
         $drinkHistory = [];
         foreach ($drinkOrders as $order) {
@@ -570,6 +576,7 @@ class AccountController extends AbstractActionController
             'userId' => $userId,
             'userName' => $userName,
             'drinkOrderCancelWindow' => $drinkOrderCancelWindow,
+            'drinksEnabled' => $drinksEnabled,
         );
     }
 
