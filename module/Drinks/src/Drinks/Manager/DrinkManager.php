@@ -93,7 +93,7 @@ class DrinkManager
      * Adds drink orders for a user, sends confirmation email, and returns the new balance.
      * Returns array: ['success' => bool, 'balance' => float, 'error' => string|null]
      */
-    public function addOrdersAndNotify($user, $drinkCounts, $tCallback, $serviceManager)
+    public function addOrdersAndNotify($user, $drinkCounts, $tCallback, $serviceManager, $isAutoOrder = 0)
     {
         $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
         $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
@@ -103,7 +103,7 @@ class DrinkManager
             $drinkId = (int)$drinkId;
             $quantity = (int)$quantity;
             if ($drinkId > 0 && $quantity > 0) {
-                $drinkOrderManager->addOrder($user->need('uid'), $drinkId, $quantity);
+                $drinkOrderManager->addOrder($user->need('uid'), $drinkId, $quantity, null, $isAutoOrder);
                 $anyOrdered = true;
                 $drink = $this->get($drinkId);
                 if ($drink) {

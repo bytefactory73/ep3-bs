@@ -1187,8 +1187,8 @@ class AccountController extends AbstractActionController
 
         $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
         $drinkCounts = $this->params()->fromPost('drink_counts', []);
-
-        $result = $drinkManager->addOrdersAndNotify($user, $drinkCounts, [$this, 't'], $serviceManager);
+        $isAutoOrder = (int)$this->params()->fromPost('is_auto_order', 0);
+        $result = $drinkManager->addOrdersAndNotify($user, $drinkCounts, [$this, 't'], $serviceManager, $isAutoOrder);
 
         if ($result['success']) {
             return $this->getResponse()->setContent(json_encode(['success' => true, 'balance' => $result['balance']]))->setStatusCode(200);

@@ -156,7 +156,8 @@ class SimpleLoginController extends AbstractActionController
         $user = $userManager->get($session->user_id);
         $drinkManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkManager');
         $drinkCounts = $this->params()->fromPost('drink_counts', []);
-        $result = $drinkManager->addOrdersAndNotify($user, $drinkCounts, [$this, 't'], $this->getServiceLocator());
+        $isAutoOrder = (int)$this->params()->fromPost('is_auto_order', 0);
+        $result = $drinkManager->addOrdersAndNotify($user, $drinkCounts, [$this, 't'], $this->getServiceLocator(), $isAutoOrder);
         if ($result['success']) {
             return $this->getResponse()->setContent(json_encode(['success' => true, 'balance' => $result['balance']]))->setStatusCode(200);
         }

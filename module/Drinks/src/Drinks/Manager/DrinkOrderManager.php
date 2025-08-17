@@ -20,7 +20,7 @@ class DrinkOrderManager
         return $statement->execute();
     }
 
-    public function addOrder($userId, $drinkId, $quantity, $addedByUserId = null)
+    public function addOrder($userId, $drinkId, $quantity, $addedByUserId = null, $isAutoOrder = 0)
     {
         $sql = 'SELECT price FROM drinks WHERE id = ?';
         $statement = $this->dbAdapter->createStatement($sql, [$drinkId]);
@@ -36,11 +36,11 @@ class DrinkOrderManager
             }
         }
         if ($addedByUserId !== null) {
-            $sql = 'INSERT INTO drink_orders (user_id, drink_id, quantity, price, user_id_added) VALUES (?, ?, ?, ?, ?)';
-            $params = [$userId, $drinkId, $quantity, $price, $addedByUserId];
+            $sql = 'INSERT INTO drink_orders (user_id, drink_id, quantity, price, user_id_added, is_auto_order) VALUES (?, ?, ?, ?, ?, ?)';
+            $params = [$userId, $drinkId, $quantity, $price, $addedByUserId, $isAutoOrder];
         } else {
-            $sql = 'INSERT INTO drink_orders (user_id, drink_id, quantity, price) VALUES (?, ?, ?, ?)';
-            $params = [$userId, $drinkId, $quantity, $price];
+            $sql = 'INSERT INTO drink_orders (user_id, drink_id, quantity, price, is_auto_order) VALUES (?, ?, ?, ?, ?)';
+            $params = [$userId, $drinkId, $quantity, $price, $isAutoOrder];
         }
         $statement = $this->dbAdapter->createStatement($sql, $params);
         return $statement->execute();

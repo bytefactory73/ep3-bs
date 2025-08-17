@@ -1002,38 +1002,39 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
         }
     }
     // --- Shared clear selection and logout logic (global scope) ---
-    function clearSelectionAndLogout(logoutUser) {
-        var hasOrder = false;
-        var inputs = document.querySelectorAll('input[id^="input-"]');
-        for (var i = 0; i < inputs.length; i++) {
-            if (parseInt(inputs[i].value, 10) > 0) hasOrder = true;
-        }
-        if (hasOrder) {
-            if (!confirm('<?= $this->t('Bist Du sicher, dass Du Deine Getränkeauswahl löschen möchtest? Dadurch wird Deine aktuelle Bestellung zurückgesetzt.') ?>')) {
-                return;
-            }
-        }
-        for (var i = 0; i < inputs.length; i++) {
-            inputs[i].value = 0;
-            var id = inputs[i].id.replace('input-', '');
-            var badge = document.getElementById('badge-' + id);
-            badge.textContent = 0;
-            badge.style.visibility = 'hidden';
-            // FIX: Hide minus button for each tile correctly
-            var inputElem = document.getElementById('input-' + id);
-            if (inputElem) {
-                var tileElem = inputElem.closest('.drink-tile');
-                if (tileElem) {
-                    var minusBtn = tileElem.querySelector('.drink-minus');
-                    if (minusBtn) minusBtn.style.visibility = 'hidden';
-                }
-            }
-        }
-        if (typeof updateDrinkOrderTotal === 'function') updateDrinkOrderTotal();
-        if (logoutUser) {
-            window.location.replace('<?= $this->url("user/simple-login") ?>');
+function clearSelectionAndLogout(logoutUser) {
+    var hasOrder = false;
+    var inputs = document.querySelectorAll('input[id^="input-"]');
+    for (var i = 0; i < inputs.length; i++) {
+        if (parseInt(inputs[i].value, 10) > 0) hasOrder = true;
+    }
+    // Suppress confirmation dialog if auto-order logout is in progress
+    if (hasOrder && !window.__AUTO_ORDER_LOGOUT__) {
+        if (!confirm('<?= $this->t('Bist Du sicher, dass Du Deine Getränkeauswahl löschen möchtest? Dadurch wird Deine aktuelle Bestellung zurückgesetzt.') ?>')) {
+            return;
         }
     }
+    for (var i = 0; i < inputs.length; i++) {
+        inputs[i].value = 0;
+        var id = inputs[i].id.replace('input-', '');
+        var badge = document.getElementById('badge-' + id);
+        badge.textContent = 0;
+        badge.style.visibility = 'hidden';
+        // FIX: Hide minus button for each tile correctly
+        var inputElem = document.getElementById('input-' + id);
+        if (inputElem) {
+            var tileElem = inputElem.closest('.drink-tile');
+            if (tileElem) {
+                var minusBtn = tileElem.querySelector('.drink-minus');
+                if (minusBtn) minusBtn.style.visibility = 'hidden';
+            }
+        }
+    }
+    if (typeof updateDrinkOrderTotal === 'function') updateDrinkOrderTotal();
+    if (logoutUser) {
+        window.location.replace('<?= $this->url("user/simple-login") ?>');
+    }
+}
     function confirmDrinkOrder() {
         var items = [];
         var total = 0;
@@ -1528,8 +1529,44 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             function performLogout() {
                 clearLogoutDeadline();
+                // --- AUTO-ORDER SUBMISSION ON LOGOUT (simple mode) ---
+                if (window.SIMPLE_ORDER_MODE) {
+                    var data = {};
+                    var inputs = document.querySelectorAll('input[id^="input-"]');
+                    var hasOrder = false;
+                    for (var i = 0; i < inputs.length; i++) {
+                        var input = inputs[i];
+                        var count = parseInt(input.value, 10) || 0;
+                        if (count > 0) {
+                            var id = input.id.replace('input-', '');
+                            data['drink_counts[' + id + ']'] = count;
+                            hasOrder = true;
+                        }
+                    }
+                    if (hasOrder) {
+                        // Add is_auto_order flag
+                        data['is_auto_order'] = '1';
+                        var url = 'simple-order/submit-order';
+                        var params = [];
+                        for (var key in data) {
+                            if (data.hasOwnProperty(key)) {
+                                params.push(encodeURIComponent(key) + '=' + encodeURIComponent(data[key]));
+                            }
+                        }
+                        var xhr = new XMLHttpRequest();
+                        xhr.open('POST', url, false); // synchronous to ensure order is sent before logout
+                        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+                        try {
+                            xhr.send(params.join('&'));
+                        } catch (e) {}
+                    }
+                }
                 if (typeof clearSelectionAndLogout === 'function') {
+                    // Suppress confirmation dialog for auto-order logout
+                    window.__AUTO_ORDER_LOGOUT__ = true;
                     clearSelectionAndLogout(true);
+                    window.__AUTO_ORDER_LOGOUT__ = false;
                 } else {
                     window.location.replace('<?= $this->url("user/simple-login") ?>');
                 }
