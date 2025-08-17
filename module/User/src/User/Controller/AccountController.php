@@ -105,29 +105,71 @@ class AccountController extends AbstractActionController
             return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'No entry_id or entry_type']));
         }
         $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+        $userManager = $serviceManager->get('User\Manager\UserManager');
+        $mailService = $serviceManager->get('User\Service\MailService');
         if ($entryType === 'deposit') {
-            $row = $dbAdapter->query('SELECT id, deleted FROM drink_deposits WHERE id = ?', [$entryId])->current();
+            $row = $dbAdapter->query('SELECT * FROM drink_deposits WHERE id = ?', [$entryId])->current();
             if ($row) {
                 $newDeleted = empty($row['deleted']) ? 1 : 0;
                 if ($newDeleted) {
-                    // Mark as deleted and set user_id_deleted
                     $dbAdapter->query('UPDATE drink_deposits SET deleted = 1, user_id_deleted = ? WHERE id = ?', [$admin->get('uid'), $entryId]);
                 } else {
-                    // Restore: set deleted=0 and user_id_deleted=NULL
                     $dbAdapter->query('UPDATE drink_deposits SET deleted = 0, user_id_deleted = NULL WHERE id = ?', [$entryId]);
+                }
+                // Send notification email to user
+                $user = $userManager->get($row['user_id']);
+                if ($user) {
+                    // Calculate new balance
+                    $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
+                    $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
+                    $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($row['user_id']));
+                    $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($row['user_id']));
+                    $balance = 0;
+                    foreach ($drinkDeposits as $deposit) {
+                        $balance += $deposit['amount'];
+                    }
+                    foreach ($drinkOrders as $o) {
+                        if (empty($o['deleted'])) {
+                            $balance -= $o['quantity'] * $o['price'];
+                        }
+                    }
+                    $action = $newDeleted ? 'storniert' : 'wiederhergestellt';
+                    $subject = 'Einzahlung ' . ucfirst($action) . ' (Admin)';
+                    $body = 'Ihre Einzahlung am ' . $row['deposit_time'] . ' wurde von einem Administrator ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>';
+                    $mailService->send($user, $subject, $body, ['isHtml' => true]);
                 }
                 return $this->getResponse()->setContent(json_encode(['success' => true]));
             }
         } elseif ($entryType === 'order') {
-            $row = $dbAdapter->query('SELECT id, deleted FROM drink_orders WHERE id = ?', [$entryId])->current();
+            $row = $dbAdapter->query('SELECT * FROM drink_orders WHERE id = ?', [$entryId])->current();
             if ($row) {
                 $newDeleted = empty($row['deleted']) ? 1 : 0;
                 if ($newDeleted) {
-                    // Mark as deleted and set user_id_deleted
                     $dbAdapter->query('UPDATE drink_orders SET deleted = 1, user_id_deleted = ? WHERE id = ?', [$admin->get('uid'), $entryId]);
                 } else {
-                    // Restore: set deleted=0 and user_id_deleted=NULL
                     $dbAdapter->query('UPDATE drink_orders SET deleted = 0, user_id_deleted = NULL WHERE id = ?', [$entryId]);
+                }
+                // Send notification email to user
+                $user = $userManager->get($row['user_id']);
+                if ($user) {
+                    // Calculate new balance
+                    $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
+                    $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
+                    $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($row['user_id']));
+                    $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($row['user_id']));
+                    $balance = 0;
+                    foreach ($drinkDeposits as $deposit) {
+                        $balance += $deposit['amount'];
+                    }
+                    foreach ($drinkOrders as $o) {
+                        if (empty($o['deleted'])) {
+                            $balance -= $o['quantity'] * $o['price'];
+                        }
+                    }
+                    $action = $newDeleted ? 'storniert' : 'wiederhergestellt';
+                    $subject = 'Buchung ' . ucfirst($action) . ' (Admin)';
+                    $body = 'Ihre Getränkebuchung (' . $row['quantity'] . 'x ' . $row['drink_id'] . ') am ' . $row['order_time'] . ' wurde von einem Administrator ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>';
+                    $mailService->send($user, $subject, $body, ['isHtml' => true]);
                 }
                 return $this->getResponse()->setContent(json_encode(['success' => true]));
             }
@@ -178,6 +220,7 @@ class AccountController extends AbstractActionController
                 return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'User not found']));
             }
             $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
+            $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
             try {
                 foreach ($orders as $order) {
                     $drinkId = isset($order['drink_id']) ? (int)$order['drink_id'] : 0;
@@ -186,6 +229,35 @@ class AccountController extends AbstractActionController
                         $drinkOrderManager->addOrder($uid, $drinkId, $count, $admin ? $admin->get('uid') : null);
                     }
                 }
+                // Send notification email to user (HTML)
+                $drinks = [];
+                $total = 0;
+                foreach ($orders as $order) {
+                    $drink = $drinkManager->get($order['drink_id']);
+                    if ($drink) {
+                        $line = sprintf('%s x %d = %.2f EUR', $drink['name'], $order['count'], $order['count'] * $drink['price']);
+                        $drinks[] = $line;
+                        $total += $order['count'] * $drink['price'];
+                    }
+                }
+                $drinkOrderList = implode('<br>', $drinks);
+                // Calculate new balance
+                $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($uid));
+                $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
+                $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($uid));
+                $balance = 0;
+                foreach ($drinkDeposits as $deposit) {
+                    $balance += $deposit['amount'];
+                }
+                foreach ($drinkOrders as $o) {
+                    if (empty($o['deleted'])) {
+                        $balance -= $o['quantity'] * $o['price'];
+                    }
+                }
+                $subject = 'Bestätigung Ihrer Getränkebuchung (Admin)';
+                $body = 'Folgende Buchung(en) wurden von einem Administrator für Sie hinzugefügt:<br><br>' . $drinkOrderList . '<br>---------------------<br>Gesamt: ' . number_format($total, 2, ',', '.') . ' EUR<br><br>Kontostand nach Buchung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>';
+                $mailService = $serviceManager->get('User\Service\MailService');
+                $mailService->send($user, $subject, $body, ['isHtml' => true]);
             } catch (\Exception $e) {
                 return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => $e->getMessage()]));
             }
