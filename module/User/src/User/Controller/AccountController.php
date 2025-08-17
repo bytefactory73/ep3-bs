@@ -154,24 +154,63 @@ class AccountController extends AbstractActionController
         if (!$request->isPost()) {
             return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required']));
         }
-        $uid = (int)$this->params()->fromPost('uid');
-        $drinkId = (int)$this->params()->fromPost('drink_id');
-        $count = (int)$this->params()->fromPost('count', 1);
-        if (!$uid || !$drinkId || $count < 1) {
-            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Invalid input']));
+
+        // Support both JSON and form POST
+        $contentType = $request->getHeaders('Content-Type');
+        $isJson = false;
+        if ($contentType) {
+            $contentTypeStr = $contentType->toString();
+            if (stripos($contentTypeStr, 'application/json') !== false) {
+                $isJson = true;
+            }
         }
-        $userManager = $serviceManager->get('User\Manager\UserManager');
-        $user = $userManager->get($uid);
-        if (!$user) {
-            return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'User not found']));
+
+        if ($isJson) {
+            $data = json_decode($request->getContent(), true);
+            $uid = isset($data['uid']) ? (int)$data['uid'] : 0;
+            $orders = isset($data['orders']) && is_array($data['orders']) ? $data['orders'] : [];
+            if (!$uid || empty($orders)) {
+                return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Invalid input']));
+            }
+            $userManager = $serviceManager->get('User\Manager\UserManager');
+            $user = $userManager->get($uid);
+            if (!$user) {
+                return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'User not found']));
+            }
+            $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
+            try {
+                foreach ($orders as $order) {
+                    $drinkId = isset($order['drink_id']) ? (int)$order['drink_id'] : 0;
+                    $count = isset($order['count']) ? (int)$order['count'] : 1;
+                    if ($drinkId && $count > 0) {
+                        $drinkOrderManager->addOrder($uid, $drinkId, $count, $admin ? $admin->get('uid') : null);
+                    }
+                }
+            } catch (\Exception $e) {
+                return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => $e->getMessage()]));
+            }
+            return $this->getResponse()->setContent(json_encode(['success' => true]));
+        } else {
+            // Fallback: legacy single order POST
+            $uid = (int)$this->params()->fromPost('uid');
+            $drinkId = (int)$this->params()->fromPost('drink_id');
+            $count = (int)$this->params()->fromPost('count', 1);
+            if (!$uid || !$drinkId || $count < 1) {
+                return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Invalid input']));
+            }
+            $userManager = $serviceManager->get('User\Manager\UserManager');
+            $user = $userManager->get($uid);
+            if (!$user) {
+                return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'User not found']));
+            }
+            $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
+            try {
+                $drinkOrderManager->addOrder($uid, $drinkId, $count, $admin ? $admin->get('uid') : null);
+            } catch (\Exception $e) {
+                return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => $e->getMessage()]));
+            }
+            return $this->getResponse()->setContent(json_encode(['success' => true]));
         }
-        $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
-        try {
-            $drinkOrderManager->addOrder($uid, $drinkId, $count, $admin ? $admin->get('uid') : null);
-        } catch (\Exception $e) {
-            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => $e->getMessage()]));
-        }
-        return $this->getResponse()->setContent(json_encode(['success' => true]));
     }
     /**
      * AJAX endpoint to update drinks_enabled and drinks_alias for a user
