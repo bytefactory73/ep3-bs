@@ -279,6 +279,16 @@ return array(
                             ),
                         ),
                     ),
+										'balance-list' => array(
+										   'type' => 'Literal',
+										   'options' => array(
+										       'route' => '/balance-list',
+										       'defaults' => array(
+										           'controller' => 'User\Controller\Account',
+										           'action' => 'balanceList',
+										       ),
+										   ),
+										),
                     'get-user-deposits-data' => array(
                         'type' => 'Literal',
                         'options' => array(

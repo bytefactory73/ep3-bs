@@ -1,0 +1,54 @@
+<?php
+// Admin-only: Übersicht Kontostände
+$this->setup([
+    'title' => 'Kontostände Übersicht',
+    'panel' => 'centered-panel',
+    'back' => $this->url('user/drinks-admin'),
+    'links' => [
+        'Drinks Verwaltung' => $this->url('user/drinks-admin'),
+    ],
+]);
+?>
+
+<h1><?= $this->t('Kontostände Übersicht') ?></h1>
+<div class="separator-small"></div>
+<p><?= $this->t('Hier sehen Sie alle Nutzer mit Buchungen oder Einzahlungen, sortiert nach aktuellem Kontostand (aufsteigend).') ?></p>
+
+<table class="table table-striped" style="margin-top:24px;">
+<style>
+    .table th, .table td {
+        padding-left: 18px;
+        padding-right: 18px;
+    }
+    .table th {
+        font-weight: bold;
+        text-align: left;
+    }
+</style>
+    <thead>
+        <tr>
+            <th><?= $this->t('Benutzer') ?></th>
+            <th><?= $this->t('E-Mail') ?></th>
+            <th><?= $this->t('Datum') ?></th>
+            <th><?= $this->t('Kontostand') ?></th>
+        </tr>
+    </thead>
+    <tbody>
+    <?php foreach ($this->users as $user): ?>
+        <tr>
+            <td><?= $this->escapeHtml($user['alias'] ?: $user['name']) ?></td>
+            <td><?= $this->escapeHtml($user['email']) ?></td>
+            <td>
+                <?php if (!empty($user['last_activity'])): ?>
+                    <?= $this->escapeHtml(date('d.m.Y H:i', strtotime($user['last_activity']))) ?>
+                <?php else: ?>
+                    &ndash;
+                <?php endif; ?>
+            </td>
+            <td style="font-weight:bold; color:<?= $user['balance'] < 0 ? '#d32f2f' : '#388e3c' ?>;">
+                <?= number_format($user['balance'], 2, ',', '.') ?> €
+            </td>
+        </tr>
+    <?php endforeach; ?>
+    </tbody>
+</table>

@@ -10,7 +10,79 @@ use Zend\Mvc\Controller\AbstractActionController;
 class AccountController extends AbstractActionController
 {
     /**
-     * AJAX endpoint to toggle deleted flag for a deposit or order entry
+     * Admin: Übersicht aller Nutzer mit Buchungen oder Einzahlungen, sortiert nach Kontostand
+     */
+    public function balanceListAction()
+    {
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $user = $userSessionManager->getSessionUser();
+        if (!$user || $user->get('status') !== 'admin') {
+            return $this->redirect()->toRoute('user/settings');
+        }
+        $userManager = $serviceManager->get('User\Manager\UserManager');
+        $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
+        $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+
+        $users = $userManager->getAll('alias ASC');
+        $userList = [];
+        foreach ($users as $u) {
+            $uid = $u->get('uid');
+            // Sum deposits
+            $deposits = iterator_to_array($drinkDepositManager->getByUser($uid, true));
+            $depositSum = 0;
+            $lastDeposit = null;
+            foreach ($deposits as $d) {
+                if (empty($d['deleted'])) {
+                    $depositSum += (float)$d['amount'];
+                    if (!$lastDeposit || (isset($d['deposit_time']) && $d['deposit_time'] > $lastDeposit)) {
+                        $lastDeposit = $d['deposit_time'];
+                    }
+                }
+            }
+            // Sum orders
+            $orders = iterator_to_array($drinkOrderManager->getByUser($uid));
+            $orderSum = 0;
+            $lastOrder = null;
+            foreach ($orders as $o) {
+                if (empty($o['deleted'])) {
+                    $orderSum += ((float)$o['price']) * ((int)$o['quantity']);
+                    if (!$lastOrder || (isset($o['order_time']) && $o['order_time'] > $lastOrder)) {
+                        $lastOrder = $o['order_time'];
+                    }
+                }
+            }
+            $balance = $depositSum - $orderSum;
+            // Find most recent activity
+            $lastActivity = null;
+            if ($lastDeposit && $lastOrder) {
+                $lastActivity = max($lastDeposit, $lastOrder);
+            } elseif ($lastDeposit) {
+                $lastActivity = $lastDeposit;
+            } elseif ($lastOrder) {
+                $lastActivity = $lastOrder;
+            }
+            // Only show users with at least one deposit or order
+            if (count($deposits) > 0 || count($orders) > 0) {
+                $userList[] = [
+                    'alias' => $u->get('alias'),
+                    'name' => $u->get('name'),
+                    'email' => $u->get('email'),
+                    'balance' => $balance,
+                    'last_activity' => $lastActivity,
+                ];
+            }
+        }
+        // Sort by balance ascending
+        usort($userList, function($a, $b) {
+            return $a['balance'] <=> $b['balance'];
+        });
+        return [
+            'users' => $userList,
+        ];
+    }
+    /**
      * POST: entry_id
      * Returns JSON: { success: true } or { error: ... }
      */

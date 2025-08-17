@@ -29,6 +29,18 @@ $this->setup([
                     </p>
                 </td>
             </tr>
+           <tr>
+               <td>
+                   <a href="<?= $this->url('user/balance-list') ?>" class="default-button" style="width: 200px; text-align: left;">
+                       <span class="symbolic symbolic-config"><?= $this->t('Kontostände Übersicht') ?></span>
+                   </a>
+               </td>
+               <td>
+                   <p class="gray">
+                       <?= $this->t('Alle Nutzer mit Buchungen oder Einzahlungen, sortiert nach Kontostand.') ?>
+                   </p>
+               </td>
+           </tr>
             <tr>
                 <td>
                     <a href="<?= $this->url('user/manage-drinks') ?>" class="default-button" style="width: 200px; text-align: left;">
