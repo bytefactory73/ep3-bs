@@ -74,6 +74,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Build user list from PHP for JS
     var users = [
         <?php foreach ($this->users as $user): ?>
+        <?php $status = $user->get('status'); if ($status === 'enabled' || $status === 'admin'): ?>
         {
             uid: "<?= (int)$user->get('uid') ?>",
             alias: "<?= $this->escapeJs($user->get('alias')) ?>",
@@ -81,6 +82,7 @@ document.addEventListener('DOMContentLoaded', function() {
             drinks_enabled: <?= (int)$user->getExtra('drinks_enabled') ?>,
             drinks_alias: "<?= $this->escapeJs($user->getExtra('drinks_alias')) ?>"
         },
+        <?php endif; ?>
         <?php endforeach; ?>
     ];
 
