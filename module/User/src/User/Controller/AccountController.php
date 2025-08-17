@@ -37,7 +37,13 @@ class AccountController extends AbstractActionController
             $row = $dbAdapter->query('SELECT id, deleted FROM drink_deposits WHERE id = ?', [$entryId])->current();
             if ($row) {
                 $newDeleted = empty($row['deleted']) ? 1 : 0;
-                $dbAdapter->query('UPDATE drink_deposits SET deleted = ? WHERE id = ?', [$newDeleted, $entryId]);
+                if ($newDeleted) {
+                    // Mark as deleted and set user_id_deleted
+                    $dbAdapter->query('UPDATE drink_deposits SET deleted = 1, user_id_deleted = ? WHERE id = ?', [$admin->get('uid'), $entryId]);
+                } else {
+                    // Restore: set deleted=0 and user_id_deleted=NULL
+                    $dbAdapter->query('UPDATE drink_deposits SET deleted = 0, user_id_deleted = NULL WHERE id = ?', [$entryId]);
+                }
                 return $this->getResponse()->setContent(json_encode(['success' => true]));
             }
         } elseif ($entryType === 'order') {
@@ -561,6 +567,8 @@ class AccountController extends AbstractActionController
             ];
         }
         foreach ($drinkDeposits as $deposit) {
+            $deleted = isset($deposit['deleted']) ? (int)$deposit['deleted'] : 0;
+            if ($deleted) continue; // skip deleted deposits in history
             $creatorName = null;
             if (!empty($deposit['createdbyuserid'])) {
                 $creatorUser = $userManager->get($deposit['createdbyuserid'], false);
@@ -573,6 +581,8 @@ class AccountController extends AbstractActionController
                 'amount' => $deposit['amount'],
                 'datetime' => $deposit['deposit_time'],
                 'createdby' => $creatorName,
+                'deleted' => $deleted,
+                'user_id_deleted' => isset($deposit['user_id_deleted']) ? $deposit['user_id_deleted'] : null,
             ];
         }
         usort($drinkHistory, function($a, $b) {
@@ -1077,8 +1087,10 @@ class AccountController extends AbstractActionController
         $drinksEnabled = $drinksAliasRow ? (bool)$drinksAliasRow['enabled'] : false;
         $drinksAlias = $drinksAliasRow ? $drinksAliasRow['alias'] : null;
 
-        $orders = iterator_to_array($drinkOrderManager->getByUser($uid));
-        $deposits = iterator_to_array($drinkDepositManager->getByUser($uid));
+        // Check if showStorno is requested (from query param)
+        $showStorno = $this->params()->fromQuery('showStorno') === '1';
+        $orders = iterator_to_array($drinkOrderManager->getByUser($uid, $showStorno));
+        $deposits = iterator_to_array($drinkDepositManager->getByUser($uid, $showStorno));
         $history = [];
         foreach ($deposits as $d) {
             $creatorName = null;
@@ -1090,10 +1102,11 @@ class AccountController extends AbstractActionController
             }
             $history[] = [
                 'type' => 'Einzahlung',
+                'id' => isset($d['id']) ? (int)$d['id'] : null, // Always include deposit id
                 'amount' => $d['amount'],
                 'desc' => $d['comment'],
                 'datetime' => $d['deposit_time'],
-                'deleted' => 0,
+                'deleted' => isset($d['deleted']) ? (int)$d['deleted'] : 0,
                 'createdby' => $creatorName,
             ];
         }

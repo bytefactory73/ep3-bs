@@ -33,8 +33,11 @@ CREATE TABLE IF NOT EXISTS drink_deposits (
     comment VARCHAR(255) DEFAULT NULL,
     deposit_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     createdbyuserid INT UNSIGNED DEFAULT NULL,
+    deleted TINYINT(1) DEFAULT 0,
+    user_id_deleted INT UNSIGNED DEFAULT NULL,
     FOREIGN KEY (user_id) REFERENCES bs_users(uid),
-    FOREIGN KEY (createdbyuserid) REFERENCES bs_users(uid)
+    FOREIGN KEY (createdbyuserid) REFERENCES bs_users(uid),
+    FOREIGN KEY (user_id_deleted) REFERENCES bs_users(uid)
 );
 
 -- Create drink_barcodes table for mapping barcode to drink_id

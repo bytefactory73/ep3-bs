@@ -368,7 +368,9 @@ document.addEventListener('DOMContentLoaded', function() {
         historySection.innerHTML = '';
         if (uid) {
             try {
-                const resp = await fetch('<?= $this->url('user/get-user-deposits-data') ?>?uid=' + encodeURIComponent(uid), { credentials: 'same-origin' });
+                // Always send showStorno state to backend
+                var url = '<?= $this->url('user/get-user-deposits-data') ?>?uid=' + encodeURIComponent(uid) + '&showStorno=' + (showStorno ? '1' : '0');
+                const resp = await fetch(url, { credentials: 'same-origin' });
                 if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 const data = await resp.json();
                 if (typeof data.drinks_enabled !== 'undefined' || typeof data.drinks_alias !== 'undefined') {
@@ -444,6 +446,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         for (var i = 0; i < day.entries.length; i++) {
                             var entry = day.entries[i];
                             if (entry.type !== 'Einzahlung') continue;
+                            // Show deleted deposits if showStorno is enabled
                             if (entry.deleted && !showStorno) continue;
                             var isDeleted = entry.deleted;
                             var style = 'color:#388e3c;';
