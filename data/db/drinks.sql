@@ -17,8 +17,12 @@ CREATE TABLE IF NOT EXISTS drink_orders (
     price DECIMAL(10,2) NOT NULL,
     order_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted TINYINT(1) NOT NULL DEFAULT 0,
+    user_id_added INT UNSIGNED DEFAULT NULL,
+    user_id_deleted INT UNSIGNED DEFAULT NULL,
     FOREIGN KEY (user_id) REFERENCES bs_users(uid),
-    FOREIGN KEY (drink_id) REFERENCES drinks(id)
+    FOREIGN KEY (drink_id) REFERENCES drinks(id),
+    FOREIGN KEY (user_id_added) REFERENCES bs_users(uid),
+    FOREIGN KEY (user_id_deleted) REFERENCES bs_users(uid)
 );
 
 -- Table for user balance deposits

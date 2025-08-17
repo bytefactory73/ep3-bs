@@ -1303,31 +1303,36 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
                         'X-Requested-With': 'XMLHttpRequest'
                     },
                     body: 'order_id=' + encodeURIComponent(orderId),
-                    credentials: 'same-origin' // <-- Ensure cookies/session are sent, fixes iOS in-app logout
+                    credentials: 'same-origin'
                 })
-                .then(function(response) { return response.json(); })
-                .then(function(data) {
+                .then(function(response) {
+                    return response.text().then(function(text) {
+                        var data = null;
+                        try { data = JSON.parse(text); } catch (e) {}
+                        return { data: data, raw: text };
+                    });
+                })
+                .then(function(result) {
+                    var data = result.data;
+                    var raw = result.raw;
                     if (data && data.success) {
                         alert('<?= $this->t('Stornierung erfolgreich.') ?>');
-                        // Remove the cancelled order row from the table
                         var row = button.closest('tr');
                         if (row) {
                             var group = row.getAttribute('data-group');
                             row.parentNode.removeChild(row);
-                            // Check if any rows remain in this group
                             var groupRows = document.querySelectorAll('.order-day-row[data-group="' + group + '"]');
                             if (groupRows.length === 0) {
-                                // Remove the group header if no rows remain
                                 var header = document.querySelector('.order-day-header[data-group="' + group + '"]');
                                 if (header) header.parentNode.removeChild(header);
                             }
                         }
-                        // Optionally, show a temporary feedback message
-                        // (You can implement a nicer UI feedback if desired)
                     } else {
                         var msg = '<?= $this->t('Stornierung fehlgeschlagen.') ?>';
                         if (data && data.error_message) {
                             msg += '\n' + data.error_message;
+                        } else if (!data && raw) {
+                            msg += '\n' + raw;
                         }
                         alert(msg);
                         button.disabled = false;

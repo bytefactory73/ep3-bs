@@ -20,7 +20,7 @@ class DrinkOrderManager
         return $statement->execute();
     }
 
-    public function addOrder($userId, $drinkId, $quantity)
+    public function addOrder($userId, $drinkId, $quantity, $addedByUserId = null)
     {
         $sql = 'SELECT price FROM drinks WHERE id = ?';
         $statement = $this->dbAdapter->createStatement($sql, [$drinkId]);
@@ -29,12 +29,24 @@ class DrinkOrderManager
             throw new \RuntimeException('Drink not found');
         }
         $price = $row['price'];
-        $sql = 'INSERT INTO drink_orders (user_id, drink_id, quantity, price) VALUES (?, ?, ?, ?)';
-        $statement = $this->dbAdapter->createStatement($sql, [$userId, $drinkId, $quantity, $price]);
+        if ($addedByUserId === null) {
+            // Try to get current user from session if not provided
+            if (isset($_SESSION['user_id'])) {
+                $addedByUserId = $_SESSION['user_id'];
+            }
+        }
+        if ($addedByUserId !== null) {
+            $sql = 'INSERT INTO drink_orders (user_id, drink_id, quantity, price, user_id_added) VALUES (?, ?, ?, ?, ?)';
+            $params = [$userId, $drinkId, $quantity, $price, $addedByUserId];
+        } else {
+            $sql = 'INSERT INTO drink_orders (user_id, drink_id, quantity, price) VALUES (?, ?, ?, ?)';
+            $params = [$userId, $drinkId, $quantity, $price];
+        }
+        $statement = $this->dbAdapter->createStatement($sql, $params);
         return $statement->execute();
     }
 
-    public function dropOrder($orderId, $userId = null)
+    public function dropOrder($orderId, $userId = null, $deletedByUserId = null)
     {
         if ($userId) {
             $sql = 'SELECT order_time, deleted FROM drink_orders WHERE id = ? AND user_id = ?';
@@ -55,12 +67,22 @@ class DrinkOrderManager
         if (time() - $orderTime > self::CANCEL_WINDOW_SECONDS) {
             throw new \RuntimeException('Order can only be deleted within 10 minutes');
         }
+        // Set deleted=1 and user_id_deleted
+        if ($deletedByUserId === null) {
+            if (isset($_SESSION['user_id'])) {
+                $deletedByUserId = $_SESSION['user_id'];
+            } else if ($userId !== null) {
+                $deletedByUserId = $userId;
+            } else {
+                $deletedByUserId = null;
+            }
+        }
         if ($userId) {
-            $sql = 'UPDATE drink_orders SET deleted = 1 WHERE id = ? AND user_id = ?';
-            $params = [$orderId, $userId];
+            $sql = 'UPDATE drink_orders SET deleted = 1, user_id_deleted = ? WHERE id = ? AND user_id = ?';
+            $params = [$deletedByUserId, $orderId, $userId];
         } else {
-            $sql = 'UPDATE drink_orders SET deleted = 1 WHERE id = ?';
-            $params = [$orderId];
+            $sql = 'UPDATE drink_orders SET deleted = 1, user_id_deleted = ? WHERE id = ?';
+            $params = [$deletedByUserId, $orderId];
         }
         $statement = $this->dbAdapter->createStatement($sql, $params);
         return $statement->execute();

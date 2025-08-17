@@ -44,7 +44,13 @@ class AccountController extends AbstractActionController
             $row = $dbAdapter->query('SELECT id, deleted FROM drink_orders WHERE id = ?', [$entryId])->current();
             if ($row) {
                 $newDeleted = empty($row['deleted']) ? 1 : 0;
-                $dbAdapter->query('UPDATE drink_orders SET deleted = ? WHERE id = ?', [$newDeleted, $entryId]);
+                if ($newDeleted) {
+                    // Mark as deleted and set user_id_deleted
+                    $dbAdapter->query('UPDATE drink_orders SET deleted = 1, user_id_deleted = ? WHERE id = ?', [$admin->get('uid'), $entryId]);
+                } else {
+                    // Restore: set deleted=0 and user_id_deleted=NULL
+                    $dbAdapter->query('UPDATE drink_orders SET deleted = 0, user_id_deleted = NULL WHERE id = ?', [$entryId]);
+                }
                 return $this->getResponse()->setContent(json_encode(['success' => true]));
             }
         } else {
@@ -83,7 +89,7 @@ class AccountController extends AbstractActionController
         }
         $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
         try {
-            $drinkOrderManager->addOrder($uid, $drinkId, $count);
+            $drinkOrderManager->addOrder($uid, $drinkId, $count, $admin ? $admin->get('uid') : null);
         } catch (\Exception $e) {
             return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => $e->getMessage()]));
         }

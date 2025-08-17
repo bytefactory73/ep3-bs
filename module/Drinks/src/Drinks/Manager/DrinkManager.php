@@ -53,7 +53,7 @@ class DrinkManager
         $sql = 'SELECT do.*, d.name as drink_name FROM drink_orders do JOIN drinks d ON do.drink_id = d.id WHERE do.id = ? AND do.user_id = ?';
         $statement = $dbAdapter->createStatement($sql, [$orderId, $user->need('uid')]);
         $order = $statement->execute()->current();
-        $result = $drinkOrderManager->dropOrder($orderId, $user->need('uid'));
+        $result = $drinkOrderManager->dropOrder($orderId, $user->need('uid'), $user->need('uid'));
         if ($result->getAffectedRows() > 0 && $order) {
             // Recalculate balance after cancellation
             $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($user->need('uid')));
