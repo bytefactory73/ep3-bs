@@ -121,7 +121,33 @@
 </div>
 <div class="simple-login-info" style="">
     Logge dich mit deiner <b>"Theken-ID"</b> ein. Diese kannst du in deinem Benutzer Profil des Buchungssystem selbst wählen.
+    <br>
+    <a href="#" id="bedienungsanleitung-link" style="color:#2196f3; font-weight:bold; text-decoration:underline; font-size:1.08em;">Bedienungsanleitung</a>
 </div>
+<!-- Overlay for Bedienungsanleitung -->
+<div id="bedienungsanleitung-overlay" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(33,150,243,0.12); z-index:9999; align-items:center; justify-content:center;">
+    <div style="position:relative; width:90vw; height:90vh; max-width:900px; max-height:900px; background:#fff; border-radius:14px; box-shadow:0 4px 32px rgba(33,150,243,0.18); overflow:hidden; display:flex; flex-direction:column;">
+        <button id="close-bedienungsanleitung" style="position:absolute; top:10px; right:16px; background:#fff; border:none; font-size:2em; color:#1769aa; cursor:pointer; z-index:2; border-radius:50%; width:40px; height:40px; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px rgba(33,150,243,0.10);">&times;</button>
+        <iframe src="" id="bedienungsanleitung-iframe" style="flex:1; width:100%; height:100%; border:none; margin-top:0;" allowfullscreen></iframe>
+    </div>
+</div>
+<script>
+document.getElementById('bedienungsanleitung-link').addEventListener('click', function(e) {
+    e.preventDefault();
+    var overlay = document.getElementById('bedienungsanleitung-overlay');
+    var iframe = document.getElementById('bedienungsanleitung-iframe');
+    iframe.src = 'https://www.stc-butzbach.de/wordpress/bedienungsanleitung-thekenbuchung/';
+    overlay.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+});
+document.getElementById('close-bedienungsanleitung').addEventListener('click', function() {
+    var overlay = document.getElementById('bedienungsanleitung-overlay');
+    var iframe = document.getElementById('bedienungsanleitung-iframe');
+    overlay.style.display = 'none';
+    iframe.src = '';
+    document.body.style.overflow = '';
+});
+</script>
 <div class="simple-order-history-frame">
     <h1>Buchungshistorie</h1>
     <table style="font-size:1em; border-collapse:collapse; margin-bottom:24px; margin-left:auto; margin-right:auto; min-width:0; width:auto; max-width:100%;">
