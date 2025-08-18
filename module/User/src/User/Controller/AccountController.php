@@ -256,6 +256,10 @@ class AccountController extends AbstractActionController
                 }
                 $subject = 'Bestätigung Ihrer Getränkebuchung (Admin)';
                 $body = 'Folgende Buchung(en) wurden von einem Administrator für Sie hinzugefügt:<br><br>' . $drinkOrderList . '<br>---------------------<br>Gesamt: ' . number_format($total, 2, ',', '.') . ' EUR<br><br>Kontostand nach Buchung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>';
+                if ($balance < 0) {
+                    $body .= "<br><br>";
+                    $body .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func([$this, 't'], 'Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das Paypal-Konto "kneipe@stc-butzbach.de" oder wirf Geld in den weißen Briefkasten ein.') . '</span>';
+                }
                 $mailService = $serviceManager->get('User\Service\MailService');
                 $mailService->send($user, $subject, $body, ['isHtml' => true]);
             } catch (\Exception $e) {
@@ -1231,6 +1235,42 @@ class AccountController extends AbstractActionController
                 $createdByUserId = $user ? $user->need('uid') : null;
                 if ($depositUserId > 0 && $depositAmount > 0) {
                     $serviceManager->get('Drinks\Manager\DrinkDepositManager')->addDeposit($depositUserId, $depositAmount, $depositComment, $createdByUserId);
+                    // Kontostand nach Einzahlung berechnen
+                    $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
+                    $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
+                    $deposits = iterator_to_array($drinkDepositManager->getByUser($depositUserId));
+                    $orders = iterator_to_array($drinkOrderManager->getByUser($depositUserId));
+                    $balance = 0;
+                    foreach ($deposits as $d) {
+                        if (empty($d['deleted'])) {
+                            $balance += (float)$d['amount'];
+                        }
+                    }
+                    foreach ($orders as $o) {
+                        if (empty($o['deleted'])) {
+                            $balance -= (float)$o['quantity'] * (float)$o['price'];
+                        }
+                    }
+                    // E-Mail an den Nutzer senden
+                    try {
+                        $userManager = $serviceManager->get('User\Manager\UserManager');
+                        $mailService = $serviceManager->get('User\Service\MailService');
+                        $empfaenger = $userManager->get($depositUserId);
+                        $adminAlias = $user ? $user->get('alias') : 'Admin';
+                        $subject = 'Neue Einzahlung auf Ihr Getränkekonto';
+                        $body =
+                            '<p>Es wurde soeben eine Einzahlung auf Dein Getränkekonto vorgenommen:</p>' .
+                            '<ul>' .
+                            ($depositComment ? '<li><strong>Bemerkung:</strong> ' . htmlspecialchars($depositComment) . '</li>' : '') .
+                            '<li><strong>Hinzugefügt von:</strong> ' . htmlspecialchars($adminAlias) . '</li>' .
+                            '<li><strong>Einzahlungsbetrag:</strong> ' . number_format($depositAmount, 2, ',', '.') . ' €</li>' .
+                            '<li><strong>Neuer Kontostand:</strong> ' . number_format($balance, 2, ',', '.') . ' €</li>' .
+                            '</ul>' .
+                            '<p>Viele Grüße<br>Dein Theken-Team</p>';
+                        $mailService->send($empfaenger, $subject, $body, ['isHtml' => true]);
+                    } catch (\Exception $e) {
+                        error_log('Fehler beim Senden der Einzahlungsbenachrichtigung: ' . $e->getMessage());
+                    }
                     return $this->redirect()->toRoute(null, [], ['query' => ['message' => 'Deposit added.']], true);
                 } else {
                     $message = 'Invalid deposit data.';

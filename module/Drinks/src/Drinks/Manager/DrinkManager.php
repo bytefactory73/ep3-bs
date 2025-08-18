@@ -80,7 +80,7 @@ class DrinkManager
             $text = call_user_func($tCallback, 'Deine Getränkebestellung wurde erfolgreich storniert.') . "<br><br>" . implode("<br>", $lines);
             if ($balance < 0) {
                 $text .= "<br><br>";
-                $text .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func($tCallback, 'Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das STC Paypal-Konto.') . '</span>';
+                $text .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func($tCallback, 'Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das Paypal-Konto "kneipe@stc-butzbach.de" oder wirf Geld in den weißen Briefkasten ein.') . '</span>';
             }
             $userMailService = $serviceManager->get('User\Service\MailService');
             $userMailService->send($user, $subject, $text, ['isHtml' => true]);
@@ -142,7 +142,7 @@ class DrinkManager
             $text = call_user_func($tCallback, 'Vielen Dank für Deine Getränkebestellung!') . "<br><br>" . implode("<br>", $lines);
             if ($balance < 0) {
                 $text .= "<br><br>";
-                $text .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func($tCallback, 'Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das STC Paypal-Konto.') . '</span>';
+                $text .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func($tCallback, 'Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das Paypal-Konto "kneipe@stc-butzbach.de" oder wirf Geld in den weißen Briefkasten ein.') . '</span>';
             }
             $userMailService = $serviceManager->get('User\Service\MailService');
             $userMailService->send($user, $subject, $text, ['isHtml' => true]);
