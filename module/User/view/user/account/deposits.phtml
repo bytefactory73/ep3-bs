@@ -18,7 +18,10 @@ $this->setup([
     <h2 id="add-deposit-section-title" style="margin-top: 0; margin-bottom: 12px;"> <?= $this->t('Nutzerübersicht') ?> </h2>
     <form method="post" id="deposit-form" style="margin-bottom:2em; display: grid; grid-template-columns: 160px 1fr; gap: 10px 18px; align-items: center;">
         <label for="deposit_user_search" style="grid-column:1;">Benutzer:</label>
-        <input type="text" id="deposit_user_search" name="deposit_user_search" autocomplete="off" placeholder="<?= $this->t('Benutzer suchen...') ?>" style="grid-column:2;" required />
+        <div style="grid-column:2; display:flex; align-items:center; gap:4px; position:relative;">
+            <input type="text" id="deposit_user_search" name="deposit_user_search" autocomplete="off" placeholder="<?= $this->t('Benutzer suchen...') ?>" style="flex:1 1 0; min-width:0;" required />
+            <button type="button" id="clear-user-search-btn" title="<?= $this->t('Feld leeren') ?>" style="background:none; border:none; padding:0 6px; font-size:18px; color:#888; cursor:pointer; line-height:1;">&times;</button>
+        </div>
         <input type="hidden" name="deposit_user_id" id="deposit_user_id" />
         <div id="user-search-list" style="position:relative; grid-column:2; z-index:10;"></div>
 
@@ -71,6 +74,18 @@ function formatCurrency(amount) {
     return amount != null ? amount.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) : '';
 }
 document.addEventListener('DOMContentLoaded', function() {
+    var clearUserSearchBtn = document.getElementById('clear-user-search-btn');
+    var userSearch = document.getElementById('deposit_user_search');
+    var userIdInput = document.getElementById('deposit_user_id');
+    if (clearUserSearchBtn && userSearch && userIdInput) {
+        clearUserSearchBtn.addEventListener('click', function() {
+            userSearch.value = '';
+            userIdInput.value = '';
+            userSearch.focus();
+            if (typeof updateDrinksFields === 'function') updateDrinksFields();
+            if (typeof updateUserInfo === 'function') updateUserInfo();
+        });
+    }
     // Build user list from PHP for JS
     var users = [
         <?php foreach ($this->users as $user): ?>
