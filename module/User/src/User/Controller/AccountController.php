@@ -1390,7 +1390,7 @@ class AccountController extends AbstractActionController
         $from = $this->params()->fromQuery('from');
         $to = $this->params()->fromQuery('to');
         $showUsers = $this->params()->fromQuery('show_users', '1');
-        $showEmptyCols = $this->params()->fromQuery('show_emptycols', '1');
+        $showEmptyCols = $this->params()->fromQuery('show_emptycols', '0');
 
         // Query all drink orders, grouped by date, user, drink
         $groupSql = 'DATE(order_time)';
@@ -1453,7 +1453,7 @@ class AccountController extends AbstractActionController
         }
 
         $showUsers = $this->params()->fromQuery('show_users', '1');
-        $showEmptyCols = $this->params()->fromQuery('show_emptycols', '1');
+        $showEmptyCols = $this->params()->fromQuery('show_emptycols', '0');
 
         return [
             'drinks' => $drinks,
