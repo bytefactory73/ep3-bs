@@ -11,33 +11,17 @@ $this->setup([
 
 <style>
     .rotated-header {
-        writing-mode: vertical-rl;
-        transform: rotate(180deg);
-        white-space: nowrap;
-        vertical-align: bottom;
-        text-align: left;
-        height: 120px;
-        min-width: 36px;
-        max-width: 48px;
+        min-width: 40px;
+        max-width: 80px;
         padding: 0 6px 6px 6px !important;
         font-size: 14px;
         color: #222;
         background: #fff;
-        overflow: hidden;
         box-sizing: border-box;
-        position: relative;
-    }
-    .rotated-header > span {
-        display: inline-block;
-        width: 100%;
-        height: 100%;
-        line-height: 1.1;
-        position: absolute;
-        bottom: 0;
-        left: 50%;
-        transform: translateX(-50%);
-        color: #222;
-        background: #fff;
+        text-align: left;
+        vertical-align: bottom;
+        white-space: normal;
+        word-break: break-word;
     }
     .drinks-summary-table th {
         height: 120px;
@@ -255,8 +239,10 @@ $this->setup([
                     <th class="user-col" style="border-right: 1px solid #ccc; border-bottom: 2px solid #bbb; padding: 3px 2px; height: 120px; vertical-align: bottom;"> <?= $this->t('Benutzer') ?> </th>
                     <?php endif; ?>
                     <?php foreach ($activeDrinks as $drink): ?>
-                        <th class="rotated-header" style="border-right: 1px solid #ccc; border-bottom: 2px solid #bbb; height: 120px; vertical-align: bottom;">
-                            <span><?= $this->escapeHtml($drink['name']) ?></span>
+                        <th class="rotated-header" style="border-right: 1px solid #ccc; border-bottom: 2px solid #bbb; height: 140px; vertical-align: bottom; overflow: visible;">
+                            <div class="rotated-header-inner">
+                                <span><?= $this->escapeHtml($drink['name']) ?></span>
+                            </div>
                         </th>
                     <?php endforeach; ?>
                 </tr>
