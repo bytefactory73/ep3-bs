@@ -8,10 +8,12 @@
  *
  * Should be controlled via TAG constant in the init.php
  */
-if (defined('EP3_BS_DEV_TAG')) {
-    define('EP3_BS_DEV', EP3_BS_DEV_TAG);
-} else {
-    define('EP3_BS_DEV', true);
+if (!defined('EP3_BS_DEV')) {
+    if (defined('EP3_BS_DEV_TAG')) {
+        define('EP3_BS_DEV', EP3_BS_DEV_TAG);
+    } else {
+        define('EP3_BS_DEV', true);
+    }
 }
 
 /**
