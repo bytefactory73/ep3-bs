@@ -75,8 +75,14 @@ class AccountController extends AbstractActionController
         usort($userList, function($a, $b) {
             return $a['balance'] <=> $b['balance'];
         });
+        // Calculate total sum of all balances
+        $totalBalance = 0;
+        foreach ($userList as $user) {
+            $totalBalance += $user['balance'];
+        }
         return [
             'users' => $userList,
+            'total_balance' => $totalBalance,
         ];
     }
     /**
