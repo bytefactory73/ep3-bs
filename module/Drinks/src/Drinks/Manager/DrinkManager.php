@@ -162,4 +162,91 @@ class DrinkManager
         }
         return ['success' => false, 'balance' => 0, 'error' => call_user_func($tCallback, 'Bitte mindestens ein Getränk auswählen.')];
     }
+
+    /**
+     * Sends a daily summary email for a user with grouped/merged drinks and correct balance.
+     * @param int $userId
+     * @param object $serviceManager
+     * @param callable $tCallback
+     * @return bool True if sent, false if no orders or user not found
+     */
+    public function sendDailySummary($userId, $serviceManager, $tCallback)
+    {
+        $userManager = $serviceManager->get('User\Manager\UserManager');
+        $mailService = $serviceManager->get('User\Service\MailService');
+        $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
+        $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
+        $user = $userManager->get($userId);
+        if (!$user) return false;
+        $userName = $user->get('alias') ?: $user->get('name');
+        // 1. Query all orders of the user from the last 24 hours
+        $allOrders = iterator_to_array($drinkOrderManager->getByUser($userId));
+        $orders = array_filter(
+            $allOrders,
+            function($order) {
+                if (empty($order['order_time'])) return false;
+                $orderTime = is_numeric($order['order_time']) ? (int)$order['order_time'] : strtotime($order['order_time']);
+                return $orderTime >= (time() - 86400);
+            }
+        );
+        if (empty($orders)) {
+            return false;
+        }
+        // Group orders by day, then merge drinks per day
+        $ordersByDay = [];
+        foreach ($orders as $order) {
+            if (!empty($order['deleted'])) continue;
+            $date = date('Y-m-d', is_numeric($order['order_time']) ? (int)$order['order_time'] : strtotime($order['order_time']));
+            if (!isset($ordersByDay[$date])) $ordersByDay[$date] = [];
+            $ordersByDay[$date][] = $order;
+        }
+        // Build summary email
+        $lines = [];
+        $totalSum = 0;
+        foreach ($ordersByDay as $date => $ordersForDay) {
+            $lines[] = '<b>' . htmlspecialchars($date) . '</b>';
+            $drinkSums = [];
+            foreach ($ordersForDay as $order) {
+                $drink = $this->get($order['drink_id']);
+                $drinkName = $drink ? $drink['name'] : ('ID ' . $order['drink_id']);
+                if (!isset($drinkSums[$drinkName])) {
+                    $drinkSums[$drinkName] = ['quantity' => 0, 'total' => 0.0];
+                }
+                $drinkSums[$drinkName]['quantity'] += $order['quantity'];
+                $drinkSums[$drinkName]['total'] += $order['quantity'] * $order['price'];
+            }
+            foreach ($drinkSums as $drinkName => $sum) {
+                $lines[] = sprintf('%s x %d = %.2f EUR', $drinkName, $sum['quantity'], $sum['total']);
+                $totalSum += $sum['total'];
+            }
+            $lines[] = '';
+        }
+        if (empty($lines)) return false;
+        $lines[] = '---------------------';
+        $lines[] = sprintf($tCallback('Gesamt:') . ' %.2f EUR', $totalSum);
+        $lines[] = '';
+        // Calculate balance (all time): sum(deposits) - sum(orders)
+        $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($userId));
+        $allOrdersForBalance = iterator_to_array($drinkOrderManager->getByUser($userId));
+        $depositSum = 0;
+        foreach ($drinkDeposits as $deposit) {
+            $depositSum += $deposit['amount'];
+        }
+        $orderSum = 0;
+        foreach ($allOrdersForBalance as $order) {
+            if (empty($order['deleted'])) {
+                $orderSum += $order['quantity'] * $order['price'];
+            }
+        }
+        $balance = $depositSum - $orderSum;
+        $lines[] = sprintf($tCallback('Kontostand:') . '<b> %.2f EUR </b>', $balance);
+        $text = $tCallback('Deine Getränkebestellungen im Überblick:') . "<br><br>" . implode("<br>", $lines);
+        if ($balance < 0) {
+            $text .= "<br><br>";
+            $text .= '<span style="color:#d32f2f;font-weight:bold;">' . $tCallback('Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das Paypal-Konto "kneipe@stc-butzbach.de" oder wirf Geld in den weißen Briefkasten ein.') . '</span>';
+        }
+        $subject = $tCallback('Deine Getränkebestellungen (Zusammenfassung)');
+        $mailService->send($user, $subject, $text, ['isHtml' => true]);
+        return true;
+    }
 }

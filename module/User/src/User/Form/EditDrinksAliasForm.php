@@ -32,11 +32,11 @@ class EditDrinksAliasForm extends Form
             'options' => array(
                 'label' => 'Bestell-Emails',
                 'value_options' => array(
-                    'order' => 'bei Bestellung',
+                    'order' => 'Bei jeder Bestellung',
                     'summary' => 'Zusammenfassung (Nachts)',
                     'negative' => 'Nur wenn negativ',
                 ),
-                'empty_option' => 'Bitte wählen...',
+                // 'empty_option' => 'Bitte wählen...',
             ),
         ));
 
