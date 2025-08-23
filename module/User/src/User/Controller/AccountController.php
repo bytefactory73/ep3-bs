@@ -149,9 +149,12 @@ class AccountController extends AbstractActionController
                 } else {
                     $dbAdapter->query('UPDATE drink_orders SET deleted = 0, user_id_deleted = NULL WHERE id = ?', [$entryId]);
                 }
-                // Send notification email to user
+                // Send notification email to user only if order_email_option is 'order',
+                // or if it is 'negative' and the balance is zero or negative
                 $user = $userManager->get($row['user_id']);
                 if ($user) {
+                    $aliasRow = $dbAdapter->query('SELECT order_email_option FROM drink_aliases WHERE user_id = ?', [$row['user_id']])->current();
+                    $orderEmailOption = $aliasRow && isset($aliasRow['order_email_option']) ? $aliasRow['order_email_option'] : null;
                     // Calculate new balance
                     $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
                     $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
@@ -166,10 +169,18 @@ class AccountController extends AbstractActionController
                             $balance -= $o['quantity'] * $o['price'];
                         }
                     }
-                    $action = $newDeleted ? 'storniert' : 'wiederhergestellt';
-                    $subject = 'Buchung ' . ucfirst($action) . ' (Admin)';
-                    $body = 'Ihre Getränkebuchung (' . $row['quantity'] . 'x ' . $row['drink_id'] . ') am ' . $row['order_time'] . ' wurde von einem Administrator ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>';
-                    $mailService->send($user, $subject, $body, ['isHtml' => true]);
+                    $shouldSend = false;
+                    if ($orderEmailOption === 'order') {
+                        $shouldSend = true;
+                    } elseif ($orderEmailOption === 'negative' && $balance <= 0) {
+                        $shouldSend = true;
+                    }
+                    if ($shouldSend) {
+                        $action = $newDeleted ? 'storniert' : 'wiederhergestellt';
+                        $subject = 'Buchung ' . ucfirst($action) . ' (Admin)';
+                        $body = 'Ihre Getränkebuchung (' . $row['quantity'] . 'x ' . $row['drink_id'] . ') am ' . $row['order_time'] . ' wurde von einem Administrator ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>';
+                        $mailService->send($user, $subject, $body, ['isHtml' => true]);
+                    }
                 }
                 return $this->getResponse()->setContent(json_encode(['success' => true]));
             }
@@ -1046,9 +1057,10 @@ class AccountController extends AbstractActionController
         /* Drinks Alias form */
         $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
         $userId = $user->need('uid');
-        // Load current alias and enabled flag
-        $aliasRow = $dbAdapter->query('SELECT alias, enabled FROM drink_aliases WHERE user_id = ?', [$userId])->current();
+        // Load current alias, enabled flag, and order email option
+        $aliasRow = $dbAdapter->query('SELECT alias, enabled, order_email_option FROM drink_aliases WHERE user_id = ?', [$userId])->current();
         $currentAlias = $aliasRow ? $aliasRow['alias'] : '';
+        $currentOrderEmail = $aliasRow && isset($aliasRow['order_email_option']) ? $aliasRow['order_email_option'] : '';
         $drinksEnabled = ($aliasRow && isset($aliasRow['enabled']) && (int)$aliasRow['enabled'] === 1);
         $editDrinksAliasForm = null;
         if ($drinksEnabled) {
@@ -1059,19 +1071,26 @@ class AccountController extends AbstractActionController
                 if ($editDrinksAliasForm->isValid()) {
                     $data = $editDrinksAliasForm->getData();
                     $alias = $data['edaf-alias'];
+                    $orderEmail = isset($data['edaf-order-email']) ? $data['edaf-order-email'] : null;
                     // Check uniqueness again in controller (defense-in-depth)
                     $existing = $dbAdapter->query('SELECT user_id FROM drink_aliases WHERE alias = ? AND user_id != ?', [$alias, $userId])->current();
                     if ($existing) {
                         $editDrinksAliasForm->get('edaf-alias')->setMessages([$this->t('Diese Theken-ID ist bereits vergeben.')]);
                     } else {
-                        // Upsert alias
-                        $dbAdapter->query('INSERT INTO drink_aliases (user_id, alias) VALUES (?, ?) ON DUPLICATE KEY UPDATE alias = VALUES(alias)', [$userId, $alias]);
-                        $this->flashMessenger()->addSuccessMessage($this->t('Theken-ID wurde gespeichert.'));
+                        // Upsert alias and order email option
+                        $dbAdapter->query('INSERT INTO drink_aliases (user_id, alias, order_email_option) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE alias = VALUES(alias), order_email_option = VALUES(order_email_option)', [$userId, $alias, $orderEmail]);
+                        $this->flashMessenger()->addSuccessMessage($this->t('Theken-ID und Bestell-Email-Option wurden gespeichert.'));
                         return $this->redirect()->toRoute('user/settings');
                     }
                 }
             } else {
                 $editDrinksAliasForm->get('edaf-alias')->setValue($currentAlias);
+                // If user is in DB and order_email_option is empty, set default to 'order'
+                if ($aliasRow && ($currentOrderEmail === null || $currentOrderEmail === '')) {
+                    $editDrinksAliasForm->get('edaf-order-email')->setValue('order');
+                } else {
+                    $editDrinksAliasForm->get('edaf-order-email')->setValue($currentOrderEmail);
+                }
             }
         }
 

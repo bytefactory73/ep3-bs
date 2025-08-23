@@ -128,24 +128,36 @@ class DrinkManager
                     $balance -= $order['quantity'] * $order['price'];
                 }
             }
-            $subject = call_user_func($tCallback, 'Bestätigung Deiner Getränkebestellung');
-            $lines = [];
-            $totalSum = 0;
-            foreach ($orderedDrinks as $item) {
-                $lines[] = sprintf('%s x %d = %.2f EUR', $item['name'], $item['quantity'], $item['total']);
-                $totalSum += $item['total'];
+            // Fetch order_email_option from drink_aliases
+            $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+            $aliasRow = $dbAdapter->query('SELECT order_email_option FROM drink_aliases WHERE user_id = ?', [$user->need('uid')])->current();
+            $orderEmailOption = $aliasRow && isset($aliasRow['order_email_option']) ? $aliasRow['order_email_option'] : null;
+            $shouldSend = false;
+            if ($orderEmailOption === 'order') {
+                $shouldSend = true;
+            } elseif ($orderEmailOption === 'negative' && $balance <= 0) {
+                $shouldSend = true;
             }
-            $lines[] = '---------------------';
-            $lines[] = sprintf(call_user_func($tCallback, 'Gesamt:') . ' %.2f EUR', $totalSum);
-            $lines[] = '';
-            $lines[] = sprintf(call_user_func($tCallback, 'Kontostand nach Bestellung:') . '<b> %.2f EUR </b>', $balance);
-            $text = call_user_func($tCallback, 'Vielen Dank für Deine Getränkebestellung!') . "<br><br>" . implode("<br>", $lines);
-            if ($balance < 0) {
-                $text .= "<br><br>";
-                $text .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func($tCallback, 'Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das Paypal-Konto "kneipe@stc-butzbach.de" oder wirf Geld in den weißen Briefkasten ein.') . '</span>';
+            if ($shouldSend) {
+                $subject = call_user_func($tCallback, 'Bestätigung Deiner Getränkebestellung');
+                $lines = [];
+                $totalSum = 0;
+                foreach ($orderedDrinks as $item) {
+                    $lines[] = sprintf('%s x %d = %.2f EUR', $item['name'], $item['quantity'], $item['total']);
+                    $totalSum += $item['total'];
+                }
+                $lines[] = '---------------------';
+                $lines[] = sprintf(call_user_func($tCallback, 'Gesamt:') . ' %.2f EUR', $totalSum);
+                $lines[] = '';
+                $lines[] = sprintf(call_user_func($tCallback, 'Kontostand nach Bestellung:') . '<b> %.2f EUR </b>', $balance);
+                $text = call_user_func($tCallback, 'Vielen Dank für Deine Getränkebestellung!') . "<br><br>" . implode("<br>", $lines);
+                if ($balance < 0) {
+                    $text .= "<br><br>";
+                    $text .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func($tCallback, 'Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das Paypal-Konto "kneipe@stc-butzbach.de" oder wirf Geld in den weißen Briefkasten ein.') . '</span>';
+                }
+                $userMailService = $serviceManager->get('User\Service\MailService');
+                $userMailService->send($user, $subject, $text, ['isHtml' => true]);
             }
-            $userMailService = $serviceManager->get('User\Service\MailService');
-            $userMailService->send($user, $subject, $text, ['isHtml' => true]);
             return ['success' => true, 'balance' => $balance, 'error' => null];
         }
         return ['success' => false, 'balance' => 0, 'error' => call_user_func($tCallback, 'Bitte mindestens ein Getränk auswählen.')];

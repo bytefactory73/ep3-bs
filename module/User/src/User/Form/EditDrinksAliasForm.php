@@ -11,6 +11,7 @@ class EditDrinksAliasForm extends Form
     {
         $this->setName('edaf');
 
+
         $this->add(array(
             'name' => 'edaf-alias',
             'type' => 'Text',
@@ -18,8 +19,24 @@ class EditDrinksAliasForm extends Form
                 'id' => 'edaf-alias',
                 'style' => 'width: 235px;',
             ),
+        ));
+
+        // New dropdown for Bestell-Emails
+        $this->add(array(
+            'name' => 'edaf-order-email',
+            'type' => 'Select',
+            'attributes' => array(
+                'id' => 'edaf-order-email',
+                'style' => 'width: 235px;',
+            ),
             'options' => array(
-                'notes' => 'Deine Theken-ID für die Thekenbestellungen',
+                'label' => 'Bestell-Emails',
+                'value_options' => array(
+                    'order' => 'bei Bestellung',
+                    'summary' => 'Zusammenfassung (Nachts)',
+                    'negative' => 'Nur wenn negativ',
+                ),
+                'empty_option' => 'Bitte wählen...',
             ),
         ));
 
@@ -27,7 +44,7 @@ class EditDrinksAliasForm extends Form
             'name' => 'edaf-submit',
             'type' => 'Submit',
             'attributes' => array(
-                'value' => 'Theken-ID speichern',
+                'value' => 'Speichern',
                 'class' => 'default-button',
             ),
         ));
@@ -61,6 +78,10 @@ class EditDrinksAliasForm extends Form
                         ),
                     ),
                 ),
+            ),
+            'edaf-order-email' => array(
+                'required' => false,
+                'validators' => array(),
             ),
         )));
     }
