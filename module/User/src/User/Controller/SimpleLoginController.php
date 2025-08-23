@@ -6,6 +6,11 @@ use Zend\View\Model\ViewModel;
 
 class SimpleLoginController extends AbstractActionController
 {
+    /**
+     * Number of hours to look back for recent orders
+     */
+    const RECENT_ORDERS_CUTOFF_HOURS = 2;
+
     public function loginAction()
     {
         $request = $this->getRequest();
@@ -15,7 +20,7 @@ class SimpleLoginController extends AbstractActionController
         $recentOrders = [];
         try {
             $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
-            $cutoff = (new \DateTime('-48 hours'))->format('Y-m-d H:i:s');
+            $cutoff = (new \DateTime('-' . self::RECENT_ORDERS_CUTOFF_HOURS . ' hours'))->format('Y-m-d H:i:s');
             $sql = 'SELECT o.order_time, o.user_id, u.alias, d.name AS drink_name, o.quantity, o.deleted FROM drink_orders o JOIN bs_users u ON o.user_id = u.uid JOIN drinks d ON o.drink_id = d.id WHERE o.deleted = false AND o.order_time >= ? ORDER BY o.order_time DESC';
             $recentOrders = $db->query($sql, [$cutoff])->toArray();
         } catch (\Exception $e) {
@@ -43,7 +48,8 @@ class SimpleLoginController extends AbstractActionController
         }
         $viewModel = new ViewModel([
             'error' => $error,
-            'recentOrders' => $recentOrders
+            'recentOrders' => $recentOrders,
+            'recentOrdersCutoffHours' => self::RECENT_ORDERS_CUTOFF_HOURS
         ]);
         $viewModel->setTerminal(true);
         return $viewModel;

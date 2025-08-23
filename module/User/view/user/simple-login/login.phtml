@@ -207,7 +207,7 @@ document.getElementById('close-bedienungsanleitung').addEventListener('click', f
                 }
             }
         else: ?>
-            <tr><td colspan="3" style="text-align:center; color:#888; padding:10px;">Keine Bestellungen in den letzten 24 Stunden.</td></tr>
+            <tr><td colspan="3" style="text-align:center; color:#888; padding:10px;">Keine Bestellungen in den letzten <?= isset($this->recentOrdersCutoffHours) ? (int)$this->recentOrdersCutoffHours : 48 ?> Stunden.</td></tr>
         <?php endif; ?>
         </tbody>
     </table>
