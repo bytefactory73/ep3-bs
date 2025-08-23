@@ -240,7 +240,7 @@ class AccountController extends AbstractActionController
                         $drinkOrderManager->addOrder($uid, $drinkId, $count, $admin ? $admin->get('uid') : null);
                     }
                 }
-                // Send notification email to user (HTML)
+                // Send notification email to user (HTML) only if order_email_option allows
                 $drinks = [];
                 $total = 0;
                 foreach ($orders as $order) {
@@ -265,14 +265,26 @@ class AccountController extends AbstractActionController
                         $balance -= $o['quantity'] * $o['price'];
                     }
                 }
-                $subject = 'Bestätigung Ihrer Getränkebuchung (Admin)';
-                $body = 'Folgende Buchung(en) wurden von einem Administrator für Sie hinzugefügt:<br><br>' . $drinkOrderList . '<br>---------------------<br>Gesamt: ' . number_format($total, 2, ',', '.') . ' EUR<br><br>Kontostand nach Buchung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>';
-                if ($balance < 0) {
-                    $body .= "<br><br>";
-                    $body .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func([$this, 't'], 'Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das Paypal-Konto "kneipe@stc-butzbach.de" oder wirf Geld in den weißen Briefkasten ein.') . '</span>';
+                // Fetch order_email_option from drink_aliases
+                $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+                $aliasRow = $dbAdapter->query('SELECT order_email_option FROM drink_aliases WHERE user_id = ?', [$uid])->current();
+                $orderEmailOption = $aliasRow && isset($aliasRow['order_email_option']) ? $aliasRow['order_email_option'] : null;
+                $shouldSend = false;
+                if ($orderEmailOption === 'order') {
+                    $shouldSend = true;
+                } elseif ($orderEmailOption === 'negative' && $balance <= 0) {
+                    $shouldSend = true;
                 }
-                $mailService = $serviceManager->get('User\Service\MailService');
-                $mailService->send($user, $subject, $body, ['isHtml' => true]);
+                if ($shouldSend) {
+                    $subject = 'Bestätigung Ihrer Getränkebuchung (Admin)';
+                    $body = 'Folgende Buchung(en) wurden von einem Administrator für Sie hinzugefügt:<br><br>' . $drinkOrderList . '<br>---------------------<br>Gesamt: ' . number_format($total, 2, ',', '.') . ' EUR<br><br>Kontostand nach Buchung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>';
+                    if ($balance < 0) {
+                        $body .= "<br><br>";
+                        $body .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func([$this, 't'], 'Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das Paypal-Konto "kneipe@stc-butzbach.de" oder wirf Geld in den weißen Briefkasten ein.') . '</span>';
+                    }
+                    $mailService = $serviceManager->get('User\Service\MailService');
+                    $mailService->send($user, $subject, $body, ['isHtml' => true]);
+                }
             } catch (\Exception $e) {
                 return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => $e->getMessage()]));
             }
