@@ -29,31 +29,28 @@ class AccountController extends AbstractActionController
         $userList = [];
         foreach ($users as $u) {
             $uid = $u->get('uid');
-            // Sum deposits
+            // Use DrinkManager for balance
+            $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
+            $balance = $drinkManager->calculateUserDrinkBalance($uid, $serviceManager);
+            // Still need lastDeposit and lastOrder for activity
             $deposits = iterator_to_array($drinkDepositManager->getByUser($uid, true));
-            $depositSum = 0;
             $lastDeposit = null;
             foreach ($deposits as $d) {
                 if (empty($d['deleted'])) {
-                    $depositSum += (float)$d['amount'];
                     if (!$lastDeposit || (isset($d['deposit_time']) && $d['deposit_time'] > $lastDeposit)) {
                         $lastDeposit = $d['deposit_time'];
                     }
                 }
             }
-            // Sum orders
             $orders = iterator_to_array($drinkOrderManager->getByUser($uid));
-            $orderSum = 0;
             $lastOrder = null;
             foreach ($orders as $o) {
                 if (empty($o['deleted'])) {
-                    $orderSum += ((float)$o['price']) * ((int)$o['quantity']);
                     if (!$lastOrder || (isset($o['order_time']) && $o['order_time'] > $lastOrder)) {
                         $lastOrder = $o['order_time'];
                     }
                 }
             }
-            $balance = $depositSum - $orderSum;
             // Find most recent activity
             $lastActivity = null;
             if ($lastDeposit && $lastOrder) {
@@ -120,19 +117,8 @@ class AccountController extends AbstractActionController
                 $user = $userManager->get($row['user_id']);
                 if ($user) {
                     // Calculate new balance
-                    $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
-                    $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
-                    $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($row['user_id']));
-                    $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($row['user_id']));
-                    $balance = 0;
-                    foreach ($drinkDeposits as $deposit) {
-                        $balance += $deposit['amount'];
-                    }
-                    foreach ($drinkOrders as $o) {
-                        if (empty($o['deleted'])) {
-                            $balance -= $o['quantity'] * $o['price'];
-                        }
-                    }
+                    $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
+                    $balance = $drinkManager->calculateUserDrinkBalance($row['user_id'], $serviceManager);
                     $action = $newDeleted ? 'storniert' : 'wiederhergestellt';
                     $subject = 'Einzahlung ' . ucfirst($action) . ' (Admin)';
                     $body = 'Ihre Einzahlung am ' . $row['deposit_time'] . ' wurde von einem Administrator ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>';
@@ -153,22 +139,11 @@ class AccountController extends AbstractActionController
                 // or if it is 'negative' and the balance is zero or negative
                 $user = $userManager->get($row['user_id']);
                 if ($user) {
+                    // Calculate new balance
+                    $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
+                    $balance = $drinkManager->calculateUserDrinkBalance($row['user_id'], $serviceManager);
                     $aliasRow = $dbAdapter->query('SELECT order_email_option FROM drink_aliases WHERE user_id = ?', [$row['user_id']])->current();
                     $orderEmailOption = $aliasRow && isset($aliasRow['order_email_option']) ? $aliasRow['order_email_option'] : null;
-                    // Calculate new balance
-                    $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
-                    $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
-                    $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($row['user_id']));
-                    $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($row['user_id']));
-                    $balance = 0;
-                    foreach ($drinkDeposits as $deposit) {
-                        $balance += $deposit['amount'];
-                    }
-                    foreach ($drinkOrders as $o) {
-                        if (empty($o['deleted'])) {
-                            $balance -= $o['quantity'] * $o['price'];
-                        }
-                    }
                     $shouldSend = false;
                     if ($orderEmailOption === 'order') {
                         $shouldSend = true;
@@ -253,18 +228,7 @@ class AccountController extends AbstractActionController
                 }
                 $drinkOrderList = implode('<br>', $drinks);
                 // Calculate new balance
-                $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($uid));
-                $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
-                $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($uid));
-                $balance = 0;
-                foreach ($drinkDeposits as $deposit) {
-                    $balance += $deposit['amount'];
-                }
-                foreach ($drinkOrders as $o) {
-                    if (empty($o['deleted'])) {
-                        $balance -= $o['quantity'] * $o['price'];
-                    }
-                }
+                $balance = $drinkManager->calculateUserDrinkBalance($uid, $serviceManager);
                 // Fetch order_email_option from drink_aliases
                 $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
                 $aliasRow = $dbAdapter->query('SELECT order_email_option FROM drink_aliases WHERE user_id = ?', [$uid])->current();
@@ -777,8 +741,6 @@ class AccountController extends AbstractActionController
             ];
         }
         foreach ($drinkDeposits as $deposit) {
-            $deleted = isset($deposit['deleted']) ? (int)$deposit['deleted'] : 0;
-            if ($deleted) continue; // skip deleted deposits in history
             $creatorName = null;
             if (!empty($deposit['createdbyuserid'])) {
                 $creatorUser = $userManager->get($deposit['createdbyuserid'], false);
@@ -1266,22 +1228,8 @@ class AccountController extends AbstractActionController
                 $createdByUserId = $user ? $user->need('uid') : null;
                 if ($depositUserId > 0 && $depositAmount > 0) {
                     $serviceManager->get('Drinks\Manager\DrinkDepositManager')->addDeposit($depositUserId, $depositAmount, $depositComment, $createdByUserId);
-                    // Kontostand nach Einzahlung berechnen
-                    $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
-                    $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
-                    $deposits = iterator_to_array($drinkDepositManager->getByUser($depositUserId));
-                    $orders = iterator_to_array($drinkOrderManager->getByUser($depositUserId));
-                    $balance = 0;
-                    foreach ($deposits as $d) {
-                        if (empty($d['deleted'])) {
-                            $balance += (float)$d['amount'];
-                        }
-                    }
-                    foreach ($orders as $o) {
-                        if (empty($o['deleted'])) {
-                            $balance -= (float)$o['quantity'] * (float)$o['price'];
-                        }
-                    }
+                    // Use DrinkManager for balance calculation
+                    $balance = $drinkManager->calculateUserDrinkBalance($depositUserId, $serviceManager);
                     // E-Mail an den Nutzer senden
                     try {
                         $userManager = $serviceManager->get('User\Manager\UserManager');

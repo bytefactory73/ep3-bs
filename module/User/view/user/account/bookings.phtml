@@ -869,7 +869,9 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
                             var res = JSON.parse(xhr.responseText);
                         } catch (e) { res = null; }
                         if (res && res.success) {
+                            <?php if (!$simpleOrderMode): ?>
                             alert('<?= $this->t('Bestellung erfolgreich!') ?>');
+                            <?php endif; ?>
                             if (window.SIMPLE_ORDER_MODE) {
                                 window.location.replace('<?= $this->url("user/simple-login") ?>');
                             } else {

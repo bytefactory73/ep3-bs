@@ -14,6 +14,31 @@ class DrinkManager
         $this->dbAdapter = $dbAdapter;
     }
 
+    /**
+     * Calculates the current drink account balance for a user (sum deposits - sum orders).
+     * @param int $userId
+     * @param object $serviceManager
+     * @return float
+     */
+    public function calculateUserDrinkBalance($userId, $serviceManager)
+    {
+        $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
+        $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
+        $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($userId));
+        $allOrdersForBalance = iterator_to_array($drinkOrderManager->getByUser($userId));
+        $depositSum = 0;
+        foreach ($drinkDeposits as $deposit) {
+            $depositSum += $deposit['amount'];
+        }
+        $orderSum = 0;
+        foreach ($allOrdersForBalance as $order) {
+            if (empty($order['deleted'])) {
+                $orderSum += $order['quantity'] * $order['price'];
+            }
+        }
+        return $depositSum - $orderSum;
+    }
+
     public function getAll($userId = null)
     {
         if ($userId) {
@@ -56,18 +81,7 @@ class DrinkManager
         $result = $drinkOrderManager->dropOrder($orderId, $user->need('uid'), $user->need('uid'));
         if ($result->getAffectedRows() > 0 && $order) {
             // Recalculate balance after cancellation
-            $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($user->need('uid')));
-            $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
-            $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($user->need('uid')));
-            $balance = 0;
-            foreach ($drinkDeposits as $deposit) {
-                $balance += $deposit['amount'];
-            }
-            foreach ($drinkOrders as $o) {
-                if (empty($o['deleted'])) {
-                    $balance -= $o['quantity'] * $o['price'];
-                }
-            }
+            $balance = $this->calculateUserDrinkBalance($user->need('uid'), $serviceManager);
             // Send cancellation email
             $subject = call_user_func($tCallback, 'Stornierung Deiner Getränkebestellung');
             $lines = [
@@ -96,7 +110,6 @@ class DrinkManager
     public function addOrdersAndNotify($user, $drinkCounts, $tCallback, $serviceManager, $isAutoOrder = 0)
     {
         $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
-        $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
         $anyOrdered = false;
         $orderedDrinks = [];
         foreach ($drinkCounts as $drinkId => $quantity) {
@@ -117,17 +130,7 @@ class DrinkManager
             }
         }
         if ($anyOrdered) {
-            $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($user->need('uid')));
-            $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($user->need('uid')));
-            $balance = 0;
-            foreach ($drinkDeposits as $deposit) {
-                $balance += $deposit['amount'];
-            }
-            foreach ($drinkOrders as $order) {
-                if (empty($order['deleted'])) {
-                    $balance -= $order['quantity'] * $order['price'];
-                }
-            }
+            $balance = $this->calculateUserDrinkBalance($user->need('uid'), $serviceManager);
             // Fetch order_email_option from drink_aliases
             $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
             $aliasRow = $dbAdapter->query('SELECT order_email_option FROM drink_aliases WHERE user_id = ?', [$user->need('uid')])->current();
@@ -173,13 +176,11 @@ class DrinkManager
     public function sendDailySummary($userId, $serviceManager, $tCallback)
     {
         $userManager = $serviceManager->get('User\Manager\UserManager');
-        $mailService = $serviceManager->get('User\Service\MailService');
-        $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
-        $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
         $user = $userManager->get($userId);
         if (!$user) return false;
-        $userName = $user->get('alias') ?: $user->get('name');
+
         // 1. Query all orders of the user from the last 24 hours
+        $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
         $allOrders = iterator_to_array($drinkOrderManager->getByUser($userId));
         $orders = array_filter(
             $allOrders,
@@ -226,19 +227,7 @@ class DrinkManager
         $lines[] = sprintf($tCallback('Gesamt:') . ' %.2f EUR', $totalSum);
         $lines[] = '';
         // Calculate balance (all time): sum(deposits) - sum(orders)
-        $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($userId));
-        $allOrdersForBalance = iterator_to_array($drinkOrderManager->getByUser($userId));
-        $depositSum = 0;
-        foreach ($drinkDeposits as $deposit) {
-            $depositSum += $deposit['amount'];
-        }
-        $orderSum = 0;
-        foreach ($allOrdersForBalance as $order) {
-            if (empty($order['deleted'])) {
-                $orderSum += $order['quantity'] * $order['price'];
-            }
-        }
-        $balance = $depositSum - $orderSum;
+        $balance = $this->calculateUserDrinkBalance($userId, $serviceManager);
         $lines[] = sprintf($tCallback('Kontostand:') . '<b> %.2f EUR </b>', $balance);
         $text = $tCallback('Deine Getränkebestellungen im Überblick:') . "<br><br>" . implode("<br>", $lines);
         if ($balance < 0) {
@@ -246,6 +235,8 @@ class DrinkManager
             $text .= '<span style="color:#d32f2f;font-weight:bold;">' . $tCallback('Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das Paypal-Konto "kneipe@stc-butzbach.de" oder wirf Geld in den weißen Briefkasten ein.') . '</span>';
         }
         $subject = $tCallback('Deine Getränkebestellungen (Zusammenfassung)');
+
+        $mailService = $serviceManager->get('User\Service\MailService');
         $mailService->send($user, $subject, $text, ['isHtml' => true]);
         return true;
     }

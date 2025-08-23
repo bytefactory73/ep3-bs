@@ -75,16 +75,11 @@ class SimpleLoginController extends AbstractActionController
         $drinkCategories = $drinkCategoryManager->getAll();
         $drinkOrderManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkOrderManager');
         $drinkDepositManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkDepositManager');
-        $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($userId));
+        // Fetch deposits and orders for the user
         $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($userId));
-        $currentBalance = 0;
-        foreach ($drinkDeposits as $deposit) {
-            $currentBalance += $deposit['amount'];
-        }
-        foreach ($drinkOrders as $order) {
-            if (!empty($order['deleted'])) continue;
-            $currentBalance -= $order['quantity'] * $order['price'];
-        }
+        $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($userId));
+        // Use DrinkManager for balance calculation
+        $currentBalance = $drinkManager->calculateUserDrinkBalance($userId, $this->getServiceLocator());
         $drinkHistory = [];
         foreach ($drinkDeposits as $deposit) {
             $drinkHistory[] = [
