@@ -351,7 +351,11 @@ $this->setup([
                 } else {
                     if ($this->show_users === '1') {
                         // Show per user
-                        foreach ($this->orders as $date => $userOrders) {
+                        // Sort dates descending (newest to oldest)
+                        $dates = array_keys($this->orders);
+                        rsort($dates);
+                        foreach ($dates as $date) {
+                            $userOrders = $this->orders[$date];
                             foreach ($this->users as $user) {
                                 $uid = $user->need('uid');
                                 $hasOrder = false;
@@ -394,7 +398,11 @@ $this->setup([
                         }
                     } else {
                         // Sum up all users per date
-                        foreach ($this->orders as $date => $userOrders) {
+                        // Sort dates descending (newest to oldest)
+                        $dates = array_keys($this->orders);
+                        rsort($dates);
+                        foreach ($dates as $date) {
+                            $userOrders = $this->orders[$date];
                             $rowSum = 0;
                             $drinkSums = [];
                         foreach ($activeDrinks as $drink) {
