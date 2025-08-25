@@ -20,15 +20,20 @@ class DrinkOrderManager
         return $statement->execute();
     }
 
-    public function addOrder($userId, $drinkId, $quantity, $addedByUserId = null, $isAutoOrder = 0)
+    public function addOrder($userId, $drinkId, $quantity, $addedByUserId = null, $isAutoOrder = 0, $comment = null, $customPrice = null)
     {
-        $sql = 'SELECT price FROM drinks WHERE id = ?';
-        $statement = $this->dbAdapter->createStatement($sql, [$drinkId]);
-        $row = $statement->execute()->current();
-        if (!$row) {
-            throw new \RuntimeException('Drink not found');
+        if ($drinkId == 1) {
+            // For "Sonstiges" (custom entry), use the provided price, allow 0 as valid
+            $price = ($customPrice !== null) ? (float)$customPrice : 0.0;
+        } else {
+            $sql = 'SELECT price FROM drinks WHERE id = ?';
+            $statement = $this->dbAdapter->createStatement($sql, [$drinkId]);
+            $row = $statement->execute()->current();
+            if (!$row) {
+                throw new \RuntimeException('Drink not found');
+            }
+            $price = (float)$row['price'];
         }
-        $price = $row['price'];
         if ($addedByUserId === null) {
             // Try to get current user from session if not provided
             if (isset($_SESSION['user_id'])) {
@@ -36,11 +41,11 @@ class DrinkOrderManager
             }
         }
         if ($addedByUserId !== null) {
-            $sql = 'INSERT INTO drink_orders (user_id, drink_id, quantity, price, user_id_added, is_auto_order) VALUES (?, ?, ?, ?, ?, ?)';
-            $params = [$userId, $drinkId, $quantity, $price, $addedByUserId, $isAutoOrder];
+            $sql = 'INSERT INTO drink_orders (user_id, drink_id, quantity, price, comment, user_id_added, is_auto_order) VALUES (?, ?, ?, ?, ?, ?, ?)';
+            $params = [$userId, $drinkId, $quantity, $price, $comment, $addedByUserId, $isAutoOrder];
         } else {
-            $sql = 'INSERT INTO drink_orders (user_id, drink_id, quantity, price, is_auto_order) VALUES (?, ?, ?, ?, ?)';
-            $params = [$userId, $drinkId, $quantity, $price, $isAutoOrder];
+            $sql = 'INSERT INTO drink_orders (user_id, drink_id, quantity, price, comment, is_auto_order) VALUES (?, ?, ?, ?, ?, ?)';
+            $params = [$userId, $drinkId, $quantity, $price, $comment, $isAutoOrder];
         }
         $statement = $this->dbAdapter->createStatement($sql, $params);
         return $statement->execute();

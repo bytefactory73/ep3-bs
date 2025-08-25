@@ -217,8 +217,14 @@ class AccountController extends AbstractActionController
                 foreach ($orders as $order) {
                     $drinkId = isset($order['drink_id']) ? (int)$order['drink_id'] : 0;
                     $count = isset($order['count']) ? (int)$order['count'] : 1;
+                    $comment = isset($order['comment']) ? $order['comment'] : null;
                     if ($drinkId && $count > 0) {
-                        $drinkOrderManager->addOrder($uid, $drinkId, $count, $admin ? $admin->get('uid') : null);
+                        if ($drinkId === 1 && isset($order['price'])) {
+                            $customPrice = (float)$order['price'];
+                            $drinkOrderManager->addOrder($uid, $drinkId, $count, $admin ? $admin->get('uid') : null, 0, $comment, $customPrice);
+                        } else {
+                            $drinkOrderManager->addOrder($uid, $drinkId, $count, $admin ? $admin->get('uid') : null, 0, $comment);
+                        }
                     }
                 }
                 // Send notification email to user (HTML) only if order_email_option allows
@@ -739,11 +745,13 @@ class AccountController extends AbstractActionController
                 'type' => 'order',
                 'id' => $order['id'],
                 'name' => $order['name'],
-                'quantity' => $order['quantity'],
+                'drink_id' => isset($order['drink_id']) ? (int)$order['drink_id'] : null,
+                'quantity' => isset($order['quantity']) ? (int)$order['quantity'] : 1,
                 'price' => $order['price'],
                 'total' => $order['quantity'] * $order['price'],
                 'datetime' => $order['order_time'],
                 'deleted' => $deleted,
+                'comment' => isset($order['comment']) ? $order['comment'] : '',
             ];
         }
         foreach ($drinkDeposits as $deposit) {
@@ -1191,7 +1199,8 @@ class AccountController extends AbstractActionController
         $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
         $drinkCounts = $this->params()->fromPost('drink_counts', []);
         $isAutoOrder = (int)$this->params()->fromPost('is_auto_order', 0);
-        $result = $drinkManager->addOrdersAndNotify($user, $drinkCounts, [$this, 't'], $serviceManager, $isAutoOrder);
+        $comment = $this->params()->fromPost('comment', null);
+        $result = $drinkManager->addOrdersAndNotify($user, $drinkCounts, [$this, 't'], $serviceManager, $isAutoOrder, $comment);
 
         if ($result['success']) {
             return $this->getResponse()->setContent(json_encode(['success' => true, 'balance' => $result['balance']]))->setStatusCode(200);
@@ -1326,6 +1335,9 @@ class AccountController extends AbstractActionController
                 'desc' => $o['quantity'] . ' x ' . $o['name'],
                 'datetime' => $o['order_time'],
                 'deleted' => empty($o['deleted']) ? 0 : 1,
+                'comment' => isset($o['comment']) ? $o['comment'] : '',
+                'drink_id' => isset($o['drink_id']) ? (int)$o['drink_id'] : null,
+                'quantity' => isset($o['quantity']) ? (int)$o['quantity'] : null,
             ];
         }
         usort($history, function($a, $b) { return strcmp($a['datetime'], $b['datetime']); });

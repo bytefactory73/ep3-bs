@@ -60,6 +60,8 @@ $this->setup([
             <div style="margin-top:8px; font-weight:bold; color:#388e3c;">
                 <span id="multi-drink-total-price">0,00 €</span>
             </div>
+            <label for="multi-drink-comment" style="font-weight:normal; margin-top:8px;">Bemerkung:</label>
+            <input type="text" id="multi-drink-comment" name="multi_drink_comment" maxlength="255" placeholder="<?= $this->t('Kommentar (optional)') ?>" style="margin-bottom:4px;">
             <button type="button" id="add-drinks-btn" class="default-button mini-button" style="width:fit-content; margin-top:8px;">
                 <?= $this->t('Getränke buchen') ?>
             </button>
@@ -132,7 +134,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var multiDrinkTotalPrice = document.getElementById('multi-drink-total-price');
     var drinkRowId = 0;
 
-    function createDrinkRow(selectedId, countValue) {
+    function createDrinkRow(selectedId, countValue, commentValue) {
         var row = document.createElement('div');
         row.style.display = 'flex';
         row.style.alignItems = 'center';
@@ -169,6 +171,37 @@ document.addEventListener('DOMContentLoaded', function() {
         input.value = countValue || 1;
         input.style.width = '80px';
 
+        // Special case: if drinkId == 1, use EUR field
+        function updateInputType() {
+            if (select.value === '1') {
+                input.type = 'text';
+                input.placeholder = 'EUR';
+                input.min = '';
+                input.step = '0.01';
+                input.value = '';
+                input.pattern = '^[0-9]+([.,][0-9]{1,2})?$';
+                input.style.width = '80px';
+            } else {
+                input.type = 'number';
+                input.min = '1';
+                input.step = '';
+                input.placeholder = '';
+                if (!input.value) input.value = 1;
+                input.pattern = '';
+            }
+        }
+        select.addEventListener('change', updateInputType);
+        // Initialize input type on row creation
+        setTimeout(updateInputType, 0);
+
+        // Add comment field for this drink row
+        var commentInput = document.createElement('input');
+        commentInput.type = 'text';
+        commentInput.placeholder = '<?= $this->t('Kommentar (optional)') ?>';
+        commentInput.maxLength = 255;
+        commentInput.style.width = '180px';
+        if (commentValue) commentInput.value = commentValue;
+
         var removeBtn = document.createElement('button');
         removeBtn.type = 'button';
         removeBtn.textContent = '×';
@@ -194,12 +227,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
         row.appendChild(select);
         row.appendChild(input);
+        row.appendChild(commentInput);
         row.appendChild(removeBtn);
         return row;
     }
 
-    function addDrinkRow(selectedId, countValue) {
-        var row = createDrinkRow(selectedId, countValue);
+    function addDrinkRow(selectedId, countValue, commentValue) {
+        var row = createDrinkRow(selectedId, countValue, commentValue);
         drinkRowsContainer.appendChild(row);
         updateMultiDrinkTotal();
     }
@@ -240,13 +274,36 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         var rows = Array.from(drinkRowsContainer.children);
         var orders = [];
+        var globalComment = document.getElementById('multi-drink-comment') ? document.getElementById('multi-drink-comment').value : '';
         for (var row of rows) {
             var select = row.querySelector('select');
             var input = row.querySelector('input');
+            var commentInput = row.querySelectorAll('input[type="text"]');
             var drinkId = select.value;
-            var count = parseInt(input.value, 10) || 1;
-            if (drinkId && count > 0) {
-                orders.push({ drink_id: drinkId, count: count });
+            var localComment = '';
+            if (commentInput.length > 0) {
+                // The comment field is always the last input[type=text] in the row
+                localComment = commentInput[commentInput.length - 1].value;
+            }
+            var comment = '';
+            if (globalComment && localComment) {
+                comment = globalComment + ' ' + localComment;
+            } else if (globalComment) {
+                comment = globalComment;
+            } else {
+                comment = localComment;
+            }
+            if (drinkId === '1') {
+                // Special case: EUR field, price goes into price, quantity is always 1
+                var price = parseFloat(input.value.replace(',', '.')) || 0;
+                if (drinkId && price > 0) {
+                    orders.push({ drink_id: drinkId, count: 1, price: price, comment: comment });
+                }
+            } else {
+                var count = parseInt(input.value, 10) || 1;
+                if (drinkId && count > 0) {
+                    orders.push({ drink_id: drinkId, count: count, comment: comment });
+                }
             }
         }
         if (orders.length === 0) {
@@ -577,10 +634,29 @@ document.addEventListener('DOMContentLoaded', function() {
                             } else {
                                 xBtn = '<button class="entry-cancel-btn" data-entry-id="' + orderId + '" data-entry-type="order" title="<?= $this->t('Stornieren') ?>" style="margin-right:6px; color:#d32f2f; background:none; border:none; font-size:15px; font-weight:bold; cursor:pointer; line-height:1;">&times;</button>';
                             }
+                            // For drinkId==1, show only the comment, skip drink name and '1x'
+                            var descWithComment = '';
+                            if (entry.drink_id == 1) {
+                                // Only show comment, no drink name, no '1x'
+                                if (entry.comment && entry.comment.trim() !== '') {
+                                    descWithComment = '<span style="color:#888;">' + entry.comment.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span>';
+                                } else {
+                                    descWithComment = '';
+                                }
+                            } else {
+                                // For other drinks, show as before, but skip '1x' if quantity==1
+                                descWithComment = entry.desc || '';
+                                if (entry.quantity == 1 && descWithComment.match(/^\s*\d+x\s+/)) {
+                                    descWithComment = descWithComment.replace(/^\s*1x\s+/, '');
+                                }
+                                if (entry.comment && entry.comment.trim() !== '') {
+                                    descWithComment += ' <span style="color:#888;">(' + entry.comment.replace(/</g, '&lt;').replace(/>/g, '&gt;') + ')</span>';
+                                }
+                            }
                             html += '<tr style="' + style + '">';
                             html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + xBtn + entry.type + '</td>';
                             html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + formatCurrency(entry.amount) + '</td>';
-                            html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + (entry.desc || '') + (timeStr ? ' <span style="color:#888;font-size:90%;margin-left:8px;">' + timeStr + '</span>' : '') + '</td>';
+                            html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + descWithComment + (timeStr ? ' <span style="color:#888;font-size:90%;margin-left:8px;">' + timeStr + '</span>' : '') + '</td>';
                             html += '</tr>';
                         }
                         html += '<tr style="font-weight:bold;background:#fafdff;">' +

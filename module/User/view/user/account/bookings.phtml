@@ -1223,19 +1223,37 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
                         if ($orderId && isset($entry['datetime']) && !$isDeleted) {
                             $orderTime = strtotime($entry['datetime']);
                             $now = time();
-                            if ($now - $orderTime < $drinkOrderCancelWindow) { // use variable
+                            if ($now - $orderTime < $drinkOrderCancelWindow) {
                                 $showCancel = true;
                             }
                         }
                         $strikeOpen = $isDeleted ? '<span style="text-decoration:line-through; color:#b0b0b0;">' : '';
                         $strikeClose = $isDeleted ? '</span>' : '';
+                        $drinkId = isset($entry['drink_id']) ? (int)$entry['drink_id'] : null;
+                        $quantity = isset($entry['quantity']) ? (int)$entry['quantity'] : 1;
+                        $comment = isset($entry['comment']) ? trim($entry['comment']) : '';
+                        $drinkName = isset($entry['name']) ? $entry['name'] : '';
+                        $rowLabel = '';
+                        if ($drinkId === 1) {
+                            // Only show comment, skip drink name and quantity if quantity==1
+                            if ($quantity > 1) {
+                                $rowLabel = $quantity . 'x ';
+                            }
+                            $rowLabel .= $comment;
+                        } else {
+                            // Normal drink: show quantity, name, then comment (if any)
+                            $rowLabel = $quantity . 'x ' . $this->escapeHtml($drinkName);
+                            if ($comment !== '') {
+                                $rowLabel .= ' ' . $this->escapeHtml($comment);
+                            }
+                        }
                         echo '<tr class="order-day-row' . ($isDeleted ? ' order-deleted-row' : '') . '" data-group="' . $collapsedId . '" style="background:#fafdff;' . $rowStyle . '">';
                         echo '<td style="color:#888; font-size:0.95em; text-align:center; position:relative;">' . $time;
                         if ($showCancel) {
                             echo '<button class="order-cancel-btn" data-order-id="' . htmlspecialchars($orderId) . '" title="' . $this->t('Bestellung stornieren') . '" style="position:absolute; right:2px; top:2px; width:18px; height:18px; border:none; background:transparent; color:#d32f2f; font-size:15px; font-weight:bold; cursor:pointer; line-height:16px; padding:0;">&times;</button>';
                         }
                         echo '</td>';
-                        echo '<td>' . $strikeOpen . $this->escapeHtml($entry['name']) . $strikeClose . '</td>';
+                        echo '<td>' . $strikeOpen . $rowLabel . $strikeClose . '</td>';
                         echo '<td>' . $strikeOpen . (int)$entry['quantity'] . $strikeClose . '</td>';
                         echo '<td>' . $strikeOpen . $this->priceFormat($entry['price'] * 100.0, null, null, null, null, null, true, false, false) . $strikeClose . '</td>';
                         echo '<td>' . $strikeOpen . $this->priceFormat($entry['total'] * 100.0, null, null, null, null, null, true, false, false) . $strikeClose . '</td>';
