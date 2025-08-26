@@ -126,8 +126,15 @@ class AccountController extends AbstractActionController
                     $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
                     $balance = $drinkManager->calculateUserDrinkBalance($row['user_id'], $serviceManager);
                     $action = $newDeleted ? 'storniert' : 'wiederhergestellt';
-                    $subject = 'Einzahlung ' . ucfirst($action) . ' (Admin)';
-                    $body = 'Ihre Einzahlung am ' . $row['deposit_time'] . ' wurde von einem Administrator ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>';
+                    $subject = 'Einzahlung ' . ucfirst($action);
+                    $adminName = '';
+                    if (isset($admin) && $admin) {
+                        $adminName = $admin->get('alias') ?: $admin->get('name');
+                    }
+                    if (!$adminName) {
+                        $adminName = 'Administrator';
+                    }
+                    $body = 'Ihre Einzahlung am ' . $row['deposit_time'] . ' wurde von ' . htmlspecialchars($adminName) . ' ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>';
                     $mailService->send($user, $subject, $body, ['isHtml' => true]);
                 }
                 return $this->getResponse()->setContent(json_encode(['success' => true]));
@@ -159,7 +166,46 @@ class AccountController extends AbstractActionController
                     if ($shouldSend) {
                         $action = $newDeleted ? 'storniert' : 'wiederhergestellt';
                         $subject = 'Buchung ' . ucfirst($action) . ' (Admin)';
-                        $body = 'Ihre Getränkebuchung (' . $row['quantity'] . 'x ' . $row['drink_id'] . ') am ' . $row['order_time'] . ' wurde von einem Administrator ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>';
+                        $label = '';
+                        if ((int)$row['drink_id'] === 1) {
+                            // Fetch drink name for fallback
+                            $drinkName = '';
+                            if (isset($row['drink_id'])) {
+                                $drinkRow = $dbAdapter->query('SELECT name FROM drinks WHERE id = ?', [$row['drink_id']])->current();
+                                if ($drinkRow && isset($drinkRow['name'])) {
+                                    $drinkName = $drinkRow['name'];
+                                } else {
+                                    $drinkName = $row['drink_id']; // fallback
+                                }
+                            }
+                            if ((int)$row['quantity'] > 1) {
+                                $label = $row['quantity'] . 'x ';
+                            } else {
+                                $label = '';
+                            }
+                            $comment = trim((string)$row['comment']);
+                            $label .= ($comment !== '') ? $comment : $drinkName;
+                        } else {
+                            // Fetch drink name for the label
+                            $drinkName = '';
+                            if (isset($row['drink_id'])) {
+                                $drinkRow = $dbAdapter->query('SELECT name FROM drinks WHERE id = ?', [$row['drink_id']])->current();
+                                if ($drinkRow && isset($drinkRow['name'])) {
+                                    $drinkName = $drinkRow['name'];
+                                } else {
+                                    $drinkName = $row['drink_id']; // fallback
+                                }
+                            }
+                            $label = $row['quantity'] . 'x ' . $drinkName;
+                        }
+                        $adminName = '';
+                        if (isset($admin) && $admin) {
+                            $adminName = $admin->get('alias') ?: $admin->get('name');
+                        }
+                        if (!$adminName) {
+                            $adminName = 'Administrator';
+                        }
+                        $body = 'Ihre Getränkebuchung (' . $label . ') am ' . $row['order_time'] . ' wurde von ' . htmlspecialchars($adminName) . ' ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>';
                         $mailService->send($user, $subject, $body, ['isHtml' => true]);
                     }
                 }
@@ -233,9 +279,24 @@ class AccountController extends AbstractActionController
                 foreach ($orders as $order) {
                     $drink = $drinkManager->get($order['drink_id']);
                     if ($drink) {
-                        $line = sprintf('%s x %d = %.2f EUR', $drink['name'], $order['count'], $order['count'] * $drink['price']);
+                        if ((int)$order['drink_id'] === 1) {
+                            // Fallback to drink name if comment is empty
+                            $drinkName = $drink ? $drink['name'] : $order['drink_id'];
+                            $label = '';
+                            if ((int)$order['count'] > 1) {
+                                $label = $order['count'] . 'x ';
+                            }
+                            $comment = isset($order['comment']) ? trim((string)$order['comment']) : '';
+                            $label .= ($comment !== '') ? $comment : $drinkName;
+                            // Use custom price from order for id==1
+                            $customPrice = isset($order['price']) ? (float)$order['price'] : (float)$drink['price'];
+                            $line = sprintf('%s = %.2f EUR', $label, $order['count'] * $customPrice);
+                            $total += $order['count'] * $customPrice;
+                        } else {
+                            $line = sprintf('%s x %d = %.2f EUR', $drink['name'], $order['count'], $order['count'] * $drink['price']);
+                            $total += $order['count'] * $drink['price'];
+                        }
                         $drinks[] = $line;
-                        $total += $order['count'] * $drink['price'];
                     }
                 }
                 $drinkOrderList = implode('<br>', $drinks);
@@ -252,8 +313,15 @@ class AccountController extends AbstractActionController
                     $shouldSend = true;
                 }
                 if ($shouldSend) {
-                    $subject = 'Bestätigung Ihrer Getränkebuchung (Admin)';
-                    $body = 'Folgende Buchung(en) wurden von einem Administrator für Sie hinzugefügt:<br><br>' . $drinkOrderList . '<br>---------------------<br>Gesamt: ' . number_format($total, 2, ',', '.') . ' EUR<br><br>Kontostand nach Buchung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>';
+                    $adminName = '';
+                    if (isset($admin) && $admin) {
+                        $adminName = $admin->get('alias') ?: $admin->get('name');
+                    }
+                    if (!$adminName) {
+                        $adminName = 'Administrator';
+                    }
+                    $subject = 'Bestätigung Ihrer Getränkebuchung (' . $adminName . ')';
+                    $body = 'Folgende Buchung(en) wurden von ' . htmlspecialchars($adminName) . ' für Sie hinzugefügt:<br><br>' . $drinkOrderList . '<br>---------------------<br>Gesamt: ' . number_format($total, 2, ',', '.') . ' EUR<br><br>Kontostand nach Buchung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>';
                     if ($balance < 0) {
                         $body .= "<br><br>";
                         $body .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func([$this, 't'], 'Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das Paypal-Konto "kneipe@stc-butzbach.de" oder wirf Geld in den weißen Briefkasten ein.') . '</span>';
@@ -741,17 +809,25 @@ class AccountController extends AbstractActionController
         $drinkHistory = [];
         foreach ($drinkOrders as $order) {
             $deleted = isset($order['deleted']) ? (int)$order['deleted'] : 0;
+            $drinkId = isset($order['drink_id']) ? (int)$order['drink_id'] : null;
+            $quantity = isset($order['quantity']) ? (int)$order['quantity'] : 1;
+            $comment = isset($order['comment']) ? trim((string)$order['comment']) : '';
+            $drinkName = $order['name'];
+            // Always ensure for id==1 (custom drink): if comment is empty, use drink name as fallback
+            if ($drinkId === 1 && $comment === '') {
+                $comment = $drinkName;
+            }
             $drinkHistory[] = [
                 'type' => 'order',
                 'id' => $order['id'],
                 'name' => $order['name'],
-                'drink_id' => isset($order['drink_id']) ? (int)$order['drink_id'] : null,
-                'quantity' => isset($order['quantity']) ? (int)$order['quantity'] : 1,
+                'drink_id' => $drinkId,
+                'quantity' => $quantity,
                 'price' => $order['price'],
-                'total' => $order['quantity'] * $order['price'],
+                'total' => $quantity * $order['price'],
                 'datetime' => $order['order_time'],
                 'deleted' => $deleted,
-                'comment' => isset($order['comment']) ? $order['comment'] : '',
+                'comment' => $comment,
             ];
         }
         foreach ($drinkDeposits as $deposit) {
@@ -1328,15 +1404,24 @@ class AccountController extends AbstractActionController
             ];
         }
         foreach ($orders as $o) {
+            $drinkId = isset($o['drink_id']) ? (int)$o['drink_id'] : null;
+            $comment = isset($o['comment']) ? trim((string)$o['comment']) : '';
+            $drinkName = isset($o['name']) ? $o['name'] : '';
+            $desc = $o['quantity'] . ' x ' . $drinkName;
+            // For id==1, if comment is empty, use drink name as fallback for desc and comment
+            if ($drinkId === 1 && $comment === '') {
+                $desc = $drinkName;
+                $comment = $drinkName;
+            }
             $history[] = [
                 'type' => empty($o['deleted']) ? 'Buchung' : 'Storno',
                 'id' => isset($o['id']) ? (int)$o['id'] : null, // Always include order id
                 'amount' => -1 * $o['quantity'] * $o['price'],
-                'desc' => $o['quantity'] . ' x ' . $o['name'],
+                'desc' => $desc,
                 'datetime' => $o['order_time'],
                 'deleted' => empty($o['deleted']) ? 0 : 1,
-                'comment' => isset($o['comment']) ? $o['comment'] : '',
-                'drink_id' => isset($o['drink_id']) ? (int)$o['drink_id'] : null,
+                'comment' => $comment,
+                'drink_id' => $drinkId,
                 'quantity' => isset($o['quantity']) ? (int)$o['quantity'] : null,
             ];
         }

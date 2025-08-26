@@ -250,9 +250,17 @@ document.addEventListener('DOMContentLoaded', function() {
         rows.forEach(function(row) {
             var select = row.querySelector('select');
             var input = row.querySelector('input');
-            var price = select && select.selectedOptions[0] && select.selectedOptions[0].getAttribute('data-price') ? parseFloat(select.selectedOptions[0].getAttribute('data-price')) : 0;
-            var count = input ? parseInt(input.value, 10) || 1 : 1;
-            if (select.value) {
+            var price = 0;
+            var count = 1;
+            if (select && select.value === '1') {
+                // Special case: id==1, price is entered manually in input
+                price = input && input.value ? parseFloat(input.value.replace(',', '.')) : 0;
+                count = 1;
+            } else {
+                price = select && select.selectedOptions[0] && select.selectedOptions[0].getAttribute('data-price') ? parseFloat(select.selectedOptions[0].getAttribute('data-price')) : 0;
+                count = input ? parseInt(input.value, 10) || 1 : 1;
+            }
+            if (select && select.value) {
                 total += price * count;
             }
         });

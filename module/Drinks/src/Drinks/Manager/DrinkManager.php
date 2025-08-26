@@ -84,13 +84,25 @@ class DrinkManager
             $balance = $this->calculateUserDrinkBalance($user->need('uid'), $serviceManager);
             // Send cancellation email
             $subject = call_user_func($tCallback, 'Stornierung Deiner Getränkebestellung');
-            $lines = [
-                sprintf('%s x %d = %.2f EUR', $order['drink_name'], $order['quantity'], $order['quantity'] * $order['price']),
-                '---------------------',
-                sprintf(call_user_func($tCallback, 'Storniert am:') . ' %s', date('d.m.Y H:i')),
-                '',
-                sprintf(call_user_func($tCallback, 'Kontostand nach Stornierung:') . '<b> %.2f EUR </b>', $balance),
-            ];
+            $lines = [];
+            if ((int)$order['drink_id'] === 1) {
+                // Special: only show comment, skip drink name and quantity if quantity==1
+                // Fallback to drink name if comment is empty
+                $drinkName = isset($order['drink_name']) ? $order['drink_name'] : ('ID ' . $order['drink_id']);
+                $label = '';
+                if ((int)$order['quantity'] > 1) {
+                    $label = $order['quantity'] . 'x ';
+                }
+                $comment = isset($order['comment']) ? trim((string)$order['comment']) : '';
+                $label .= ($comment !== '') ? $comment : $drinkName;
+                $lines[] = sprintf('%s = %.2f EUR', $label, $order['quantity'] * $order['price']);
+            } else {
+                $lines[] = sprintf('%s x %d = %.2f EUR', $order['drink_name'], $order['quantity'], $order['quantity'] * $order['price']);
+            }
+            $lines[] = '---------------------';
+            $lines[] = sprintf(call_user_func($tCallback, 'Storniert am:') . ' %s', date('d.m.Y H:i'));
+            $lines[] = '';
+            $lines[] = sprintf(call_user_func($tCallback, 'Kontostand nach Stornierung:') . '<b> %.2f EUR </b>', $balance);
             $text = call_user_func($tCallback, 'Deine Getränkebestellung wurde erfolgreich storniert.') . "<br><br>" . implode("<br>", $lines);
             if ($balance < 0) {
                 $text .= "<br><br>";
@@ -121,10 +133,12 @@ class DrinkManager
                 $drink = $this->get($drinkId);
                 if ($drink) {
                     $orderedDrinks[] = [
+                        'id' => $drinkId,
                         'name' => $drink['name'],
                         'quantity' => $quantity,
                         'price' => $drink['price'],
                         'total' => $quantity * $drink['price'],
+                        'comment' => $comment,
                     ];
                 }
             }
@@ -146,7 +160,19 @@ class DrinkManager
                 $lines = [];
                 $totalSum = 0;
                 foreach ($orderedDrinks as $item) {
-                    $lines[] = sprintf('%s x %d = %.2f EUR', $item['name'], $item['quantity'], $item['total']);
+                    if ((int)$item['id'] === 1) {
+                        // Fallback to drink name if comment is empty
+                        $drinkName = isset($item['name']) ? $item['name'] : $item['id'];
+                        $label = '';
+                        if ((int)$item['quantity'] > 1) {
+                            $label = $item['quantity'] . 'x ';
+                        }
+                        $comment = isset($item['comment']) ? trim((string)$item['comment']) : '';
+                        $label .= ($comment !== '') ? $comment : $drinkName;
+                        $lines[] = sprintf('%s = %.2f EUR', $label, $item['total']);
+                    } else {
+                        $lines[] = sprintf('%s x %d = %.2f EUR', $item['name'], $item['quantity'], $item['total']);
+                    }
                     $totalSum += $item['total'];
                 }
                 $lines[] = '---------------------';
@@ -207,17 +233,39 @@ class DrinkManager
         foreach ($ordersByDay as $date => $ordersForDay) {
             $lines[] = '<b>' . htmlspecialchars($date) . '</b>';
             $drinkSums = [];
+            $commentSums = [];
             foreach ($ordersForDay as $order) {
-                $drink = $this->get($order['drink_id']);
-                $drinkName = $drink ? $drink['name'] : ('ID ' . $order['drink_id']);
-                if (!isset($drinkSums[$drinkName])) {
-                    $drinkSums[$drinkName] = ['quantity' => 0, 'total' => 0.0];
+                if ((int)$order['drink_id'] === 1) {
+                    $key = $order['comment'];
+                    if (!isset($drinkSums[$key])) {
+                        $drinkSums[$key] = ['quantity' => 0, 'total' => 0.0, 'comment' => $order['comment']];
+                    }
+                    $drinkSums[$key]['quantity'] += $order['quantity'];
+                    $drinkSums[$key]['total'] += $order['quantity'] * $order['price'];
+                } else {
+                    $drink = $this->get($order['drink_id']);
+                    $drinkName = $drink ? $drink['name'] : ('ID ' . $order['drink_id']);
+                    if (!isset($drinkSums[$drinkName])) {
+                        $drinkSums[$drinkName] = ['quantity' => 0, 'total' => 0.0];
+                    }
+                    $drinkSums[$drinkName]['quantity'] += $order['quantity'];
+                    $drinkSums[$drinkName]['total'] += $order['quantity'] * $order['price'];
                 }
-                $drinkSums[$drinkName]['quantity'] += $order['quantity'];
-                $drinkSums[$drinkName]['total'] += $order['quantity'] * $order['price'];
             }
-            foreach ($drinkSums as $drinkName => $sum) {
-                $lines[] = sprintf('%s x %d = %.2f EUR', $drinkName, $sum['quantity'], $sum['total']);
+            foreach ($drinkSums as $key => $sum) {
+                if (isset($sum['comment'])) {
+                    // Fallback to drink name if comment is empty
+                    $drinkName = $key;
+                    $label = '';
+                    if ((int)$sum['quantity'] > 1) {
+                        $label = $sum['quantity'] . 'x ';
+                    }
+                    $comment = isset($sum['comment']) ? trim((string)$sum['comment']) : '';
+                    $label .= ($comment !== '') ? $comment : $drinkName;
+                    $lines[] = sprintf('%s = %.2f EUR', $label, $sum['total']);
+                } else {
+                    $lines[] = sprintf('%s x %d = %.2f EUR', $key, $sum['quantity'], $sum['total']);
+                }
                 $totalSum += $sum['total'];
             }
             $lines[] = '';

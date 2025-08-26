@@ -91,10 +91,17 @@ class SimpleLoginController extends AbstractActionController
             ];
         }
         foreach ($drinkOrders as $order) {
+            $drinkId = isset($order['drink_id']) ? (int)$order['drink_id'] : null;
+            $comment = isset($order['comment']) ? trim((string)$order['comment']) : '';
+            $drinkName = $order['name'];
+            // Always ensure for id==1 (custom drink): if comment is empty, use drink name as fallback
+            if ($drinkId === 1 && $comment === '') {
+                $comment = $drinkName;
+            }
             $drinkHistory[] = [
                 'type' => 'order',
-                'drink_id' => $order['drink_id'],
-                'name' => $order['name'],
+                'drink_id' => $drinkId,
+                'name' => $drinkName,
                 'quantity' => $order['quantity'],
                 'price' => $order['price'],
                 'total' => $order['quantity'] * $order['price'],
@@ -102,6 +109,7 @@ class SimpleLoginController extends AbstractActionController
                 'datetime' => $order['order_time'],
                 'id' => $order['id'],
                 'deleted' => $order['deleted'],
+                'comment' => $comment,
             ];
         }
         usort($drinkHistory, function($a, $b) {
