@@ -15,8 +15,7 @@
         "psr-4": {
             "Zend\\I18n\\": "module/Zend/I18n/src/",
             "Zend\\Stdlib\\": "module/Zend/Stdlib/src/",
-            "Zend\\View\\": "module/Zend/View/src/",
-            "Drinks\\": "module/Drinks/src/Drinks/"
+            "Zend\\View\\": "module/Zend/View/src/"
         }
     }
 }
