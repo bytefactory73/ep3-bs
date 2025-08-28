@@ -63,6 +63,7 @@ class AccountController extends AbstractActionController
             // Only show users with at least one deposit or order
             if (count($deposits) > 0 || count($orders) > 0) {
                 $userList[] = [
+                    'uid' => $u->get('uid'),
                     'alias' => $u->get('alias'),
                     'name' => $u->get('name'),
                     'email' => $u->get('email'),

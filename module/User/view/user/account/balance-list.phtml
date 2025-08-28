@@ -45,8 +45,20 @@ $this->setup([
     <tbody>
     <?php foreach ($this->users as $user): ?>
         <tr>
-            <td><?= $this->escapeHtml($user['alias'] ?: $user['name']) ?></td>
-            <td><?= $this->escapeHtml($user['email']) ?></td>
+            <td>
+                <?php if (!empty($user['uid'])): ?>
+                    <a href="<?= $this->url('user/deposits') . '?uid=' . urlencode($user['uid']) ?>"
+                       title="<?= $this->t('Zur Einzahlung für diesen Nutzer') ?>"
+                       style="color:#1976d2; text-decoration:underline; font-weight:bold;">
+                        <?= $this->escapeHtml($user['alias'] ?: $user['name']) ?>
+                    </a>
+                <?php else: ?>
+                    <?= $this->escapeHtml($user['alias'] ?: $user['name']) ?>
+                <?php endif; ?>
+            </td>
+            <td>
+                <?= $this->escapeHtml($user['email']) ?>
+            </td>
             <td>
                 <?php if (!empty($user['last_activity'])): ?>
                     <?= $this->escapeHtml(date('d.m.Y H:i', strtotime($user['last_activity']))) ?>

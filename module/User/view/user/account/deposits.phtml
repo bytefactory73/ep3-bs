@@ -406,15 +406,37 @@ document.addEventListener('DOMContentLoaded', function() {
     userSearch.addEventListener('blur', function() {
         setTimeout(function() { userSearchList.innerHTML = ''; }, 150);
     });
-    // Restore last selected user from localStorage
-    var lastUid = localStorage.getItem('deposits_selected_uid');
-    if (lastUid) {
-        var user = findUserByUid(lastUid);
+    // Check for uid in URL, else restore last selected user from localStorage
+    function getUidFromUrl() {
+        var params = new URLSearchParams(window.location.search);
+        var uid = params.get('uid');
+        return uid && /^\d+$/.test(uid) ? uid : null;
+    }
+    var urlUid = getUidFromUrl();
+    if (urlUid) {
+        var user = findUserByUid(urlUid);
         if (user) {
             userSearch.value = user.alias + ' (' + user.email + ')';
             userIdInput.value = user.uid;
             updateDrinksFields();
             updateUserInfo();
+            // Remove uid from URL after preselecting
+            if (window.history && window.history.replaceState) {
+                var url = new URL(window.location.href);
+                url.searchParams.delete('uid');
+                window.history.replaceState({}, document.title, url.pathname + url.search);
+            }
+        }
+    } else {
+        var lastUid = localStorage.getItem('deposits_selected_uid');
+        if (lastUid) {
+            var user = findUserByUid(lastUid);
+            if (user) {
+                userSearch.value = user.alias + ' (' + user.email + ')';
+                userIdInput.value = user.uid;
+                updateDrinksFields();
+                updateUserInfo();
+            }
         }
     }
     function updateDrinksFields(drinksEnabledFromApi, drinksAliasFromApi) {
