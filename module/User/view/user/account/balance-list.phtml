@@ -23,7 +23,7 @@ $this->setup([
     </span>
 </div>
 
-<table class="table table-striped" style="margin-top:24px;">
+<table class="table table-striped" id="balance-table" style="margin-top:24px;">
 <style>
     .table th, .table td {
         padding-left: 8px;
@@ -32,22 +32,108 @@ $this->setup([
     .table th {
         font-weight: bold;
         text-align: left;
+        user-select: none;
+    }
+    .table th.sortable {
+        cursor: pointer;
+    }
+    .sort-indicator {
+        font-size: 0.9em;
+        margin-left: 2px;
     }
 </style>
+<script>
+// Simple table sort for balance-list
+
+document.addEventListener('DOMContentLoaded', function() {
+    const table = document.getElementById('balance-table');
+    const headers = table.querySelectorAll('th.sortable');
+    // Default sort: Kontostand (balance), which is the 5th column (index 4, but sortable index 3)
+    let sortCol = 4; // table cell index for Kontostand
+    let sortDir = 1; // ascending
+
+    // Show indicator for default sort on load
+    updateIndicators();
+
+    headers.forEach((th, idx) => {
+        th.addEventListener('click', function() {
+            // Adjust idx to match cell index (skip # column)
+            const colIdx = idx + 1;
+            const type = th.getAttribute('data-sort');
+            if (sortCol === colIdx) {
+                sortDir = -sortDir;
+            } else {
+                sortCol = colIdx;
+                sortDir = 1;
+            }
+            sortTable(colIdx, type);
+            updateIndicators();
+            renumberRows();
+        });
+    });
+
+    function sortTable(col, type) {
+        const tbody = table.tBodies[0];
+        const rows = Array.from(tbody.rows);
+        rows.sort((a, b) => {
+            let v1, v2;
+            if (type === 'date') {
+                v1 = a.cells[col].getAttribute('data-date') || '';
+                v2 = b.cells[col].getAttribute('data-date') || '';
+            } else if (type === 'number') {
+                v1 = a.cells[col].innerText.trim();
+                v2 = b.cells[col].innerText.trim();
+                v1 = parseFloat(v1.replace(/[^\d,-]/g, '').replace(',', '.')) || 0;
+                v2 = parseFloat(v2.replace(/[^\d,-]/g, '').replace(',', '.')) || 0;
+            } else if (type === 'string') {
+                v1 = a.cells[col].innerText.trim().toLowerCase();
+                v2 = b.cells[col].innerText.trim().toLowerCase();
+            } else {
+                v1 = a.cells[col].innerText.trim();
+                v2 = b.cells[col].innerText.trim();
+            }
+            if (v1 < v2) return -1 * sortDir;
+            if (v1 > v2) return 1 * sortDir;
+            return 0;
+        });
+        rows.forEach(row => tbody.appendChild(row));
+    }
+
+    function renumberRows() {
+        const tbody = table.tBodies[0];
+        Array.from(tbody.rows).forEach((row, i) => {
+            row.cells[0].innerText = (i + 1) + '.';
+        });
+    }
+
+    function updateIndicators() {
+        headers.forEach((th, i) => {
+            let ind = th.querySelector('.sort-indicator');
+            const colIdx = i + 1;
+            if (!ind) {
+                ind = document.createElement('span');
+                ind.className = 'sort-indicator';
+                th.appendChild(ind);
+            }
+            ind.textContent = (colIdx === sortCol) ? (sortDir === 1 ? '▲' : '▼') : '';
+        });
+    }
+});
+</script>
     <thead>
         <tr>
             <th style="width:3.5em;max-width:4ch;text-align:right;">#</th>
-            <th><?= $this->t('Benutzer') ?></th>
-            <th><?= $this->t('E-Mail') ?></th>
-            <th style="width:155px; white-space:nowrap;"><?= $this->t('Datum') ?></th>
-            <th><?= $this->t('Kontostand') ?></th>
-            <th><?= $this->t('Umsatz') ?></th>
+            <th class="sortable" data-sort="string"><?= $this->t('Benutzer') ?></th>
+            <th class="sortable" data-sort="string"><?= $this->t('E-Mail') ?></th>
+            <th class="sortable" style="width:155px; white-space:nowrap;" data-sort="date"><?= $this->t('Datum') ?></th>
+            <th class="sortable" data-sort="number"><?= $this->t('Kontostand') ?></th>
+            <th class="sortable" data-sort="number"><?= $this->t('Umsatz') ?></th>
         </tr>
     </thead>
     <tbody>
-    <?php $rank = 1; foreach ($this->users as $user): ?>
+    <?php $rownum = 1; foreach ($this->users as $user): ?>
         <tr>
-            <td style="font-weight:bold; color:#888; text-align:right;"> <?= $rank++ ?>. </td>
+            <td style="font-weight:bold; color:#888; text-align:right;"> <?= $rownum++ ?>. </td>
             <td>
                 <?php if (!empty($user['uid'])): ?>
                     <a href="<?= $this->url('user/deposits') . '?uid=' . urlencode($user['uid']) ?>"
@@ -66,7 +152,7 @@ $this->setup([
             <td>
                 <?= $this->escapeHtml($user['email']) ?>
             </td>
-            <td>
+            <td<?php if (!empty($user['last_activity'])): ?> data-date="<?= date('Y-m-d H:i:s', strtotime($user['last_activity'])) ?>"<?php endif; ?>>
                 <?php if (!empty($user['last_activity'])): ?>
                     <span style="white-space:nowrap;">
                         <?= str_replace(' ', '&nbsp;', $this->escapeHtml(date('d.m.Y H:i', strtotime($user['last_activity'])))) ?>
