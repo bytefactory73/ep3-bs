@@ -44,10 +44,15 @@ class AccountController extends AbstractActionController
             }
             $orders = iterator_to_array($drinkOrderManager->getByUser($uid));
             $lastOrder = null;
+            $ordersTotal = 0.0;
             foreach ($orders as $o) {
                 if (empty($o['deleted'])) {
                     if (!$lastOrder || (isset($o['order_time']) && $o['order_time'] > $lastOrder)) {
                         $lastOrder = $o['order_time'];
+                    }
+                    if (isset($o['price'])) {
+                        $qty = isset($o['quantity']) ? (float)$o['quantity'] : 1;
+                        $ordersTotal += ((float)$o['price']) * $qty;
                     }
                 }
             }
@@ -69,6 +74,7 @@ class AccountController extends AbstractActionController
                     'email' => $u->get('email'),
                     'balance' => $balance,
                     'last_activity' => $lastActivity,
+                    'orders_total' => $ordersTotal,
                 ];
             }
         }
@@ -1488,7 +1494,7 @@ class AccountController extends AbstractActionController
             $groupSql = 'YEAR(order_time)';
             $labelFormat = 'Y';
         }
-        $sql = 'SELECT ' . $groupSql . ' as grp, user_id, drink_id, SUM(quantity) as quantity, MIN(order_time) as min_time
+        $sql = 'SELECT ' . $groupSql . ' as grp, user_id, drink_id, SUM(quantity) as quantity, MIN(order_time) as min_time, SUM(quantity * price) as total_amount
                 FROM drink_orders
                 WHERE deleted = 0';
         $params = [];
@@ -1528,7 +1534,7 @@ class AccountController extends AbstractActionController
             $uid = $row['user_id'];
             $did = $row['drink_id'];
             $count = (int)$row['quantity'];
-            $amount = $count * ($drinkPriceMap[$did] ?? 0);
+            $amount = isset($row['total_amount']) ? (float)$row['total_amount'] : 0;
             $orderMap[$grp][$uid][$did] = [
                 'count' => $count > 0 ? $count : '',
                 'amount' => $count > 0 ? number_format($amount, 2, ',', '.') : '',

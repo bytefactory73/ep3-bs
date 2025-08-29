@@ -26,8 +26,8 @@ $this->setup([
 <table class="table table-striped" style="margin-top:24px;">
 <style>
     .table th, .table td {
-        padding-left: 18px;
-        padding-right: 18px;
+        padding-left: 8px;
+        padding-right: 8px;
     }
     .table th {
         font-weight: bold;
@@ -36,24 +36,31 @@ $this->setup([
 </style>
     <thead>
         <tr>
+            <th style="width:3.5em;max-width:4ch;text-align:right;">#</th>
             <th><?= $this->t('Benutzer') ?></th>
             <th><?= $this->t('E-Mail') ?></th>
-            <th><?= $this->t('Datum') ?></th>
+            <th style="width:155px; white-space:nowrap;"><?= $this->t('Datum') ?></th>
             <th><?= $this->t('Kontostand') ?></th>
+            <th><?= $this->t('Umsatz') ?></th>
         </tr>
     </thead>
     <tbody>
-    <?php foreach ($this->users as $user): ?>
+    <?php $rank = 1; foreach ($this->users as $user): ?>
         <tr>
+            <td style="font-weight:bold; color:#888; text-align:right;"> <?= $rank++ ?>. </td>
             <td>
                 <?php if (!empty($user['uid'])): ?>
                     <a href="<?= $this->url('user/deposits') . '?uid=' . urlencode($user['uid']) ?>"
                        title="<?= $this->t('Zur Einzahlung für diesen Nutzer') ?>"
                        style="color:#1976d2; text-decoration:underline; font-weight:bold;">
-                        <?= $this->escapeHtml($user['alias'] ?: $user['name']) ?>
+                        <span style="white-space:nowrap;">
+                            <?= str_replace(' ', '&nbsp;', $this->escapeHtml($user['alias'] ?: $user['name'])) ?>
+                        </span>
                     </a>
                 <?php else: ?>
-                    <?= $this->escapeHtml($user['alias'] ?: $user['name']) ?>
+                    <span style="white-space:nowrap;">
+                        <?= str_replace(' ', '&nbsp;', $this->escapeHtml($user['alias'] ?: $user['name'])) ?>
+                    </span>
                 <?php endif; ?>
             </td>
             <td>
@@ -61,13 +68,22 @@ $this->setup([
             </td>
             <td>
                 <?php if (!empty($user['last_activity'])): ?>
-                    <?= $this->escapeHtml(date('d.m.Y H:i', strtotime($user['last_activity']))) ?>
+                    <span style="white-space:nowrap;">
+                        <?= str_replace(' ', '&nbsp;', $this->escapeHtml(date('d.m.Y H:i', strtotime($user['last_activity'])))) ?>
+                    </span>
                 <?php else: ?>
                     &ndash;
                 <?php endif; ?>
             </td>
             <td style="font-weight:bold; color:<?= $user['balance'] < 0 ? '#d32f2f' : '#388e3c' ?>;">
                 <?= number_format($user['balance'], 2, ',', '.') ?> €
+            </td>
+            <td style="font-weight:bold; color:#333; text-align:right;">
+                <?php if (isset($user['orders_total'])): ?>
+                    <?= number_format($user['orders_total'], 2, ',', '.') ?> €
+                <?php else: ?>
+                    &ndash;
+                <?php endif; ?>
             </td>
         </tr>
     <?php endforeach; ?>
