@@ -142,7 +142,7 @@ class AccountController extends AbstractActionController
                         $adminName = 'Administrator';
                     }
                     $body = 'Ihre Einzahlung am ' . $row['deposit_time'] . ' wurde von ' . htmlspecialchars($adminName) . ' ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>';
-                    $mailService->send($user, $subject, $body, ['isHtml' => true]);
+                    $mailService->sendFromTheke($user, $subject, $body, ['isHtml' => true]);
                 }
                 return $this->getResponse()->setContent(json_encode(['success' => true]));
             }
@@ -213,7 +213,7 @@ class AccountController extends AbstractActionController
                             $adminName = 'Administrator';
                         }
                         $body = 'Ihre Getränkebuchung (' . $label . ') am ' . $row['order_time'] . ' wurde von ' . htmlspecialchars($adminName) . ' ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>';
-                        $mailService->send($user, $subject, $body, ['isHtml' => true]);
+                        $mailService->sendFromTheke($user, $subject, $body, ['isHtml' => true]);
                     }
                 }
                 return $this->getResponse()->setContent(json_encode(['success' => true]));
@@ -334,7 +334,7 @@ class AccountController extends AbstractActionController
                         $body .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func([$this, 't'], 'Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das Paypal-Konto "kneipe@stc-butzbach.de" oder wirf Geld in den weißen Briefkasten ein.') . '</span>';
                     }
                     $mailService = $serviceManager->get('User\Service\MailService');
-                    $mailService->send($user, $subject, $body, ['isHtml' => true]);
+                    $mailService->sendFromTheke($user, $subject, $body, ['isHtml' => true]);
                 }
             } catch (\Exception $e) {
                 return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => $e->getMessage()]));
@@ -1344,7 +1344,7 @@ class AccountController extends AbstractActionController
                             '<li><strong>Neuer Kontostand:</strong> ' . number_format($balance, 2, ',', '.') . ' €</li>' .
                             '</ul>' .
                             '<p>Viele Grüße<br>Dein Theken-Team</p>';
-                        $mailService->send($empfaenger, $subject, $body, ['isHtml' => true]);
+                        $mailService->sendFromTheke($empfaenger, $subject, $body, ['isHtml' => true]);
                     } catch (\Exception $e) {
                         error_log('Fehler beim Senden der Einzahlungsbenachrichtigung: ' . $e->getMessage());
                     }

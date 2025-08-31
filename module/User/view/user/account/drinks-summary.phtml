@@ -367,19 +367,19 @@ $this->setup([
                                 break;
                             }
                         }
-                                if (!$hasOrder) continue;
-                                // Add week day for day grouping
-                                $dateLabel = $date;
-                                if ($this->group === 'date') {
-                                    $dt = DateTime::createFromFormat('Y-m-d', substr($date, 0, 10));
-                                    if ($dt) {
-                                        $weekdays = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
-                                        $dateLabel .= ' (' . $weekdays[(int)$dt->format('w')] . ')';
-                                    }
-                                }
-                                echo '<tr style="border-bottom: 1px solid #eee;">';
-                                echo '<td class="date-col" style="border-right: 1px solid #eee; padding: 2px 2px;">' . $this->escapeHtml($dateLabel) . '</td>';
-                                echo '<td class="user-col" style="border-right: 1.5px solid #555; padding: 2px 2px;">' . $this->escapeHtml($user->get('alias')) . '</td>';
+                        if (!$hasOrder) continue;
+                        // Add week day for day grouping
+                        $dateLabel = $date;
+                        if ($this->group === 'date') {
+                            $dt = DateTime::createFromFormat('Y-m-d', substr($date, 0, 10));
+                            if ($dt) {
+                                $weekdays = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+                                $dateLabel .= ' (' . $weekdays[(int)$dt->format('w')] . ')';
+                            }
+                        }
+                        echo '<tr style="border-bottom: 1px solid #eee;">';
+                        echo '<td class="date-col" style="border-right: 1px solid #eee; padding: 2px 2px;">' . $this->escapeHtml($dateLabel) . '</td>';
+                        echo '<td class="user-col" style="border-right: 1.5px solid #555; padding: 2px 2px;">' . $this->escapeHtml($user->get('alias')) . '</td>';
                         foreach ($activeDrinks as $drink) {
                             $did = $drink['id'];
                             $cell = isset($userOrders[$uid][$did]) ? $userOrders[$uid][$did] : ['count' => '', 'amount' => ''];

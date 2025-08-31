@@ -109,7 +109,7 @@ class DrinkManager
                 $text .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func($tCallback, 'Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das Paypal-Konto "kneipe@stc-butzbach.de" oder wirf Geld in den weißen Briefkasten ein.') . '</span>';
             }
             $userMailService = $serviceManager->get('User\Service\MailService');
-            $userMailService->send($user, $subject, $text, ['isHtml' => true]);
+            $userMailService->sendFromTheke($user, $subject, $text, ['isHtml' => true]);
             return true;
         }
         return false;
@@ -185,7 +185,7 @@ class DrinkManager
                     $text .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func($tCallback, 'Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das Paypal-Konto "kneipe@stc-butzbach.de" oder wirf Geld in den weißen Briefkasten ein.') . '</span>';
                 }
                 $userMailService = $serviceManager->get('User\Service\MailService');
-                $userMailService->send($user, $subject, $text, ['isHtml' => true]);
+                $userMailService->sendFromTheke($user, $subject, $text, ['isHtml' => true]);
             }
             return ['success' => true, 'balance' => $balance, 'error' => null];
         }
@@ -285,7 +285,7 @@ class DrinkManager
         $subject = $tCallback('Deine Getränkebestellungen (Zusammenfassung)');
 
         $mailService = $serviceManager->get('User\Service\MailService');
-        $mailService->send($user, $subject, $text, ['isHtml' => true]);
+        $mailService->sendFromTheke($user, $subject, $text, ['isHtml' => true]);
         return true;
     }
 }
