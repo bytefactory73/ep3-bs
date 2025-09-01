@@ -21,12 +21,9 @@ class MailService extends AbstractService
         $this->configManager = $configManager;
         $this->optionManager = $optionManager;
     }
-  
-    public function sendTo($fromAddress, $fromName, User $recipient, $subject, $text, $optionsOrAttachments = array())
-    {
-        $replyToAddress = $this->optionManager->need('client.contact.email');
-        $replyToName = $this->optionManager->need('client.name.full');
 
+    public function sendTo($fromAddress, $fromName, $replyToAddress, $replyToName, User $recipient, $subject, $text, $optionsOrAttachments = array())
+    {
         $toAddress = $recipient->need('email');
         $toName = $recipient->need('alias');
 
@@ -57,13 +54,17 @@ class MailService extends AbstractService
     {
         $fromAddress = "theke@stc-butzbach.de";
         $fromName = "STC-Butzbach-Theke";
-        return $this->sendTo($fromAddress, $fromName, $recipient, $subject, $text, $optionsOrAttachments);
+        $replyToAddress = "theke@stc-butzbach.de";
+        $replyToName = "STC-Butzbach-Theke";
+        return $this->sendTo($fromAddress, $fromName, $replyToAddress, $replyToName, $recipient, $subject, $text, $optionsOrAttachments);
     }
 
     public function send(User $recipient, $subject, $text, $optionsOrAttachments = array())
     {
         $fromAddress = $this->configManager->need('mail.address');
         $fromName = $this->optionManager->need('client.name.short') . ' ' . $this->optionManager->need('service.name.full');
-        return $this->sendTo($fromAddress, $fromName, $recipient, $subject, $text, $optionsOrAttachments);
+        $replyToAddress = $this->optionManager->need('client.contact.email');
+        $replyToName = $this->optionManager->need('client.name.full');
+        return $this->sendTo($fromAddress, $fromName, $replyToAddress, $replyToName, $recipient, $subject, $text, $optionsOrAttachments);
     }
 }
