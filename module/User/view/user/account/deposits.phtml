@@ -337,6 +337,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 updateUserInfo();
                 drinkRowsContainer.innerHTML = '';
                 ensureAtLeastOneRow();
+                var globalCommentInput = document.getElementById('multi-drink-comment');
+                if (globalCommentInput) globalCommentInput.value = '';
             }
         } catch (e) {
             alert('<?= $this->t('Netzwerkfehler beim Buchen der Getränke.') ?>');
