@@ -7,24 +7,54 @@ $this->setup([
 ]);
 ?>
 
+<?php $simpleMode = !empty($this->simpleOrderMode); ?>
+<?php if ($simpleMode) $this->placeholder('hideHeader')->set(true); ?>
 <div style="max-width: none; margin: 0; background: #fff; color: #222; font-size: 15px; font-family: 'Segoe UI', 'Arial', sans-serif;">
 
 <style>
+    <?php if (!empty($this->simpleOrderMode)): ?>
+    .drinks-summary-table {
+        border: none !important;
+    }
+    <?php endif; ?>
     .rotated-header {
-        min-width: 40px;
-        max-width: 80px;
-        padding: 0 6px 6px 6px !important;
+        width: 32px;
+        min-width: 32px;
+        max-width: 32px;
+        padding: 0 !important;
         font-size: 14px;
         color: #222;
         background: #fff;
         box-sizing: border-box;
-        text-align: left;
+        text-align: center;
         vertical-align: bottom;
-        white-space: normal;
+        white-space: nowrap;
         word-break: break-word;
+        height: 200px;
+        overflow: visible;
+    }
+    .rotated-header-inner {
+        width: 32px;
+        height: 200px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: clip;
+    }
+    .rotated-header-inner span {
+        display: inline-block;
+        transform: rotate(-90deg);
+        transform-origin: center center;
+        font-size: 14px;
+        line-height: 1.1;
+        white-space: nowrap;
+        text-align: center;
+        max-width: 200px;
+        margin: 0;
+        left: 0;
     }
     .drinks-summary-table th {
-        height: 120px;
+        height: 200px;
         vertical-align: bottom;
         overflow: hidden;
         color: #222;
@@ -74,60 +104,57 @@ $this->setup([
     }
 </style>
 <div style="max-width: none; margin: 0; background: #fff;">
-    <h1><?= $this->t('Gesamtauswertung') ?></h1>
-    <div class="separator-small"></div>
-    <p><?= $this->t('Hier sehen Sie eine Gesamtauswertung aller Getränkeumsätze.') ?></p>
-    <div class="separator separator-line"></div>
     <div class="padded">
         <form id="drinks-summary-form" method="get" style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-            <span style="white-space:nowrap;display:inline-flex;align-items:center;">
-                <label style="font-weight: bold; margin-right: 8px;">Ansicht:</label>
-                <select id="drinks-summary-mode" name="mode" onchange="setSummaryMode(this.value)" style="padding: 4px 8px; margin-right: 16px;">
-                    <option value="count"<?= ($this->mode === 'count' ? ' selected' : '') ?>><?= $this->t('Anzahl') ?></option>
-                    <option value="amount"<?= ($this->mode === 'amount' ? ' selected' : '') ?>><?= $this->t('Betrag (€)') ?></option>
-                </select>
-            </span>
-            <span style="white-space:nowrap;display:inline-flex;align-items:center;">
-                <label for="quick-range" style="font-weight: bold; margin-right: 4px;">Zeitraum:</label>
-                <select id="quick-range" style="padding: 4px 8px; margin-right: 8px;">
-                    <option value="">-- <?= $this->t('Auswählen') ?> --</option>
-                    <option value="cw"><?= $this->t('Aktuelle Woche') ?></option>
-                    <option value="lw"><?= $this->t('Letzte Woche') ?></option>
-                    <option value="cm"><?= $this->t('Aktueller Monat') ?></option>
-                    <option value="lm"><?= $this->t('Letzter Monat') ?></option>
-                    <option value="cy"><?= $this->t('Dieses Jahr') ?></option>
-                    <option value="ly"><?= $this->t('Letztes Jahr') ?></option>
-                </select>
-            </span>
-            <span style="white-space:nowrap;display:inline-flex;align-items:center;">
-                <label for="from-date" style="font-weight: bold; margin-right: 4px;">Von:</label>
-                <input type="date" id="from-date" name="from" value="<?= $this->escapeHtmlAttr($this->from ?? '') ?>" style="padding: 3px 6px; margin-right: 8px;">
-            </span>
-            <span style="white-space:nowrap;display:inline-flex;align-items:center;">
-                <label for="to-date" style="font-weight: bold; margin-right: 4px;">Bis:</label>
-                <input type="date" id="to-date" name="to" value="<?= $this->escapeHtmlAttr($this->to ?? '') ?>" style="padding: 3px 6px; margin-right: 8px;">
-            </span>
-            <span style="white-space:nowrap;display:inline-flex;align-items:center;">
-                <label for="show-users" style="font-weight: bold; margin-right: 4px;">Benutzer anzeigen:</label>
-                <input type="hidden" name="show_users" value="0">
-                <input type="checkbox" id="show-users" name="show_users" value="1"<?= ($this->show_users === '1' ? ' checked' : '') ?> style="margin-right: 12px;">
-            </span>
-            <span style="white-space:nowrap;display:inline-flex;align-items:center;">
-                <label for="show-users" style="font-weight: bold; margin-right: 4px;">Leere Spalten anzeigen:</label>
-                <input type="hidden" name="show_emptycols" value="0">
-                <input type="checkbox" id="show-emptycols" name="show_emptycols" value="1"<?= ($this->show_emptycols === '1' ? ' checked' : '') ?> style="margin-right: 12px;">
-            </span>
-            <span style="white-space:nowrap;display:inline-flex;align-items:center;">
-                <label for="group-by" style="font-weight: bold; margin-right: 4px;">Gruppieren nach:</label>
-                <select id="group-by" name="group" style="padding: 4px 8px; margin-right: 8px;">
-                    <option value="date"<?= ($this->group === 'date' ? ' selected' : '') ?>><?= $this->t('Tag') ?></option>
-                    <option value="week"<?= ($this->group === 'week' ? ' selected' : '') ?>><?= $this->t('Woche') ?></option>
-                    <option value="month"<?= ($this->group === 'month' ? ' selected' : '') ?>><?= $this->t('Monat') ?></option>
-                    <option value="year"<?= ($this->group === 'year' ? ' selected' : '') ?>><?= $this->t('Jahr') ?></option>
-                    <option value="weekday"<?= ($this->group === 'weekday' ? ' selected' : '') ?>><?= $this->t('Wochentag') ?></option>
-                </select>
-            </span>
+        <span style="white-space:nowrap;display:inline-flex;align-items:center;">
+            <label style="font-weight: bold; margin-right: 8px;">Ansicht:</label>
+            <select id="drinks-summary-mode" name="mode" onchange="setSummaryMode(this.value)" style="padding: 4px 8px; margin-right: 16px;">
+                <option value="count"<?= ($this->mode === 'count' ? ' selected' : '') ?>><?= $this->t('Anzahl') ?></option>
+                <option value="amount"<?= ($this->mode === 'amount' ? ' selected' : '') ?>><?= $this->t('Betrag (€)') ?></option>
+            </select>
+        </span>
+        <span style="white-space:nowrap;display:inline-flex;align-items:center;">
+            <label for="quick-range" style="font-weight: bold; margin-right: 4px;">Zeitraum:</label>
+            <select id="quick-range" style="padding: 4px 8px; margin-right: 8px;">
+                <option value="">-- <?= $this->t('Auswählen') ?> --</option>
+                <option value="cw"><?= $this->t('Aktuelle Woche') ?></option>
+                <option value="lw"><?= $this->t('Letzte Woche') ?></option>
+                <option value="cm"><?= $this->t('Aktueller Monat') ?></option>
+                <option value="lm"><?= $this->t('Letzter Monat') ?></option>
+                <option value="cy"><?= $this->t('Dieses Jahr') ?></option>
+                <option value="ly"><?= $this->t('Letztes Jahr') ?></option>
+            </select>
+        </span>
+        <span style="white-space:nowrap;display:inline-flex;align-items:center;">
+            <label for="from-date" style="font-weight: bold; margin-right: 4px;">Von:</label>
+            <input type="date" id="from-date" name="from" value="<?= $this->escapeHtmlAttr($this->from ?? '') ?>" style="padding: 3px 6px; margin-right: 8px;">
+        </span>
+        <span style="white-space:nowrap;display:inline-flex;align-items:center;">
+            <label for="to-date" style="font-weight: bold; margin-right: 4px;">Bis:</label>
+            <input type="date" id="to-date" name="to" value="<?= $this->escapeHtmlAttr($this->to ?? '') ?>" style="padding: 3px 6px; margin-right: 8px;">
+        </span>
+        <span style="white-space:nowrap;display:inline-flex;align-items:center;">
+            <label for="show-users" style="font-weight: bold; margin-right: 4px;">Benutzer anzeigen:</label>
+            <input type="hidden" name="show_users" value="0">
+            <input type="checkbox" id="show-users" name="show_users" value="1"<?= ($this->show_users === '1' ? ' checked' : '') ?> style="margin-right: 12px;">
+        </span>
+        <span style="white-space:nowrap;display:inline-flex;align-items:center;">
+            <label for="show-users" style="font-weight: bold; margin-right: 4px;">Leere Spalten anzeigen:</label>
+            <input type="hidden" name="show_emptycols" value="0">
+            <input type="checkbox" id="show-emptycols" name="show_emptycols" value="1"<?= ($this->show_emptycols === '1' ? ' checked' : '') ?> style="margin-right: 12px;">
+        </span>
+        <span style="white-space:nowrap;display:inline-flex;align-items:center;">
+            <label for="group-by" style="font-weight: bold; margin-right: 4px;">Gruppieren nach:</label>
+            <select id="group-by" name="group" style="padding: 4px 8px; margin-right: 8px;">
+                <option value="date"<?= ($this->group === 'date' ? ' selected' : '') ?>><?= $this->t('Tag') ?></option>
+                <option value="week"<?= ($this->group === 'week' ? ' selected' : '') ?>><?= $this->t('Woche') ?></option>
+                <option value="month"<?= ($this->group === 'month' ? ' selected' : '') ?>><?= $this->t('Monat') ?></option>
+                <option value="year"<?= ($this->group === 'year' ? ' selected' : '') ?>><?= $this->t('Jahr') ?></option>
+                <option value="weekday"<?= ($this->group === 'weekday' ? ' selected' : '') ?>><?= $this->t('Wochentag') ?></option>
+            </select>
+        </span>
         </form>
+    <div class="padded">
         <script>
         function getMonday(d) {
             d = new Date(d);
@@ -231,7 +258,7 @@ $this->setup([
             });
         }
         ?>
-        <table class="default-table middle-table drinks-summary-table" style="border-collapse: collapse; width: 100%; border: 2px solid #555;">
+        <table class="default-table middle-table drinks-summary-table" style="border-collapse: collapse; width: 100%;<?php if (!empty($this->simpleOrderMode)) echo ' border: none;'; else echo ' border: 2px solid #555;'; ?>">
             <thead>
                 <tr style="border-bottom: 2px solid #bbb; background: #f8f8f8;">
                     <th class="date-col" style="border-right: 1px solid #ccc; border-bottom: 2px solid #bbb; padding: 3px 2px; height: 120px; vertical-align: bottom;"> <?= $this->t('Datum') ?> </th>
@@ -239,7 +266,7 @@ $this->setup([
                     <th class="user-col" style="border-right: 1px solid #ccc; border-bottom: 2px solid #bbb; padding: 3px 2px; height: 120px; vertical-align: bottom;"> <?= $this->t('Benutzer') ?> </th>
                     <?php endif; ?>
                     <?php foreach ($activeDrinks as $drink): ?>
-                        <th class="rotated-header" style="border-right: 1px solid #ccc; border-bottom: 2px solid #bbb; height: 140px; vertical-align: bottom; overflow: visible;">
+                        <th class="rotated-header" style="border-right: 1px solid #ccc; border-bottom: 2px solid #bbb; vertical-align: bottom; overflow: visible;">
                             <div class="rotated-header-inner">
                                 <span><?= $this->escapeHtml($drink['name']) ?></span>
                             </div>

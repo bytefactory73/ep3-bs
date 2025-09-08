@@ -57,6 +57,18 @@ $drinksEnabled = isset($this->drinksEnabled) ? (bool)$this->drinksEnabled : true
                             </svg>
                             <span class="sr-only" style="position:absolute;left:-9999px;"> <?= $this->t('Scan Barcode') ?> </span>
                         </button>
+                <?php if (!empty($this->thekenadmin)) : ?>
+                        <button id="drinks-summary-btn" type="button" class="default-button" title="<?= $this->t('Gesamtauswertung') ?>" style="font-size: 1.1em; font-weight: bold; background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; padding: 4px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 0; width: 52px; height: 44px; justify-content: center;" onclick="event.preventDefault(); openDrinksSummaryModal();">
+                            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <rect x="6" y="8" width="20" height="16" rx="4" fill="#f7fbff" stroke="#2196f3" stroke-width="2"/>
+                                <line x1="6" y1="14.67" x2="26" y2="14.67" stroke="#2196f3" stroke-width="1.5"/>
+                                <line x1="6" y1="21.33" x2="26" y2="21.33" stroke="#2196f3" stroke-width="1.5"/>
+                                <line x1="12" y1="8" x2="12" y2="24" stroke="#2196f3" stroke-width="1.5"/>
+                                <line x1="20" y1="8" x2="20" y2="24" stroke="#2196f3" stroke-width="1.5"/>
+                            </svg>
+                            <span class="sr-only" style="position:absolute;left:-9999px;"> <?= $this->t('Gesamtauswertung') ?> </span>
+                        </button>
+                <?php endif; ?>
                         <button type="submit" form="drink-order-form" name="drink_order_submit" value="1" class="default-button stc-main-button" style="background: #2196f3; color: #fff; border: 1px solid #2196f3; border-radius: 6px; padding: 4px 14px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 1em; height: 44px; justify-content: center; font-weight: bold;">
                             <span id="drink-order-total" style="color: #fff; background: transparent; border-radius: 3px; font-size: clamp(0.5em, 5vw, 2.0em); min-width: 8em; display: inline-block; text-align: center; transition: background 0.2s, color 0.2s;"></span>
                         </button>
@@ -1445,6 +1457,7 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
                     $tmpDateTimeEnd = new DateTime($reservation->need('date') . ' ' . $reservation->need('time_end'));
 
                     if (is_null($bookingDateTimeStart) || $tmpDateTimeStart < $bookingDateTimeStart) {
+
                         $bookingDateTimeStart = $tmpDateTimeStart;
                     }
 

@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS drink_aliases (
     user_id INT UNSIGNED NOT NULL PRIMARY KEY,
     alias VARCHAR(50) UNIQUE DEFAULT '',
     enabled TINYINT(1) DEFAULT 0,
+    thekenadmin TINYINT(1) DEFAULT 0,
     order_email_option VARCHAR(20) DEFAULT 'order',
 -- To update existing databases, run:
 -- ALTER TABLE drink_aliases MODIFY order_email_option VARCHAR(20) DEFAULT 'order';

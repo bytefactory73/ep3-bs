@@ -17,45 +17,46 @@
     </head>
 
     <body>
-        <div id="header" class="no-wrap no-print" <?= $this->headerAttributes() ?>>
-            <div id="label">
-                <a href="<?= $this->basePath('/') ?>" id="logo"></a>
-
-                <div id="label-client"><?= $this->option('client.name.full') ?></div>
-                <div id="label-service"><?= $this->option('service.name.full') ?></div>
-
-                <style type="text/css"> #label-client { margin-top: 15px; } </style>
-            </div>
-
-            <div id="topbar">
-                <?= $this->headerLocaleChoice() ?>
-
-                <div id="topbar-website" class="responsive-pass-2">
-                    <p>
-                        <span class="light-gray"><?= $this->t('Our website') ?></span><br>
-                        <span class="large-text">
-                            <a href="<?= $this->option('client.website') ?>" target="_blank" class="unlined white">
-                                <?= $this->shortUrl($this->option('client.website')) ?>
-                            </a>
-                        </span>
-                    </p>
-                </div>
-
-                <div id="topbar-separator" class="responsive-pass-4"></div>
-            </div>
+    <?php if (!$this->placeholder('hideHeader')->getValue()): ?>
+    <div id="header" class="no-wrap no-print" <?= $this->headerAttributes() ?> >
+        <div id="label">
+            <a href="<?= $this->basePath('/') ?>" id="logo"></a>
+            <div id="label-client"><?= $this->option('client.name.full') ?></div>
+            <div id="label-service"><?= $this->option('service.name.full') ?></div>
+            <style type="text/css"> #label-client { margin-top: 15px; } </style>
         </div>
+        <div id="topbar">
+            <?= $this->headerLocaleChoice() ?>
+            <div id="topbar-website" class="responsive-pass-2">
+                <p>
+                    <span class="light-gray"><?= $this->t('Our website') ?></span><br>
+                    <span class="large-text">
+                        <a href="<?= $this->option('client.website') ?>" target="_blank" class="unlined white">
+                            <?= $this->shortUrl($this->option('client.website')) ?>
+                        </a>
+                    </span>
+                </p>
+            </div>
+            <div id="topbar-separator" class="responsive-pass-4"></div>
+        </div>
+    </div>
+    <?php else: ?>
+    <style>#content { padding: 0 !important; }</style>
+    <?php endif; ?>
 
+    <?php if (!$this->placeholder('hideHeader')->getValue()): ?>
         <div id="content">
             <?= $this->messages() ?>
-
             <?= $this->tabs() ?>
-
             <div class="content-panel <?= $this->placeholder('panel') ?>">
                 <?= $this->content ?>
             </div>
-
             <?= $this->links() ?>
         </div>
+    <?php else: ?>
+        <style>#content { padding: 0 !important; }</style>
+        <?= $this->content ?>
+    <?php endif; ?>
 
         <div id="footer">
             <div class="centered-text">

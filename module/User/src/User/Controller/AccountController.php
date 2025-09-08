@@ -409,6 +409,10 @@ class AccountController extends AbstractActionController
                     $fields[] = 'alias = ?';
                     $params[] = $drinksAlias;
                 }
+                if (isset($thekenadmin)) {
+                    $fields[] = 'thekenadmin = ?';
+                    $params[] = $thekenadmin ? 1 : 0;
+                }
                 if (!empty($fields)) {
                     $params[] = $uid;
                     // Build upsert query for drink_aliases
@@ -425,18 +429,24 @@ class AccountController extends AbstractActionController
                         $values[] = $drinksAlias;
                         $updates[] = 'alias = VALUES(alias)';
                     }
+                    if (isset($thekenadmin)) {
+                        $columns[] = 'thekenadmin';
+                        $values[] = $thekenadmin ? 1 : 0;
+                        $updates[] = 'thekenadmin = VALUES(thekenadmin)';
+                    }
                     $columns = array_merge(['user_id'], $columns);
                     $values = array_merge([$uid], $values);
                     $sql = 'INSERT INTO drink_aliases (' . implode(', ', $columns) . ') VALUES (' . rtrim(str_repeat('?, ', count($columns)), ', ') . ') ON DUPLICATE KEY UPDATE ' . implode(', ', $updates);
                     $dbAdapter->query($sql, $values);
                 }
             } else {
-                // Insert: require both fields
-                if ($drinksAlias === null && $drinksEnabled === null) {
-                    return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'Alias and enabled required for new entry']));
+                // Insert: require all fields
+                if ($drinksAlias === null && $drinksEnabled === null && !isset($thekenadmin)) {
+                    return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'Alias, enabled, and thekenadmin required for new entry']));
                 }
                 $enabledVal = ($drinksEnabled === '1' || $drinksEnabled === 1 || $drinksEnabled === true || $drinksEnabled === 'true') ? 1 : 0;
-                $dbAdapter->query('INSERT INTO drink_aliases (user_id, alias, enabled) VALUES (?, ?, ?)', [$uid, $drinksAlias, $enabledVal]);
+                $thekenadminVal = isset($thekenadmin) ? ($thekenadmin ? 1 : 0) : 0;
+                $dbAdapter->query('INSERT INTO drink_aliases (user_id, alias, enabled, thekenadmin) VALUES (?, ?, ?, ?)', [$uid, $drinksAlias, $enabledVal, $thekenadminVal]);
             }
         } catch (\Exception $e) {
             return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['error' => 'DB error', 'details' => $e->getMessage()]));
@@ -811,7 +821,8 @@ class AccountController extends AbstractActionController
         $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
         $userId = $user->need('uid');
         $aliasRow = $dbAdapter->query('SELECT enabled FROM drink_aliases WHERE user_id = ?', [$userId])->current();
-        $drinksEnabled = ($aliasRow && isset($aliasRow['enabled']) && (int)$aliasRow['enabled'] === 1);
+   			$drinksEnabled = ($aliasRow && isset($aliasRow['enabled']) && (int)$aliasRow['enabled'] === 1);
+    		$thekenadmin = ($aliasRow && isset($aliasRow['thekenadmin']) && (int)$aliasRow['thekenadmin'] === 1);
         // Merge and sort by date descending
         $drinkHistory = [];
         foreach ($drinkOrders as $order) {
@@ -1384,8 +1395,9 @@ class AccountController extends AbstractActionController
         }
         // Query drinks_enabled and alias from drink_aliases
         $drinksAliasRow = $dbAdapter->query('SELECT enabled, alias FROM drink_aliases WHERE user_id = ?', [$uid])->current();
-        $drinksEnabled = $drinksAliasRow ? (bool)$drinksAliasRow['enabled'] : false;
-        $drinksAlias = $drinksAliasRow ? $drinksAliasRow['alias'] : null;
+		    $drinksEnabled = $drinksAliasRow ? (bool)$drinksAliasRow['enabled'] : false;
+		    $drinksAlias = $drinksAliasRow ? $drinksAliasRow['alias'] : null;
+		    $thekenadmin = $drinksAliasRow ? (bool)$drinksAliasRow['thekenadmin'] : false;
 
         // Check if showStorno is requested (from query param)
         $showStorno = $this->params()->fromQuery('showStorno') === '1';
@@ -1466,8 +1478,25 @@ class AccountController extends AbstractActionController
         $serviceManager = @$this->getServiceLocator();
         $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
         $user = $userSessionManager->getSessionUser();
+        $isSimple = false;
+        $thekenadmin = false;
+        // Check for simple user session
+        $simpleSession = null;
         if (!$user || $user->get('status') !== 'admin') {
-            return $this->redirect()->toRoute('user/settings');
+            // Try to get simple user session
+            if (class_exists('Zend\Session\Container')) {
+                $simpleSession = new \Zend\Session\Container('SimpleLogin');
+                if (!empty($simpleSession->user_id)) {
+                    $isSimple = true;
+                    // Check thekenadmin flag for simple user
+                    $db = $serviceManager->get('Zend\Db\Adapter\Adapter');
+                    $row = $db->query('SELECT thekenadmin FROM drink_aliases WHERE user_id = ?', [$simpleSession->user_id])->current();
+                    $thekenadmin = ($row && !empty($row['thekenadmin'])) ? true : false;
+                }
+            }
+            if (!$isSimple || !$thekenadmin) {
+                return $this->redirect()->toRoute('user/settings');
+            }
         }
         $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
         $userManager = $serviceManager->get('User\Manager\UserManager');
@@ -1544,7 +1573,7 @@ class AccountController extends AbstractActionController
         $showUsers = $this->params()->fromQuery('show_users', '1');
         $showEmptyCols = $this->params()->fromQuery('show_emptycols', '0');
 
-        return [
+        $viewVars = [
             'drinks' => $drinks,
             'users' => $users,
             'orders' => $orderMap,
@@ -1555,5 +1584,9 @@ class AccountController extends AbstractActionController
             'show_emptycols' => $showEmptyCols,
             'group' => $group,
         ];
+        if ($isSimple && $thekenadmin) {
+            $viewVars['simpleOrderMode'] = true;
+        }
+        return $viewVars;
     }
 }
