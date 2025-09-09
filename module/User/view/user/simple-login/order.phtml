@@ -27,8 +27,12 @@
 </div>
 <script>
 function openDrinksSummaryModal() {
+    var now = new Date();
+    var fromDateObj = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
+    var fromDate = fromDateObj.toISOString().slice(0, 10);
+    var summaryUrl = './drinks-summary?from=' + encodeURIComponent(fromDate) + '&to=';
     document.getElementById('drinksSummaryModal').style.display = 'flex';
-    document.getElementById('drinksSummaryFrame').src = './drinks-summary';
+    document.getElementById('drinksSummaryFrame').src = summaryUrl;
     // Reset logout timer to 30 minutes if in simple order mode
     if (window.SIMPLE_ORDER_MODE && typeof localStorage !== 'undefined') {
         var deadlineKey = 'simpleOrderLogoutDeadline';
