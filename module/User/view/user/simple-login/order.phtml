@@ -29,6 +29,16 @@
 function openDrinksSummaryModal() {
     document.getElementById('drinksSummaryModal').style.display = 'flex';
     document.getElementById('drinksSummaryFrame').src = './drinks-summary';
+    // Reset logout timer to 30 minutes if in simple order mode
+    if (window.SIMPLE_ORDER_MODE && typeof localStorage !== 'undefined') {
+        var deadlineKey = 'simpleOrderLogoutDeadline';
+        var LOGOUT_DELAY = 30 * 60 * 1000; // 30 minutes
+        var deadline = Date.now() + LOGOUT_DELAY;
+        localStorage.setItem(deadlineKey, deadline);
+        if (typeof startLogoutTimer === 'function') {
+            startLogoutTimer();
+        }
+    }
 }
 function closeDrinksSummaryModal() {
     document.getElementById('drinksSummaryModal').style.display = 'none';
