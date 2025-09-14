@@ -309,6 +309,16 @@ return array(
                             ),
                         ),
                     ),
+                    'store-check-date' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/store-check-date',
+                            'defaults' => array(
+                                'controller' => 'User\Controller\Account',
+                                'action' => 'storeCheckDate',
+                            ),
+                        ),
+                    ),
                 ),
             ),
         ),

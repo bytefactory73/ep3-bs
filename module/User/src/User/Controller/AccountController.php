@@ -820,9 +820,9 @@ class AccountController extends AbstractActionController
         // Query drink_aliases for enabled flag
         $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
         $userId = $user->need('uid');
-        $aliasRow = $dbAdapter->query('SELECT enabled FROM drink_aliases WHERE user_id = ?', [$userId])->current();
-   			$drinksEnabled = ($aliasRow && isset($aliasRow['enabled']) && (int)$aliasRow['enabled'] === 1);
-    		$thekenadmin = ($aliasRow && isset($aliasRow['thekenadmin']) && (int)$aliasRow['thekenadmin'] === 1);
+        $aliasRow = $dbAdapter->query('SELECT enabled, thekenadmin FROM drink_aliases WHERE user_id = ?', [$userId])->current();
+        $drinksEnabled = ($aliasRow && isset($aliasRow['enabled']) && (int)$aliasRow['enabled'] === 1);
+        $thekenadmin = ($aliasRow && isset($aliasRow['thekenadmin']) && (int)$aliasRow['thekenadmin'] === 1);
         // Merge and sort by date descending
         $drinkHistory = [];
         foreach ($drinkOrders as $order) {
@@ -1394,10 +1394,10 @@ class AccountController extends AbstractActionController
             return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['error' => 'User not found']));
         }
         // Query drinks_enabled and alias from drink_aliases
-        $drinksAliasRow = $dbAdapter->query('SELECT enabled, alias FROM drink_aliases WHERE user_id = ?', [$uid])->current();
+        $drinksAliasRow = $dbAdapter->query('SELECT enabled, alias, thekenadmin FROM drink_aliases WHERE user_id = ?', [$uid])->current();
 		    $drinksEnabled = $drinksAliasRow ? (bool)$drinksAliasRow['enabled'] : false;
 		    $drinksAlias = $drinksAliasRow ? $drinksAliasRow['alias'] : null;
-		    $thekenadmin = $drinksAliasRow ? (bool)$drinksAliasRow['thekenadmin'] : false;
+		    $thekenadmin = ($drinksAliasRow && isset($drinksAliasRow['thekenadmin']) && (int)$drinksAliasRow['thekenadmin'] === 1);
 
         // Check if showStorno is requested (from query param)
         $showStorno = $this->params()->fromQuery('showStorno') === '1';
@@ -1491,7 +1491,7 @@ class AccountController extends AbstractActionController
                     // Check thekenadmin flag for simple user
                     $db = $serviceManager->get('Zend\Db\Adapter\Adapter');
                     $row = $db->query('SELECT thekenadmin FROM drink_aliases WHERE user_id = ?', [$simpleSession->user_id])->current();
-                    $thekenadmin = ($row && !empty($row['thekenadmin'])) ? true : false;
+                    $thekenadmin = ($row && isset($row['thekenadmin']) && (int)$row['thekenadmin'] === 1) ? true : false;
                 }
             }
             if (!$isSimple || !$thekenadmin) {
@@ -1504,11 +1504,73 @@ class AccountController extends AbstractActionController
         $drinks = iterator_to_array($drinkManager->getAll());
         $users = $userManager->getAll('alias ASC');
 
-        $group = $this->params()->fromQuery('group', 'date');
-        $from = $this->params()->fromQuery('from');
-        $to = $this->params()->fromQuery('to');
+    $group = $this->params()->fromQuery('group', 'date');
+    $quick = $this->params()->fromQuery('quick');
+    $from = $this->params()->fromQuery('from');
+    $to = $this->params()->fromQuery('to');
         $showUsers = $this->params()->fromQuery('show_users', '1');
         $showEmptyCols = $this->params()->fromQuery('show_emptycols', '0');
+
+        // Get last check date from options
+        $optionManager = $serviceManager->get('Base\Manager\OptionManager');
+        $lastCheckDate = $optionManager->get('theke.last.check.date');
+
+        // Normalize stored 'last check' date (may be in HTML5 datetime-local format with 'T')
+        $normalizeInputDt = function($dt) {
+            if (empty($dt)) return null;
+            $dt = str_replace('T', ' ', $dt);
+            // If only YYYY-MM-DD HH:MM add :00 seconds
+            if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/', $dt)) {
+                $dt .= ':00';
+            }
+            // If only date YYYY-MM-DD, expand to start of day
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dt)) {
+                $dt .= ' 00:00:00';
+            }
+            return $dt;
+        };
+
+        $lastCheckNormalized = $normalizeInputDt($lastCheckDate);
+
+        // Apply quick range logic if provided (server-side fallback when front-end redirect not executed)
+        if ($quick) {
+            $now = new \DateTime();
+            $todayStr = $now->format('Y-m-d');
+            // Helper clones
+            $start = null; $end = null;
+            if ($quick === 'sinceLastCheck') {
+                if (empty($from) && $lastCheckNormalized) {
+                    $from = $lastCheckNormalized; // open ended to now
+                }
+            } elseif ($quick === 'cw' || $quick === 'lw') { // current week / last week (Mon-Sun)
+                $monday = clone $now;
+                $dow = (int)$monday->format('N'); // 1=Mon
+                $monday->modify('-' . ($dow - 1) . ' days');
+                if ($quick === 'lw') $monday->modify('-7 days');
+                $sunday = clone $monday; $sunday->modify('+6 days');
+                if (empty($from)) $from = $monday->format('Y-m-d') . ' 00:00:00';
+                if (empty($to)) $to = $sunday->format('Y-m-d') . ' 23:59:59';
+            } elseif ($quick === 'cm' || $quick === 'lm') { // current month / last month
+                $year = (int)$now->format('Y');
+                $month = (int)$now->format('n');
+                if ($quick === 'lm') {
+                    $month -= 1; if ($month === 0) { $month = 12; $year -= 1; }
+                }
+                $first = new \DateTime(sprintf('%04d-%02d-01 00:00:00', $year, $month));
+                $last = clone $first; $last->modify('+1 month -1 second');
+                if (empty($from)) $from = $first->format('Y-m-d H:i:s');
+                if (empty($to)) $to = $last->format('Y-m-d H:i:s');
+            } elseif ($quick === 'cy' || $quick === 'ly') { // current year / last year
+                $year = (int)$now->format('Y');
+                if ($quick === 'ly') $year -= 1;
+                if (empty($from)) $from = sprintf('%04d-01-01 00:00:00', $year);
+                if (empty($to)) $to = sprintf('%04d-12-31 23:59:59', $year);
+            }
+        }
+
+        // Normalize incoming from/to after quick logic
+        $from = $normalizeInputDt($from);
+        $to = $normalizeInputDt($to);
 
         // Query all drink orders, grouped by date, user, drink
         $groupSql = 'DATE(order_time)';
@@ -1527,12 +1589,14 @@ class AccountController extends AbstractActionController
                 FROM drink_orders
                 WHERE deleted = 0';
         $params = [];
-        if ($from) {
-            $sql .= ' AND DATE(order_time) >= ?';
+    if ($from) {
+            // Treat $from as local time, no conversion
+            $sql .= ' AND order_time >= ?';
             $params[] = $from;
         }
-        if ($to) {
-            $sql .= ' AND DATE(order_time) <= ?';
+    if ($to) {
+            // Treat $to as local time, no conversion
+            $sql .= ' AND order_time <= ?';
             $params[] = $to;
         }
         $sql .= ' GROUP BY grp, user_id, drink_id
@@ -1580,13 +1644,37 @@ class AccountController extends AbstractActionController
             'mode' => $this->params()->fromQuery('mode', 'count'),
             'from' => $from,
             'to' => $to,
+            'quick' => $quick,
             'show_users' => $showUsers,
             'show_emptycols' => $showEmptyCols,
             'group' => $group,
+            'lastCheckDate' => $lastCheckDate,
         ];
         if ($isSimple && $thekenadmin) {
             $viewVars['simpleOrderMode'] = true;
         }
         return $viewVars;
+    }
+
+    /**
+     * AJAX: Store theke.last.check.date in bs_option
+     */
+    public function storeCheckDateAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $request = $this->getRequest();
+        if ($request->isPost()) {
+            $data = json_decode($request->getContent(), true);
+            $datetime = isset($data['datetime']) ? $data['datetime'] : null;
+            if ($datetime) {
+                // Store as local time string (no conversion)
+                $optionManager = $this->getServiceLocator()->get('Base\Manager\OptionManager');
+                $optionManager->set('theke.last.check.date', $datetime);
+                echo json_encode(['success' => true]);
+                return $this->getResponse();
+            }
+        }
+        echo json_encode(['success' => false]);
+        return $this->getResponse();
     }
 }

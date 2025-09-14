@@ -151,15 +151,225 @@ $this->setup([
                 <option value="lm"><?= $this->t('Letzter Monat') ?></option>
                 <option value="cy"><?= $this->t('Dieses Jahr') ?></option>
                 <option value="ly"><?= $this->t('Letztes Jahr') ?></option>
+                <option value="sinceLastCheck"><?= $this->t('Seit letzter Kontrolle') ?></option>
             </select>
         </span>
         <span style="white-space:nowrap;display:inline-flex;align-items:center;">
             <label for="from-date" style="font-weight: bold; margin-right: 4px;">Von:</label>
-            <input type="date" id="from-date" name="from" value="<?= $this->escapeHtmlAttr($this->from ?? '') ?>" style="padding: 3px 6px; margin-right: 8px;">
+            <input type="datetime-local" id="from-date" name="from" value="" style="padding: 3px 6px; margin-right: 8px;">
         </span>
         <span style="white-space:nowrap;display:inline-flex;align-items:center;">
             <label for="to-date" style="font-weight: bold; margin-right: 4px;">Bis:</label>
-            <input type="date" id="to-date" name="to" value="<?= $this->escapeHtmlAttr($this->to ?? '') ?>" style="padding: 3px 6px; margin-right: 8px;">
+            <input type="datetime-local" id="to-date" name="to" value="" style="padding: 3px 6px; margin-right: 8px;">
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Elements
+            var form = document.getElementById('drinks-summary-form');
+            var modeInput = document.getElementById('drinks-summary-mode');
+            var quickInput = document.getElementById('quick-range');
+            var fromInput = document.getElementById('from-date');
+            var toInput = document.getElementById('to-date');
+            var showUsersInput = document.getElementById('show-users');
+            var showEmptyColsInput = document.getElementById('show-emptycols');
+            var groupInput = document.getElementById('group-by');
+            var lastCheckDateRaw = '<?= !empty($this->lastCheckDate) ? $this->lastCheckDate : '' ?>';
+
+            function norm(str){
+                if(!str) return '';
+                var m=str.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/);
+                if(m) return m[1]+'T'+m[2];
+                var d=new Date(str);
+                if(!isNaN(d.getTime())) return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+                return str;
+            }
+            var lastCheckNorm = norm(lastCheckDateRaw);
+
+            function getLS(key){return localStorage.getItem('drinksSummary'+key);} 
+            function setLS(key,val){localStorage.setItem('drinksSummary'+key,val);} 
+            function delLS(key){localStorage.removeItem('drinksSummary'+key);} 
+
+            // 1. URL params override localStorage once
+            var urlParams={};
+            window.location.search.replace(/\??(?:([^=&]+)=([^&]*)&?)/g,function(_,k,v){urlParams[decodeURIComponent(k)]=decodeURIComponent(v);});
+
+            var usedUrl = Object.keys(urlParams).length>0;
+
+            function applyState(src){
+                if(modeInput && src.mode) modeInput.value=src.mode;
+                if(quickInput && src.quick) quickInput.value=src.quick;
+                if(fromInput && src.from) fromInput.value=src.from;
+                if(toInput && src.to) toInput.value=src.to;
+                if(showUsersInput && src.show_users) showUsersInput.checked = src.show_users==='1';
+                if(showEmptyColsInput && src.show_emptycols) showEmptyColsInput.checked = src.show_emptycols==='1';
+                if(groupInput && src.group) groupInput.value=src.group;
+            }
+
+            if(usedUrl){
+                applyState(urlParams);
+                // persist URL-provided state back to localStorage
+                ['mode','quick','from','to','show_users','show_emptycols','group'].forEach(function(k){ if(urlParams[k]!=null) setLS(k.charAt(0).toUpperCase()+k.slice(1).replace(/_/g,''), urlParams[k]); });
+                // Fallback: if some optional filters not provided in URL, pull from localStorage so UI reflects user prefs
+                var fallback = {};
+                if(!('show_users' in urlParams)) {
+                    var suLS = getLS('ShowUsers');
+                    if(suLS!==null && suLS!=='') fallback.show_users = suLS;
+                }
+                if(!('show_emptycols' in urlParams)) {
+                    var seLS = getLS('ShowEmptycols');
+                    if(seLS!==null && seLS!=='') fallback.show_emptycols = seLS;
+                }
+                if(!('group' in urlParams)) {
+                    var gLS = getLS('Group');
+                    if(gLS!==null && gLS!=='') fallback.group = gLS;
+                }
+                if(Object.keys(fallback).length){
+                    applyState(fallback);
+                    // ensure persisted (so a later redirect/buildQuery includes them)
+                    if(fallback.show_users!=null) setLS('ShowUsers', fallback.show_users);
+                    if(fallback.show_emptycols!=null) setLS('ShowEmptycols', fallback.show_emptycols);
+                    if(fallback.group!=null) setLS('Group', fallback.group);
+                }
+            } else {
+                // restore from localStorage (server does NOT see LS – so we may need a redirect with params)
+                applyState({
+                    mode:getLS('Mode'),
+                    quick:getLS('QuickRange'),
+                    from:getLS('From'),
+                    to:getLS('To'),
+                    show_users:getLS('ShowUsers'),
+                    show_emptycols:getLS('ShowEmptycols'),
+                    group:getLS('Group')
+                });
+                // If we have any meaningful restored state but no URL params, redirect once WITH params so PHP filtering matches UI/localStorage.
+                var needRedirect = (!window.location.search || window.location.search === '') && (
+                    (quickInput && quickInput.value) ||
+                    (fromInput && fromInput.value) ||
+                    (toInput && toInput.value) ||
+                    (showUsersInput && showUsersInput.checked) ||
+                    (showEmptyColsInput && showEmptyColsInput.checked) ||
+                    (groupInput && groupInput.value && groupInput.value !== 'date') ||
+                    (modeInput && modeInput.value && modeInput.value !== 'count')
+                );
+                if(needRedirect){
+                    // If quick range restored, compute its dates before building query (esp. sinceLastCheck)
+                    if(quickInput && quickInput.value){
+                        adjustRange(quickInput.value);
+                        enforceSinceLastCheck();
+                    }
+                    var qRedirect = buildQuery();
+                    if(qRedirect){
+                        window.location.href = window.location.pathname + '?' + qRedirect;
+                        return; // stop further init; next load will have usedUrl=true
+                    }
+                }
+            }
+
+            // Auto-detect 'sinceLastCheck' if from equals last check date but quick not set (e.g. simple mode initial load)
+            if(quickInput && !quickInput.value && lastCheckNorm && fromInput && fromInput.value === lastCheckNorm){
+                quickInput.value = 'sinceLastCheck';
+            }
+
+            function enforceSinceLastCheck(){
+                if(quickInput && quickInput.value==='sinceLastCheck' && lastCheckNorm){
+                    if(fromInput){
+                        fromInput.value=lastCheckNorm;
+                        fromInput.setAttribute('value', lastCheckNorm);
+                        fromInput.disabled = true; // prevent manual change while active
+                    }
+                    setLS('From', lastCheckNorm);
+                    setLS('QuickRange','sinceLastCheck');
+                    document.cookie='drinksSummaryFrom='+encodeURIComponent(lastCheckNorm)+';path=/';
+                } else if(fromInput) {
+                    fromInput.disabled = false;
+                }
+            }
+            enforceSinceLastCheck();
+
+            function buildQuery(){
+                var p=[];
+                function add(k,v){ if(v!==undefined && v!==null && v!=='') p.push(k+'='+encodeURIComponent(v)); }
+                add('mode',modeInput?modeInput.value:'');
+                add('quick',quickInput?quickInput.value:'');
+                if(fromInput && fromInput.value) add('from',fromInput.value);
+                if(toInput && toInput.value) add('to',toInput.value);
+                // Always include show_users explicitly (persist disabled state)
+                var su = (showUsersInput && showUsersInput.checked)?'1':'0';
+                add('show_users', su);
+                // Always include show_emptycols explicitly
+                var sec = (showEmptyColsInput && showEmptyColsInput.checked)?'1':'0';
+                add('show_emptycols', sec);
+                add('group',groupInput?groupInput.value:'');
+                return p.join('&');
+            }
+
+            function persistCurrent(){
+                if(modeInput) setLS('Mode', modeInput.value||'');
+                if(quickInput) setLS('QuickRange', quickInput.value||'');
+                if(fromInput) setLS('From', fromInput.value||'');
+                if(toInput) setLS('To', toInput.value||'');
+                if(showUsersInput) setLS('ShowUsers', showUsersInput.checked?'1':'0');
+                if(showEmptyColsInput) setLS('ShowEmptycols', showEmptyColsInput.checked?'1':'0');
+                if(groupInput) setLS('Group', groupInput.value||'');
+                // Sync essential filters to cookies so PHP fallback (if user bookmarks clean URL) still works.
+                if(fromInput) document.cookie = 'drinksSummaryFrom=' + encodeURIComponent(fromInput.value||'') + ';path=/';
+                if(toInput) document.cookie = 'drinksSummaryTo=' + encodeURIComponent(toInput.value||'') + ';path=/';
+                if(quickInput) document.cookie = 'drinksSummaryQuickRange=' + encodeURIComponent(quickInput.value||'') + ';path=/';
+            }
+
+            function adjustRange(val){
+                var now=new Date();
+                var y=now.getFullYear(), m=now.getMonth();
+                function fmt(d,h,mi){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'T'+h+':'+mi;}
+                var f='', t='';
+                if(val==='cw' || val==='lw'){
+                    var mon=(function(d){d=new Date(d);var day=d.getDay(),diff=d.getDate()-day+(day===0?-6:1);return new Date(d.setDate(diff));})(now);
+                    if(val==='lw') mon.setDate(mon.getDate()-7);
+                    var sun=new Date(mon); sun.setDate(mon.getDate()+6);
+                    f=fmt(mon,'00','00'); t=fmt(sun,'23','59');
+                } else if(val==='cm' || val==='lm'){
+                    var mm = (val==='cm')? m : (m===0?11:m-1);
+                    var yy = (val==='cm')? y : (m===0? y-1 : y);
+                    var first=new Date(yy,mm,1,0,0,0); var last=new Date(yy,mm+1,0,23,59,59);
+                    f=fmt(first,'00','00'); t=fmt(last,'23','59');
+                } else if(val==='cy' || val==='ly'){
+                    var yy2 = val==='cy'? y : y-1;
+                    var first=new Date(yy2,0,1,0,0,0); var last=new Date(yy2,11,31,23,59,59);
+                    f=fmt(first,'00','00'); t=fmt(last,'23','59');
+                } else if(val==='sinceLastCheck'){
+                    f=lastCheckNorm||''; t='';
+                }
+                if(fromInput) fromInput.value=f;
+                if(toInput) toInput.value=t;
+            }
+
+            function submit(){
+                persistCurrent();
+                var q=buildQuery();
+                window.location.href=window.location.pathname+(q?('?'+q):'');
+            }
+
+            // Event wiring
+            if(modeInput) modeInput.addEventListener('change', submit);
+            if(quickInput) quickInput.addEventListener('change', function(){
+                adjustRange(quickInput.value);
+                enforceSinceLastCheck();
+                submit();
+            });
+            if(fromInput) fromInput.addEventListener('change', function(){ if(quickInput && quickInput.value==='sinceLastCheck') return; if(quickInput) quickInput.value=''; submit(); });
+            if(toInput) toInput.addEventListener('change', function(){ if(quickInput && quickInput.value==='sinceLastCheck') return; if(quickInput) quickInput.value=''; submit(); });
+            if(showUsersInput) showUsersInput.addEventListener('change', function(){
+                // Persist immediately so reload shows correct disabled state
+                persistCurrent();
+                submit();
+            });
+            if(showEmptyColsInput) showEmptyColsInput.addEventListener('change', submit);
+            if(groupInput) groupInput.addEventListener('change', submit);
+
+            // Initial range adjust (e.g., after restore)
+            if(quickInput && quickInput.value) adjustRange(quickInput.value);
+            enforceSinceLastCheck();
+        });
+        </script>
         </span>
         <span style="white-space:nowrap;display:inline-flex;align-items:center;">
             <label for="show-users" style="font-weight: bold; margin-right: 4px;">Benutzer anzeigen:</label>
@@ -181,85 +391,74 @@ $this->setup([
                 <option value="weekday"<?= ($this->group === 'weekday' ? ' selected' : '') ?>><?= $this->t('Wochentag') ?></option>
             </select>
         </span>
+    <button type="button" id="storeCheckDateBtn" style="margin-left: 16px; padding: 6px 14px; font-weight: bold; background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; cursor: pointer;">Letzte Thekenkontrolle bestätigen</button>
+        <?php if (!empty($this->lastCheckDate)): ?>
+            <span id="lastCheckDateDisplay" style="margin-left:12px; color:#555; font-size:14px;">
+                <?= $this->t('Letzte Kontrolle:') ?>
+                <?php
+                $dt = false;
+                $formats = array(
+                    'Y-m-d\TH:i:s.uP',
+                    'Y-m-d\TH:i:sP',
+                    'Y-m-d\TH:i:s',
+                    'Y-m-d\TH:i'
+                );
+                foreach ($formats as $fmt) {
+                    $tmp = DateTime::createFromFormat($fmt, $this->lastCheckDate);
+                    if ($tmp !== false) {
+                        $dt = $tmp;
+                        break;
+                    }
+                }
+                if ($dt !== false) {
+                    echo $dt->format('d.m.Y H:i');
+                } else {
+                    echo htmlspecialchars($this->lastCheckDate);
+                }
+                ?>
+            </span>
+        <?php endif; ?>
         </form>
     <div>
         <script>
-        function getMonday(d) {
-            d = new Date(d);
-            var day = d.getDay(), diff = d.getDate() - day + (day === 0 ? -6 : 1);
-            return new Date(d.setDate(diff));
-        }
-        function pad(n) { return n < 10 ? '0' + n : n; }
-        function formatDate(d) {
-            return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-        }
         function setSummaryMode(mode) {
             localStorage.setItem('drinksSummaryMode', mode);
-            document.getElementById('drinks-summary-mode').value = mode;
-            document.getElementById('drinks-summary-form').submit();
+            // Let unified controller pick up via location reload
+            var qs = new URLSearchParams(window.location.search);
+            qs.set('mode', mode);
+            window.location.search = qs.toString();
         }
-        // Auto-submit on show-users toggle
-        document.addEventListener('DOMContentLoaded', function() {
-            var mode = localStorage.getItem('drinksSummaryMode') || 'count';
-            var el = document.getElementById('drinks-summary-mode');
-            if (el) el.value = mode;
-            // Auto-submit on date change
-            var from = document.getElementById('from-date');
-            var to = document.getElementById('to-date');
-            if (from) from.addEventListener('change', function() {
-                document.getElementById('drinks-summary-form').submit();
-            });
-            if (to) to.addEventListener('change', function() {
-                document.getElementById('drinks-summary-form').submit();
-            });
-            // Quick range dropdown
-            var quick = document.getElementById('quick-range');
-            if (quick) quick.addEventListener('change', function() {
-                var now = new Date();
-                var y = now.getFullYear(), m = now.getMonth();
-                var fromVal = '', toVal = '';
-                if (quick.value === 'cw') {
-                    var mon = getMonday(now);
-                    var sun = new Date(mon); sun.setDate(mon.getDate() + 6);
-                    fromVal = formatDate(mon); toVal = formatDate(sun);
-                } else if (quick.value === 'lw') {
-                    var mon = getMonday(now); mon.setDate(mon.getDate() - 7);
-                    var sun = new Date(mon); sun.setDate(mon.getDate() + 6);
-                    fromVal = formatDate(mon); toVal = formatDate(sun);
-                } else if (quick.value === 'cm') {
-                    fromVal = y + '-' + pad(m + 1) + '-01';
-                    toVal = formatDate(new Date(y, m + 1, 0));
-                } else if (quick.value === 'lm') {
-                    var lastMonth = m === 0 ? 11 : m - 1;
-                    var lastYear = m === 0 ? y - 1 : y;
-                    fromVal = lastYear + '-' + pad(lastMonth + 1) + '-01';
-                    toVal = formatDate(new Date(lastYear, lastMonth + 1, 0));
-                } else if (quick.value === 'cy') {
-                    fromVal = y + '-01-01';
-                    toVal = y + '-12-31';
-                } else if (quick.value === 'ly') {
-                    fromVal = (y - 1) + '-01-01';
-                    toVal = (y - 1) + '-12-31';
+        document.getElementById('storeCheckDateBtn').addEventListener('click', function() {
+            var now = new Date();
+            // Format as local time string (YYYY-MM-DDTHH:mm)
+            var localStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0') + 'T' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+            var url = '<?= $this->url('user/store-check-date') ?>';
+            fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ datetime: localStr })
+            })
+            .then(function(response) { return response.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    // Force quick=sinceLastCheck and let unified logic enforce value
+                    var qs = new URLSearchParams(window.location.search);
+                    qs.set('quick','sinceLastCheck');
+                    // Ensure the freshly stored check date is passed as from= so backend query is limited
+                    qs.set('from', localStr);
+                    // Remove any explicit "to" so it remains open-ended
+                    qs.delete('to');
+                    // Persist immediately to localStorage & cookies for consistency with reload logic
+                    try {
+                        localStorage.setItem('drinksSummaryFrom', localStr);
+                        localStorage.setItem('drinksSummaryQuickRange', 'sinceLastCheck');
+                        document.cookie = 'drinksSummaryFrom=' + encodeURIComponent(localStr) + ';path=/';
+                        document.cookie = 'drinksSummaryQuickRange=sinceLastCheck;path=/';
+                    } catch(e) { /* ignore storage errors */ }
+                    window.location.search = qs.toString();
                 }
-                if (fromVal && toVal) {
-                    from.value = fromVal;
-                    to.value = toVal;
-                    document.getElementById('drinks-summary-form').submit();
-                }
-            });
-            var showUsers = document.getElementById('show-users');
-            if (showUsers) showUsers.addEventListener('change', function() {
-                document.getElementById('drinks-summary-form').submit();
-            });
-            var groupBy = document.getElementById('group-by');
-            if (groupBy) groupBy.addEventListener('change', function() {
-                document.getElementById('drinks-summary-form').submit();
-            });
-            // Auto-submit on show-emptycols toggle
-            var showEmptyCols = document.getElementById('show-emptycols');
-            if (showEmptyCols) showEmptyCols.addEventListener('change', function() {
-                document.getElementById('drinks-summary-form').submit();
-            });
+            })
+            .catch(function() { /* Message box removed */ });
         });
         </script>
         <?php

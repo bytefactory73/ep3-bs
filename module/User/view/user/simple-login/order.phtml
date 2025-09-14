@@ -30,7 +30,8 @@ function openDrinksSummaryModal() {
     var now = new Date();
     var fromDateObj = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
     var fromDate = fromDateObj.toISOString().slice(0, 10);
-    var summaryUrl = './drinks-summary?from=' + encodeURIComponent(fromDate) + '&to=';
+    // Open summary with explicit quick range and mode so UI reflects state immediately
+    var summaryUrl = './drinks-summary?quick=sinceLastCheck&mode=count';
     document.getElementById('drinksSummaryModal').style.display = 'flex';
     document.getElementById('drinksSummaryFrame').src = summaryUrl;
     // Reset logout timer to 30 minutes if in simple order mode
