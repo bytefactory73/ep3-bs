@@ -11,6 +11,7 @@ $this->setup([
 <?php if ($simpleMode) $this->placeholder('hideHeader')->set(true); ?>
 <div style="max-width: none; margin: 0; background: #fff; color: #222; font-size: 15px; font-family: 'Segoe UI', 'Arial', sans-serif;">
 
+
 <style>
     <?php if (!empty($this->simpleOrderMode)): ?>
     .drinks-summary-table {
@@ -152,6 +153,8 @@ $this->setup([
                 <option value="cy"><?= $this->t('Dieses Jahr') ?></option>
                 <option value="ly"><?= $this->t('Letztes Jahr') ?></option>
                 <option value="sinceLastCheck"><?= $this->t('Seit letzter Kontrolle') ?></option>
+                <?php $hasMyLast = !empty($this->lastUserCheckDate); ?>
+                <option value="sinceMyLastCheck"<?= $hasMyLast ? '' : ' disabled' ?>><?= $this->t('Seit meiner letzten Kontrolle') ?></option>
             </select>
         </span>
         <span style="white-space:nowrap;display:inline-flex;align-items:center;">
@@ -173,6 +176,7 @@ $this->setup([
             var showEmptyColsInput = document.getElementById('show-emptycols');
             var groupInput = document.getElementById('group-by');
             var lastCheckDateRaw = '<?= !empty($this->lastCheckDate) ? $this->lastCheckDate : '' ?>';
+            var lastMyCheckDateRaw = '<?= !empty($this->lastUserCheckDate) ? $this->lastUserCheckDate : '' ?>';
 
             function norm(str){
                 if(!str) return '';
@@ -183,6 +187,7 @@ $this->setup([
                 return str;
             }
             var lastCheckNorm = norm(lastCheckDateRaw);
+            var lastMyCheckNorm = norm(lastMyCheckDateRaw);
 
             function getLS(key){return localStorage.getItem('drinksSummary'+key);} 
             function setLS(key,val){localStorage.setItem('drinksSummary'+key,val);} 
@@ -254,7 +259,7 @@ $this->setup([
                     // If quick range restored, compute its dates before building query (esp. sinceLastCheck)
                     if(quickInput && quickInput.value){
                         adjustRange(quickInput.value);
-                        enforceSinceLastCheck();
+                        enforceSpecialQuick();
                     }
                     var qRedirect = buildQuery();
                     if(qRedirect){
@@ -269,21 +274,43 @@ $this->setup([
                 quickInput.value = 'sinceLastCheck';
             }
 
-            function enforceSinceLastCheck(){
-                if(quickInput && quickInput.value==='sinceLastCheck' && lastCheckNorm){
+            function enforceSpecialQuick(){
+                if(!quickInput) return;
+                // Dynamically disable 'sinceMyLastCheck' if we have no personal last check date
+                var optSinceMy = quickInput.querySelector('option[value="sinceMyLastCheck"]');
+                if(optSinceMy){
+                    if(!lastMyCheckNorm){
+                        optSinceMy.disabled = true;
+                        if(quickInput.value==='sinceMyLastCheck'){
+                            quickInput.value='';
+                        }
+                    } else {
+                        optSinceMy.disabled = false;
+                    }
+                }
+                if(quickInput.value==='sinceLastCheck' && lastCheckNorm){
                     if(fromInput){
                         fromInput.value=lastCheckNorm;
                         fromInput.setAttribute('value', lastCheckNorm);
-                        fromInput.disabled = true; // prevent manual change while active
+                        fromInput.disabled = true;
                     }
                     setLS('From', lastCheckNorm);
                     setLS('QuickRange','sinceLastCheck');
                     document.cookie='drinksSummaryFrom='+encodeURIComponent(lastCheckNorm)+';path=/';
+                } else if(quickInput.value==='sinceMyLastCheck' && lastMyCheckNorm){
+                    if(fromInput){
+                        fromInput.value=lastMyCheckNorm;
+                        fromInput.setAttribute('value', lastMyCheckNorm);
+                        fromInput.disabled = true;
+                    }
+                    setLS('From', lastMyCheckNorm);
+                    setLS('QuickRange','sinceMyLastCheck');
+                    document.cookie='drinksSummaryFrom='+encodeURIComponent(lastMyCheckNorm)+';path=/';
                 } else if(fromInput) {
                     fromInput.disabled = false;
                 }
             }
-            enforceSinceLastCheck();
+            enforceSpecialQuick();
 
             function buildQuery(){
                 var p=[];
@@ -321,6 +348,11 @@ $this->setup([
                 var y=now.getFullYear(), m=now.getMonth();
                 function fmt(d,h,mi){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'T'+h+':'+mi;}
                 var f='', t='';
+                // If user selects sinceMyLastCheck but we have no date, silently clear quick selection
+                if(val==='sinceMyLastCheck' && !lastMyCheckNorm){
+                    if(quickInput) quickInput.value='';
+                    val='';
+                }
                 if(val==='cw' || val==='lw'){
                     var mon=(function(d){d=new Date(d);var day=d.getDay(),diff=d.getDate()-day+(day===0?-6:1);return new Date(d.setDate(diff));})(now);
                     if(val==='lw') mon.setDate(mon.getDate()-7);
@@ -337,6 +369,8 @@ $this->setup([
                     f=fmt(first,'00','00'); t=fmt(last,'23','59');
                 } else if(val==='sinceLastCheck'){
                     f=lastCheckNorm||''; t='';
+                } else if(val==='sinceMyLastCheck'){
+                    f=lastMyCheckNorm||''; t='';
                 }
                 if(fromInput) fromInput.value=f;
                 if(toInput) toInput.value=t;
@@ -352,9 +386,16 @@ $this->setup([
             if(modeInput) modeInput.addEventListener('change', submit);
             if(quickInput) quickInput.addEventListener('change', function(){
                 adjustRange(quickInput.value);
-                enforceSinceLastCheck();
+                enforceSpecialQuick();
                 submit();
             });
+
+            // Previously the 'sinceMyLastCheck' option was disabled when no user-specific check
+            // existed. This prevented users from selecting it after recording a new check in the
+            // same session (edge cases with caching / timing). We now leave it enabled and rely
+            // on adjustRange() to silently clear the selection if no date exists (see logic where
+            // val==='sinceMyLastCheck' && !lastMyCheckNorm). This gives a consistent UI without
+            // a permanently disabled option.
             if(fromInput) fromInput.addEventListener('change', function(){ if(quickInput && quickInput.value==='sinceLastCheck') return; if(quickInput) quickInput.value=''; submit(); });
             if(toInput) toInput.addEventListener('change', function(){ if(quickInput && quickInput.value==='sinceLastCheck') return; if(quickInput) quickInput.value=''; submit(); });
             if(showUsersInput) showUsersInput.addEventListener('change', function(){
@@ -367,7 +408,7 @@ $this->setup([
 
             // Initial range adjust (e.g., after restore)
             if(quickInput && quickInput.value) adjustRange(quickInput.value);
-            enforceSinceLastCheck();
+            enforceSpecialQuick();
         });
         </script>
         </span>
@@ -392,32 +433,62 @@ $this->setup([
             </select>
         </span>
     <button type="button" id="storeCheckDateBtn" style="margin-left: 16px; padding: 6px 14px; font-weight: bold; background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; cursor: pointer;">Letzte Thekenkontrolle bestätigen</button>
-        <?php if (!empty($this->lastCheckDate)): ?>
-            <span id="lastCheckDateDisplay" style="margin-left:12px; color:#555; font-size:14px;">
-                <?= $this->t('Letzte Kontrolle:') ?>
-                <?php
-                $dt = false;
-                $formats = array(
-                    'Y-m-d\TH:i:s.uP',
-                    'Y-m-d\TH:i:sP',
-                    'Y-m-d\TH:i:s',
-                    'Y-m-d\TH:i'
-                );
+        <span id="lastCheckDateDisplay" style="margin-left:12px; color:#555; font-size:14px;">
+            <?= $this->t('Letzte Kontrolle:') ?>
+            <?php
+            $dt = false;
+            $formats = array(
+                'Y-m-d\TH:i:s.uP',
+                'Y-m-d\TH:i:sP',
+                'Y-m-d\TH:i:s',
+                'Y-m-d\TH:i'
+            );
+            if (!empty($this->lastCheckDate)) {
                 foreach ($formats as $fmt) {
                     $tmp = DateTime::createFromFormat($fmt, $this->lastCheckDate);
-                    if ($tmp !== false) {
-                        $dt = $tmp;
-                        break;
-                    }
+                    if ($tmp !== false) { $dt = $tmp; break; }
                 }
+                $formattedDate = $this->lastCheckDate;
                 if ($dt !== false) {
-                    echo $dt->format('d.m.Y H:i');
+                    $formattedDate = $dt->format('d.m.Y H:i');
                 } else {
-                    echo htmlspecialchars($this->lastCheckDate);
+                    $formattedDate = htmlspecialchars($this->lastCheckDate);
                 }
-                ?>
-            </span>
-        <?php endif; ?>
+                $userName = !empty($this->lastCheckUserName) ? $this->escapeHtml($this->lastCheckUserName) : $this->t('Unbekannt');
+                $rel = !empty($this->lastCheckRelative) ? $this->escapeHtml($this->lastCheckRelative) : null;
+                echo ' ' . $formattedDate . ' (' . $userName . ')';
+                if ($rel) {
+                    echo ' <span style="color:#888;">' . $this->t('vor') . ' ' . $rel . '</span>';
+                }
+            } else {
+                echo ' <span style="color:#888;">' . $this->t('Noch keine Kontrolle erfasst') . '</span>';
+            }
+            ?>
+        </span>
+        <span id="lastUserCheckDateDisplay" style="margin-left:12px; color:#555; font-size:14px;">
+            <?= $this->t('Meine letzte Kontrolle:') ?>
+            <?php
+            $dtU = false;
+            if (!empty($this->lastUserCheckDate)) {
+                foreach ($formats as $fmt) {
+                    $tmpU = DateTime::createFromFormat($fmt, $this->lastUserCheckDate);
+                    if ($tmpU !== false) { $dtU = $tmpU; break; }
+                }
+                $formattedUserDate = $this->lastUserCheckDate;
+                if ($dtU !== false) {
+                    $formattedUserDate = $dtU->format('d.m.Y H:i');
+                } else {
+                    $formattedUserDate = htmlspecialchars($this->lastUserCheckDate);
+                }
+                echo ' ' . $formattedUserDate;
+                if (!empty($this->lastUserCheckRelative)) {
+                    echo ' <span style="color:#888;">' . $this->t('vor') . ' ' . $this->escapeHtml($this->lastUserCheckRelative) . '</span>';
+                }
+            } else {
+                echo ' <span style="color:#888;">' . $this->t('Ich habe noch keine Kontrolle erfasst') . '</span>';
+            }
+            ?>
+        </span>
         </form>
     <div>
         <script>

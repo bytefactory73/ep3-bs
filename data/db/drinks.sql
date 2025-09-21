@@ -68,3 +68,13 @@ CREATE TABLE IF NOT EXISTS drink_aliases (
 -- UPDATE drink_aliases SET order_email_option = 'order' WHERE order_email_option IS NULL OR order_email_option = '';
     FOREIGN KEY (user_id) REFERENCES bs_users(uid) ON DELETE CASCADE
 );
+
+-- Table for recording drink check events (replaces theke.last.check.date option)
+CREATE TABLE IF NOT EXISTS drink_checks (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    check_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES bs_users(uid) ON DELETE CASCADE,
+    INDEX idx_drink_checks_time (check_time),
+    INDEX idx_drink_checks_user_time (user_id, check_time)
+);

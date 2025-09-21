@@ -2,96 +2,11 @@
 
 namespace User\Controller;
 
-use DateTime;
-use RuntimeException;
-use Zend\Crypt\Password\Bcrypt;
 use Zend\Mvc\Controller\AbstractActionController;
+use Zend\Crypt\Password\Bcrypt;
 
 class AccountController extends AbstractActionController
 {
-    /**
-     * Admin: Übersicht aller Nutzer mit Buchungen oder Einzahlungen, sortiert nach Kontostand
-     */
-    public function balanceListAction()
-    {
-        $serviceManager = @$this->getServiceLocator();
-        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
-        $user = $userSessionManager->getSessionUser();
-        if (!$user || $user->get('status') !== 'admin') {
-            return $this->redirect()->toRoute('user/settings');
-        }
-        $userManager = $serviceManager->get('User\Manager\UserManager');
-        $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
-        $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
-        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
-
-        $users = $userManager->getAll('alias ASC');
-        $userList = [];
-        foreach ($users as $u) {
-            $uid = $u->get('uid');
-            // Use DrinkManager for balance
-            $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
-            $balance = $drinkManager->calculateUserDrinkBalance($uid, $serviceManager);
-            // Still need lastDeposit and lastOrder for activity
-            $deposits = iterator_to_array($drinkDepositManager->getByUser($uid, true));
-            $lastDeposit = null;
-            foreach ($deposits as $d) {
-                if (empty($d['deleted'])) {
-                    if (!$lastDeposit || (isset($d['deposit_time']) && $d['deposit_time'] > $lastDeposit)) {
-                        $lastDeposit = $d['deposit_time'];
-                    }
-                }
-            }
-            $orders = iterator_to_array($drinkOrderManager->getByUser($uid));
-            $lastOrder = null;
-            $ordersTotal = 0.0;
-            foreach ($orders as $o) {
-                if (empty($o['deleted'])) {
-                    if (!$lastOrder || (isset($o['order_time']) && $o['order_time'] > $lastOrder)) {
-                        $lastOrder = $o['order_time'];
-                    }
-                    if (isset($o['price'])) {
-                        $qty = isset($o['quantity']) ? (float)$o['quantity'] : 1;
-                        $ordersTotal += ((float)$o['price']) * $qty;
-                    }
-                }
-            }
-            // Find most recent activity
-            $lastActivity = null;
-            if ($lastDeposit && $lastOrder) {
-                $lastActivity = max($lastDeposit, $lastOrder);
-            } elseif ($lastDeposit) {
-                $lastActivity = $lastDeposit;
-            } elseif ($lastOrder) {
-                $lastActivity = $lastOrder;
-            }
-            // Only show users with at least one deposit or order
-            if (count($deposits) > 0 || count($orders) > 0) {
-                $userList[] = [
-                    'uid' => $u->get('uid'),
-                    'alias' => $u->get('alias'),
-                    'name' => $u->get('name'),
-                    'email' => $u->get('email'),
-                    'balance' => $balance,
-                    'last_activity' => $lastActivity,
-                    'orders_total' => $ordersTotal,
-                ];
-            }
-        }
-        // Sort by balance ascending
-        usort($userList, function($a, $b) {
-            return $a['balance'] <=> $b['balance'];
-        });
-        // Calculate total sum of all balances
-        $totalBalance = 0;
-        foreach ($userList as $user) {
-            $totalBalance += $user['balance'];
-        }
-        return [
-            'users' => $userList,
-            'total_balance' => $totalBalance,
-        ];
-    }
     /**
      * POST: entry_id
      * Returns JSON: { success: true } or { error: ... }
@@ -1511,36 +1426,140 @@ class AccountController extends AbstractActionController
         $showUsers = $this->params()->fromQuery('show_users', '1');
         $showEmptyCols = $this->params()->fromQuery('show_emptycols', '0');
 
-        // Get last check date from options
-        $optionManager = $serviceManager->get('Base\Manager\OptionManager');
-        $lastCheckDate = $optionManager->get('theke.last.check.date');
+        // ------------------------------------------------------------------
+        // Last global check + personal last check (clean version)
+        // ------------------------------------------------------------------
+        $lastCheckDate = null;
+        $lastCheckUserName = null;
+        $lastUserCheckDate = null; // specific to current (admin/simple) user
 
-        // Normalize stored 'last check' date (may be in HTML5 datetime-local format with 'T')
-        $normalizeInputDt = function($dt) {
-            if (empty($dt)) return null;
-            $dt = str_replace('T', ' ', $dt);
-            // If only YYYY-MM-DD HH:MM add :00 seconds
-            if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/', $dt)) {
-                $dt .= ':00';
-            }
-            // If only date YYYY-MM-DD, expand to start of day
-            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dt)) {
-                $dt .= ' 00:00:00';
-            }
-            return $dt;
+        // Helper (kept minimal) to safely extract a field from array / ArrayAccess
+        $gf = function($row, $key) {
+            if (!$row) return null;
+            if (is_array($row)) return array_key_exists($key, $row) ? $row[$key] : null;
+            if ($row instanceof \ArrayAccess && isset($row[$key])) return $row[$key];
+            if (is_object($row) && isset($row->$key)) return $row->$key;
+            $tmp = (array)$row;
+            return array_key_exists($key, $tmp) ? $tmp[$key] : null;
         };
 
-        $lastCheckNormalized = $normalizeInputDt($lastCheckDate);
+        try {
+            // Single joined query: prefer user.alias, fallback to drink_aliases.alias
+            $row = $dbAdapter->query(
+                'SELECT dc.user_id, dc.check_time, u.alias AS user_alias, da.alias AS drink_alias
+                 FROM drink_checks dc
+                 LEFT JOIN bs_users u ON u.uid = dc.user_id
+                 LEFT JOIN drink_aliases da ON da.user_id = dc.user_id
+                 ORDER BY dc.check_time DESC LIMIT 1', []
+            )->current();
+            if ($row) {
+                $lastCheckDate = $gf($row, 'check_time');
+                $uid = $gf($row, 'user_id');
+                $lastCheckUserName = $gf($row, 'user_alias') ?: $gf($row, 'drink_alias');
+                if (!$lastCheckUserName && $uid) {
+                    // Final cheap fallback: look up drink_aliases (covers rare mismatch)
+                    $fallbackAliasRow = $dbAdapter->query('SELECT alias FROM drink_aliases WHERE user_id = ? LIMIT 1', [$uid])->current();
+                    $fa = $gf($fallbackAliasRow, 'alias');
+                    $lastCheckUserName = $fa ?: ('UID ' . $uid);
+                }
+            }
+        } catch (\Exception $e) { /* ignore */ }
+
+        // Personal (current actor) last check (admin or simple session user)
+        $actorUid = null;
+        if ($user) {
+            $actorUid = $user->need('uid');
+        } elseif ($isSimple && !empty($simpleSession->user_id)) {
+            $actorUid = (int)$simpleSession->user_id;
+        }
+        if ($actorUid) {
+            try {
+                $rowMy = $dbAdapter->query('SELECT check_time FROM drink_checks WHERE user_id = ? ORDER BY check_time DESC LIMIT 1', [$actorUid])->current();
+                $lastUserCheckDate = $gf($rowMy, 'check_time');
+            } catch (\Exception $e) { /* ignore */ }
+        }
+
+        // Simple normalization: accept values with or without 'T' and with or without seconds.
+        // Store internally (for filtering) as space separated with seconds; present to view in original style (minutes precision, 'T').
+        $normalize = function($dt) {
+            if (!$dt) return null;
+            $raw = trim($dt);
+            $raw = str_replace('T', ' ', $raw);
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw)) {
+                $raw .= ' 00:00:00';
+            } elseif (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/', $raw)) {
+                $raw .= ':00';
+            }
+            return $raw;
+        };
+        $formatMinutesT = function($dt) use ($normalize) {
+            $n = $normalize($dt);
+            if (!$n) return null;
+            // cut to minutes and re-add T
+            return str_replace(' ', 'T', substr($n, 0, 16));
+        };
+        $lastCheckNormalized = $normalize($lastCheckDate);
+        $lastUserCheckNormalized = $normalize($lastUserCheckDate);
+        $lastCheckDisplay = $formatMinutesT($lastCheckNormalized);
+        $lastUserCheckDisplay = $formatMinutesT($lastUserCheckNormalized);
+
+        // Relative age helper (returns compact string like 2h 13m, 3d 4h, etc.)
+        $relativeAge = function($dt) {
+            if (!$dt) return null;
+            try {
+                $now = new \DateTime();
+                $base = new \DateTime($dt); // $dt already normalized to Y-m-d H:i:s or similar
+            } catch (\Exception $e) { return null; }
+            $diff = $now->getTimestamp() - $base->getTimestamp();
+            if ($diff < 0) $diff = 0; // future safeguard
+            $seconds = $diff;
+            $minutes = (int) floor($seconds / 60);
+            $hours = (int) floor($minutes / 60);
+            $days = (int) floor($hours / 24);
+            $minutesR = $minutes % 60;
+            $hoursR = $hours % 24;
+            // Days handling
+            if ($days > 0) {
+                // Up to 14 days show day+hours, afterwards just days
+                if ($days <= 14) {
+                    $s = $days . 'd';
+                    if ($hoursR > 0) $s .= ' ' . $hoursR . 'h';
+                    return $s;
+                }
+                return $days . 'd';
+            }
+            // Hours handling
+            if ($hours > 0) {
+                $s = $hours . 'h';
+                if ($minutesR > 0) $s .= ' ' . $minutesR . 'm';
+                return $s;
+            }
+            // Minutes handling
+            if ($minutes > 0) {
+                $s = $minutes . 'm';
+                $secondsR = $seconds % 60;
+                if ($minutes < 5 && $secondsR > 0) $s .= ' ' . $secondsR . 's';
+                return $s;
+            }
+            // Seconds (< 60s)
+            return '0m';
+        };
+
+        $lastCheckRelative = $relativeAge($lastCheckNormalized);
+        $lastUserCheckRelative = $relativeAge($lastUserCheckNormalized);
 
         // Apply quick range logic if provided (server-side fallback when front-end redirect not executed)
         if ($quick) {
             $now = new \DateTime();
             $todayStr = $now->format('Y-m-d');
-            // Helper clones
-            $start = null; $end = null;
             if ($quick === 'sinceLastCheck') {
                 if (empty($from) && $lastCheckNormalized) {
-                    $from = $lastCheckNormalized; // open ended to now
+                    $from = $lastCheckNormalized;
+                }
+            } elseif ($quick === 'sinceMyLastCheck') {
+                $lastMyNorm = $normalize($lastUserCheckDate);
+                if (empty($from) && $lastMyNorm) {
+                    $from = $lastMyNorm;
                 }
             } elseif ($quick === 'cw' || $quick === 'lw') { // current week / last week (Mon-Sun)
                 $monday = clone $now;
@@ -1569,8 +1588,8 @@ class AccountController extends AbstractActionController
         }
 
         // Normalize incoming from/to after quick logic
-        $from = $normalizeInputDt($from);
-        $to = $normalizeInputDt($to);
+    $from = $normalize($from);
+    $to = $normalize($to);
 
         // Query all drink orders, grouped by date, user, drink
         $groupSql = 'DATE(order_time)';
@@ -1649,6 +1668,14 @@ class AccountController extends AbstractActionController
             'show_emptycols' => $showEmptyCols,
             'group' => $group,
             'lastCheckDate' => $lastCheckDate,
+            'lastCheckUserName' => $lastCheckUserName,
+            'lastUserCheckDate' => $lastUserCheckDate,
+            // Simplified display variants (old style format, minutes, with T)
+            'lastCheckDateDisplay' => $lastCheckDisplay,
+            'lastUserCheckDateDisplay' => $lastUserCheckDisplay,
+            'lastCheckRelative' => $lastCheckRelative,
+            'lastUserCheckRelative' => $lastUserCheckRelative,
+            // debug variables removed from final return
         ];
         if ($isSimple && $thekenadmin) {
             $viewVars['simpleOrderMode'] = true;
@@ -1657,7 +1684,7 @@ class AccountController extends AbstractActionController
     }
 
     /**
-     * AJAX: Store theke.last.check.date in bs_option
+     * AJAX: Store a new drink check event in drink_checks (replaces theke.last.check.date option)
      */
     public function storeCheckDateAction()
     {
@@ -1667,11 +1694,35 @@ class AccountController extends AbstractActionController
             $data = json_decode($request->getContent(), true);
             $datetime = isset($data['datetime']) ? $data['datetime'] : null;
             if ($datetime) {
-                // Store as local time string (no conversion)
-                $optionManager = $this->getServiceLocator()->get('Base\Manager\OptionManager');
-                $optionManager->set('theke.last.check.date', $datetime);
-                echo json_encode(['success' => true]);
-                return $this->getResponse();
+                $serviceManager = $this->getServiceLocator();
+                $db = $serviceManager->get('Zend\Db\Adapter\Adapter');
+                // Figure out user performing the check (admin or simple session)
+                $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+                $user = $userSessionManager->getSessionUser();
+                $userId = null;
+                if ($user) {
+                    $userId = $user->need('uid');
+                } elseif (class_exists('Zend\Session\Container')) {
+                    $simpleSession = new \Zend\Session\Container('SimpleLogin');
+                    if (!empty($simpleSession->user_id)) {
+                        $userId = (int)$simpleSession->user_id;
+                    }
+                }
+                try {
+                    // Normalize datetime (replace T from possible HTML5 input) & ensure seconds
+                    $dt = str_replace('T', ' ', $datetime);
+                    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dt)) {
+                        $dt .= ' 00:00:00';
+                    } elseif (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/', $dt)) {
+                        $dt .= ':00';
+                    }
+                    $db->query('INSERT INTO drink_checks (user_id, check_time) VALUES (?, ?)', [$userId, $dt]);
+                    echo json_encode(['success' => true]);
+                    return $this->getResponse();
+                } catch (\Exception $e) {
+                    echo json_encode(['success' => false, 'error' => 'DB error']);
+                    return $this->getResponse()->setStatusCode(500);
+                }
             }
         }
         echo json_encode(['success' => false]);
