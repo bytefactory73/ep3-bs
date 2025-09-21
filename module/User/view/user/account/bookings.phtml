@@ -72,11 +72,8 @@ $drinksEnabled = isset($this->drinksEnabled) ? (bool)$this->drinksEnabled : true
                         <button type="submit" form="drink-order-form" name="drink_order_submit" value="1" class="default-button stc-main-button" style="background: #2196f3; color: #fff; border: 1px solid #2196f3; border-radius: 6px; padding: 4px 14px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 1em; height: 44px; justify-content: center; font-weight: bold;">
                             <span id="drink-order-total" style="color: #fff; background: transparent; border-radius: 3px; font-size: clamp(0.5em, 5vw, 2.0em); min-width: 8em; display: inline-block; text-align: center; transition: background 0.2s, color 0.2s;"></span>
                         </button>
-                        <button type="button" id="clear-drink-selection" title="<?= $this->escapeHtmlAttr($this->t('Clear selection')) ?>" class="default-button" style="background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; padding: 4px; min-width: 0; width: 52px; height: 44px; display: flex; align-items: center; justify-content: center; margin-right: 0; cursor: pointer;">
-                            <svg width="32" height="32" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                <line x1="6" y1="6" x2="16" y2="16" stroke="#2196f3" stroke-width="2.2" stroke-linecap="round"/>
-                                <line x1="16" y1="6" x2="6" y2="16" stroke="#2196f3" stroke-width="2.2" stroke-linecap="round"/>
-                            </svg>
+                        <button type="button" id="clear-drink-selection" title="<?= $this->escapeHtmlAttr($this->t('Auswahl löschen')) ?>" aria-label="<?= $this->escapeHtmlAttr($this->t('Auswahl löschen')) ?>" class="default-button" disabled aria-disabled="true" style="background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; padding: 4px; min-width: 0; width: 52px; height: 44px; display: flex; align-items: center; justify-content: center; margin-right: 0; cursor: not-allowed; opacity:0.45;">
+                            <span class="icon-trash icon-trash--toolbar" aria-hidden="true">🗑</span>
                         </button>
                     </div>
                 </div>
@@ -201,6 +198,31 @@ html, body {
 button, .category-btn, input, select, textarea {
     font-family: Verdana, sans-serif !important;
 }
+#clear-drink-selection svg, .order-cancel-btn svg { transition: transform .15s ease, color .15s ease; }
+.order-cancel-btn:hover svg { transform: scale(1.15); }
+#clear-drink-selection:hover svg { transform: scale(1.12); }
+
+/* Unicode trash icon (emoji) variants */
+.icon-trash { display:inline-block; line-height:1; font-weight:normal; font-style:normal; font-family: 'Apple Color Emoji','Segoe UI Emoji','Segoe UI Symbol',sans-serif; }
+.icon-trash--toolbar { font-size: 22px; /* visually ~26px svg */ }
+.icon-trash--row { font-size: 15px; /* fits 18x18 button */ }
+.order-cancel-btn .icon-trash { pointer-events:none; }
+.order-cancel-btn:hover .icon-trash, #clear-drink-selection:hover .icon-trash { transform: scale(1.05); transition: transform .15s ease; }
+button#clear-drink-selection[disabled] .icon-trash { transform:none !important; }
+button#clear-drink-selection[disabled]:hover .icon-trash { transform:none !important; }
+/* Fallback / Revert Notes:
+     If the emoji rendering looks inconsistent across platforms, replace the span.icon-trash
+     with the previous SVG (see git history) or wrap this in a feature toggle.
+     Example conditional (pseudo): if (!window.navigator.userAgent.includes('Win')) use emoji else use SVG.
+     To revert quickly for both buttons:
+         1. Search for 'icon-trash--toolbar' and 'icon-trash--row'
+         2. Replace the <span> with the earlier SVG block.
+     Optional CSS monochrome enforcement attempt (often ignored by color emoji fonts):
+         .icon-trash { filter: grayscale(1) contrast(1.1); }
+*/
+#clear-drink-selection svg, .order-cancel-btn svg { transition: transform .15s ease, color .15s ease; }
+.order-cancel-btn:hover svg { transform: scale(1.15); }
+#clear-drink-selection:hover svg { transform: scale(1.12); }
 #current-balance-display.negative-balance {
     color: #d32f2f !important;
 }
@@ -986,6 +1008,20 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
         totalElem.textContent = 'Buchen: ' + formatted + ' ';
         var bookBtn = document.querySelector('button[type="submit"][form="drink-order-form"]');
         if (bookBtn) bookBtn.disabled = !anySelected;
+            var clearBtn = document.getElementById('clear-drink-selection');
+            if (clearBtn) {
+                if (anySelected) {
+                    clearBtn.disabled = false;
+                    clearBtn.setAttribute('aria-disabled', 'false');
+                    clearBtn.style.opacity = '1';
+                    clearBtn.style.cursor = 'pointer';
+                } else {
+                    clearBtn.disabled = true;
+                    clearBtn.setAttribute('aria-disabled', 'true');
+                    clearBtn.style.opacity = '0.45';
+                    clearBtn.style.cursor = 'not-allowed';
+                }
+            }
         var initialBalance = parseFloat("<?= $currentBalance ?>");
         var newBalance = initialBalance - total;
         var formattedBalance = "";
@@ -1045,6 +1081,14 @@ function clearSelectionAndLogout(logoutUser) {
         }
     }
     if (typeof updateDrinkOrderTotal === 'function') updateDrinkOrderTotal();
+    // Ensure clear button disabled after clearing
+    var clearBtn = document.getElementById('clear-drink-selection');
+    if (clearBtn) {
+        clearBtn.disabled = true;
+        clearBtn.setAttribute('aria-disabled', 'true');
+        clearBtn.style.opacity = '0.45';
+        clearBtn.style.cursor = 'not-allowed';
+    }
     if (logoutUser) {
         window.location.replace('<?= $this->url("user/simple-login") ?>');
     }
@@ -1262,7 +1306,9 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
                         echo '<tr class="order-day-row' . ($isDeleted ? ' order-deleted-row' : '') . '" data-group="' . $collapsedId . '" style="background:#fafdff;' . $rowStyle . '">';
                         echo '<td style="color:#888; font-size:0.95em; text-align:center; position:relative;">' . $time;
                         if ($showCancel) {
-                            echo '<button class="order-cancel-btn" data-order-id="' . htmlspecialchars($orderId) . '" title="' . $this->t('Bestellung stornieren') . '" style="position:absolute; right:2px; top:2px; width:18px; height:18px; border:none; background:transparent; color:#d32f2f; font-size:15px; font-weight:bold; cursor:pointer; line-height:16px; padding:0;">&times;</button>';
+                            echo '<button class="order-cancel-btn" data-order-id="' . htmlspecialchars($orderId) . '" title="' . $this->t('Bestellung stornieren') . '" aria-label="' . $this->t('Bestellung stornieren') . '" style="position:absolute; right:2px; top:2px; width:18px; height:18px; border:none; background:transparent; color:#d32f2f; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center;">'
+                                . '<span class="icon-trash icon-trash--row" aria-hidden="true">🗑</span>'
+                                . '</button>';
                         }
                         echo '</td>';
                         echo '<td>' . $strikeOpen . $rowLabel . $strikeClose . '</td>';
