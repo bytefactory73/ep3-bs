@@ -8,6 +8,89 @@ use Zend\Crypt\Password\Bcrypt;
 class AccountController extends AbstractActionController
 {
     /**
+     * Admin: Übersicht aller Nutzer mit Buchungen oder Einzahlungen, sortiert nach Kontostand
+     */
+    public function balanceListAction()
+    {
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $user = $userSessionManager->getSessionUser();
+        if (!$user || $user->get('status') !== 'admin') {
+            return $this->redirect()->toRoute('user/settings');
+        }
+        $userManager = $serviceManager->get('User\Manager\UserManager');
+        $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
+        $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+
+        $users = $userManager->getAll('alias ASC');
+        $userList = [];
+        foreach ($users as $u) {
+            $uid = $u->get('uid');
+            // Use DrinkManager for balance
+            $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
+            $balance = $drinkManager->calculateUserDrinkBalance($uid, $serviceManager);
+            // Still need lastDeposit and lastOrder for activity
+            $deposits = iterator_to_array($drinkDepositManager->getByUser($uid, true));
+            $lastDeposit = null;
+            foreach ($deposits as $d) {
+                if (empty($d['deleted'])) {
+                    if (!$lastDeposit || (isset($d['deposit_time']) && $d['deposit_time'] > $lastDeposit)) {
+                        $lastDeposit = $d['deposit_time'];
+                    }
+                }
+            }
+            $orders = iterator_to_array($drinkOrderManager->getByUser($uid));
+            $lastOrder = null;
+            $ordersTotal = 0.0;
+            foreach ($orders as $o) {
+                if (empty($o['deleted'])) {
+                    if (!$lastOrder || (isset($o['order_time']) && $o['order_time'] > $lastOrder)) {
+                        $lastOrder = $o['order_time'];
+                    }
+                    if (isset($o['price'])) {
+                        $qty = isset($o['quantity']) ? (float)$o['quantity'] : 1;
+                        $ordersTotal += ((float)$o['price']) * $qty;
+                    }
+                }
+            }
+            // Find most recent activity
+            $lastActivity = null;
+            if ($lastDeposit && $lastOrder) {
+                $lastActivity = max($lastDeposit, $lastOrder);
+            } elseif ($lastDeposit) {
+                $lastActivity = $lastDeposit;
+            } elseif ($lastOrder) {
+                $lastActivity = $lastOrder;
+            }
+            // Only show users with at least one deposit or order
+            if (count($deposits) > 0 || count($orders) > 0) {
+                $userList[] = [
+                    'uid' => $u->get('uid'),
+                    'alias' => $u->get('alias'),
+                    'name' => $u->get('name'),
+                    'email' => $u->get('email'),
+                    'balance' => $balance,
+                    'last_activity' => $lastActivity,
+                    'orders_total' => $ordersTotal,
+                ];
+            }
+        }
+        // Sort by balance ascending
+        usort($userList, function($a, $b) {
+            return $a['balance'] <=> $b['balance'];
+        });
+        // Calculate total sum of all balances
+        $totalBalance = 0;
+        foreach ($userList as $user) {
+            $totalBalance += $user['balance'];
+        }
+        return [
+            'users' => $userList,
+            'total_balance' => $totalBalance,
+        ];
+    }
+    /**
      * POST: entry_id
      * Returns JSON: { success: true } or { error: ... }
      */
