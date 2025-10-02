@@ -264,8 +264,21 @@ return array(
                         'options' => array(
                             'route' => '/drinks-admin',
                             'defaults' => array(
-                                'controller' => 'User\Controller\Account',
+                                'controller' => 'User\\Controller\\Account',
                                 'action' => 'drinksAdmin',
+                            ),
+                        ),
+                        'may_terminate' => true,
+                        'child_routes' => array(
+                            'party-mode-save' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/party-mode-save',
+                                    'defaults' => array(
+                                        'controller' => 'User\\Controller\\Account',
+                                        'action' => 'savePartyMode',
+                                    ),
+                                ),
                             ),
                         ),
                     ),

@@ -67,4 +67,38 @@ $this->setup([
             </tr>
         </table>
     </div>
+
+    <?php
+    // Party-Mode values: prefer controller-provided variables, fallback to options defensively
+    if (!isset($partyModeEnabled) || !isset($partyModeMessage)) {
+        $partyModeEnabled = false;
+        $partyModeMessage = '';
+        try {
+            $rawEnabled = $this->option('party_mode.enabled', false); // may throw if key missing
+            $partyModeEnabled = ($rawEnabled === '1' || $rawEnabled === 1 || $rawEnabled === true);
+        } catch (\RuntimeException $e) {}
+        try {
+            $partyModeMessage = (string)$this->option('party_mode.message', '');
+        } catch (\RuntimeException $e) {}
+    }
+    ?>
+
+    <div style="margin: 0 0 24px 0; padding:16px; border:1px solid #ddd; border-radius:8px; background:#fafafa;">
+        <h2 style="margin-top:0;">Party-Mode</h2>
+        <p style="margin-top:4px; color:#555;">
+            Wenn der Party-Mode aktiv ist, werden auf den Bestell- und Simple-Login-Seiten keine Buchungen mehr zugelassen, sondern nur die unten stehende Nachricht angezeigt.
+        </p>
+        <form method="post" action="<?= $this->url('user/drinks-admin/party-mode-save') ?>">
+            <label style="display:flex; align-items:center; gap:8px; font-weight:bold; margin:8px 0;">
+                <input type="checkbox" name="party_mode_enabled" value="1" <?= $partyModeEnabled ? 'checked' : '' ?>>
+                Party-Mode aktiv
+            </label>
+            <div style="margin:8px 0;">
+                <label for="party-mode-message" style="font-weight:bold; display:block; margin-bottom:4px;">Nachricht (wird Benutzern angezeigt)</label>
+                <textarea id="party-mode-message" name="party_mode_message" rows="3" style="width:100%; box-sizing:border-box;"><?= $this->escapeHtml($partyModeMessage) ?></textarea>
+            </div>
+            <button type="submit" class="default-button" style="font-weight:bold;">Speichern</button>
+        </form>
+    </div>
+
 </div>

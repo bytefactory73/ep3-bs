@@ -26,6 +26,14 @@ class SimpleLoginController extends AbstractActionController
         } catch (\Exception $e) {
             // Leave $recentOrders empty on error
         }
+        // Party Mode variables
+        $partyModeEnabled = false; $partyModeMessage = '';
+        try {
+            $optionManager = $this->getServiceLocator()->get('Base\\Manager\\OptionManager');
+            $rawEnabled = $optionManager->get('party_mode.enabled', false);
+            $partyModeEnabled = ($rawEnabled === '1' || $rawEnabled === 1 || $rawEnabled === true);
+            try { $partyModeMessage = (string)$optionManager->get('party_mode.message', ''); } catch (\RuntimeException $e) {}
+        } catch (\Exception $e) {}
         if ($request->isPost()) {
             $alias = trim($request->getPost('alias'));
             if ($alias) {
@@ -49,7 +57,9 @@ class SimpleLoginController extends AbstractActionController
         $viewModel = new ViewModel([
             'error' => $error,
             'recentOrders' => $recentOrders,
-            'recentOrdersCutoffHours' => self::RECENT_ORDERS_CUTOFF_HOURS
+            'recentOrdersCutoffHours' => self::RECENT_ORDERS_CUTOFF_HOURS,
+            'partyModeEnabled' => $partyModeEnabled,
+            'partyModeMessage' => $partyModeMessage,
         ]);
         $viewModel->setTerminal(true);
         return $viewModel;
@@ -120,6 +130,14 @@ class SimpleLoginController extends AbstractActionController
             return strtotime($b['created_at']) - strtotime($a['created_at']);
         });
         $drinkOrderCancelWindow = \Drinks\Manager\DrinkOrderManager::CANCEL_WINDOW_SECONDS;
+        // Party Mode variables
+        $partyModeEnabled = false; $partyModeMessage = '';
+        try {
+            $optionManager = $this->getServiceLocator()->get('Base\\Manager\\OptionManager');
+            $rawEnabled = $optionManager->get('party_mode.enabled', false);
+            $partyModeEnabled = ($rawEnabled === '1' || $rawEnabled === 1 || $rawEnabled === true);
+            try { $partyModeMessage = (string)$optionManager->get('party_mode.message', ''); } catch (\RuntimeException $e) {}
+        } catch (\Exception $e) {}
         return $viewModel->setVariables([
             'drinks' => $drinks,
             'drinkHistory' => $drinkHistory,
@@ -131,7 +149,9 @@ class SimpleLoginController extends AbstractActionController
             'drinkCategories' => $drinkCategories,
             'drinkStats' => [],
             'simpleOrderMode' => true,
-            'thekenadmin' => $thekenadmin
+            'thekenadmin' => $thekenadmin,
+            'partyModeEnabled' => $partyModeEnabled,
+            'partyModeMessage' => $partyModeMessage,
         ]);
     }
 

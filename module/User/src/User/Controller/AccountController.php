@@ -1309,8 +1309,21 @@ class AccountController extends AbstractActionController
         if (!$user || $user->get('status') !== 'admin') {
             return $this->redirect()->toRoute('user/settings');
         }
-        // Just render the new landing page
-        return [];
+        // Provide party mode options to view (defensive retrieval)
+        $optionManager = $serviceManager->get('Base\Manager\OptionManager');
+        $partyModeEnabled = false;
+        $partyModeMessage = '';
+        try {
+            $rawEnabled = $optionManager->get('party_mode.enabled', false);
+            $partyModeEnabled = ($rawEnabled === '1' || $rawEnabled === 1 || $rawEnabled === true);
+        } catch (\RuntimeException $e) {}
+        try {
+            $partyModeMessage = (string)$optionManager->get('party_mode.message', '');
+        } catch (\RuntimeException $e) {}
+        return [
+            'partyModeEnabled' => $partyModeEnabled,
+            'partyModeMessage' => $partyModeMessage,
+        ];
     }
 
     public function depositsAction()
@@ -1810,5 +1823,30 @@ class AccountController extends AbstractActionController
         }
         echo json_encode(['success' => false]);
         return $this->getResponse();
+    }
+
+    public function savePartyModeAction()
+    {
+        $request = $this->getRequest();
+        if (!$request->isPost()) {
+            return $this->redirect()->toRoute('user/drinks-admin');
+        }
+
+        $serviceManager = @$this->getServiceLocator();
+        $optionManager = $serviceManager->get('Base\Manager\OptionManager');
+
+        $enabled = $this->params()->fromPost('party_mode_enabled') ? '1' : '0';
+        $message = trim($this->params()->fromPost('party_mode_message', ''));
+        // sanitize basic (strip tags to avoid HTML injection in message display; keep line breaks)
+        $message = strip_tags($message);
+
+        $optionManager->set('party_mode.enabled', $enabled);
+        $optionManager->set('party_mode.message', $message);
+
+        if (method_exists($this, 'flashMessenger')) {
+            $this->flashMessenger()->addSuccessMessage($this->t('Party-Mode Einstellungen gespeichert.'));
+        }
+
+        return $this->redirect()->toRoute('user/drinks-admin');
     }
 }
