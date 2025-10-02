@@ -26,13 +26,21 @@ class SimpleLoginController extends AbstractActionController
         } catch (\Exception $e) {
             // Leave $recentOrders empty on error
         }
-        // Party Mode variables
-        $partyModeEnabled = false; $partyModeMessage = '';
+        // Party Mode variables (with time window)
+        $partyModeEnabled = false; $partyModeMessage = ''; $partyModeStart=''; $partyModeEnd='';
         try {
             $optionManager = $this->getServiceLocator()->get('Base\\Manager\\OptionManager');
             $rawEnabled = $optionManager->get('party_mode.enabled', false);
-            $partyModeEnabled = ($rawEnabled === '1' || $rawEnabled === 1 || $rawEnabled === true);
+            $partyModeEnabledBase = ($rawEnabled === '1' || $rawEnabled === 1 || $rawEnabled === true);
             try { $partyModeMessage = (string)$optionManager->get('party_mode.message', ''); } catch (\RuntimeException $e) {}
+            try { $partyModeStart = (string)$optionManager->get('party_mode.start', ''); } catch (\RuntimeException $e) {}
+            try { $partyModeEnd = (string)$optionManager->get('party_mode.end', ''); } catch (\RuntimeException $e) {}
+            $now = time(); $activeWithin = true;
+            $sTs = $partyModeStart && ($ts=strtotime($partyModeStart))!==false ? $ts : null;
+            $eTs = $partyModeEnd && ($ts=strtotime($partyModeEnd))!==false ? $ts : null;
+            if ($sTs && $now < $sTs) $activeWithin = false;
+            if ($eTs && $now > $eTs) $activeWithin = false;
+            $partyModeEnabled = $partyModeEnabledBase && $activeWithin;
         } catch (\Exception $e) {}
         if ($request->isPost()) {
             $alias = trim($request->getPost('alias'));
@@ -130,13 +138,21 @@ class SimpleLoginController extends AbstractActionController
             return strtotime($b['created_at']) - strtotime($a['created_at']);
         });
         $drinkOrderCancelWindow = \Drinks\Manager\DrinkOrderManager::CANCEL_WINDOW_SECONDS;
-        // Party Mode variables
-        $partyModeEnabled = false; $partyModeMessage = '';
+        // Party Mode variables (with time window)
+        $partyModeEnabled = false; $partyModeMessage = ''; $partyModeStart=''; $partyModeEnd='';
         try {
             $optionManager = $this->getServiceLocator()->get('Base\\Manager\\OptionManager');
             $rawEnabled = $optionManager->get('party_mode.enabled', false);
-            $partyModeEnabled = ($rawEnabled === '1' || $rawEnabled === 1 || $rawEnabled === true);
+            $partyModeEnabledBase = ($rawEnabled === '1' || $rawEnabled === 1 || $rawEnabled === true);
             try { $partyModeMessage = (string)$optionManager->get('party_mode.message', ''); } catch (\RuntimeException $e) {}
+            try { $partyModeStart = (string)$optionManager->get('party_mode.start', ''); } catch (\RuntimeException $e) {}
+            try { $partyModeEnd = (string)$optionManager->get('party_mode.end', ''); } catch (\RuntimeException $e) {}
+            $now = time(); $activeWithin = true;
+            $sTs = $partyModeStart && ($ts=strtotime($partyModeStart))!==false ? $ts : null;
+            $eTs = $partyModeEnd && ($ts=strtotime($partyModeEnd))!==false ? $ts : null;
+            if ($sTs && $now < $sTs) $activeWithin = false;
+            if ($eTs && $now > $eTs) $activeWithin = false;
+            $partyModeEnabled = $partyModeEnabledBase && $activeWithin;
         } catch (\Exception $e) {}
         return $viewModel->setVariables([
             'drinks' => $drinks,

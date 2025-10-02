@@ -85,6 +85,15 @@ $this->setup([
 
     <div style="margin: 0 0 24px 0; padding:16px; border:1px solid #ddd; border-radius:8px; background:#fafafa;">
         <h2 style="margin-top:0;">Party-Mode</h2>
+        <?php if (isset($partyModeActive) && $partyModeEnabled): ?>
+            <div style="margin:4px 0 12px; font-size:0.85em;">
+                <?php if ($partyModeActive): ?>
+                    <span style="display:inline-block; padding:4px 8px; background:#d4edda; color:#155724; border:1px solid #c3e6cb; border-radius:4px;">Aktiv (innerhalb Zeitfenster)</span>
+                <?php else: ?>
+                    <span style="display:inline-block; padding:4px 8px; background:#fff3cd; color:#856404; border:1px solid #ffeeba; border-radius:4px;">Aktuell nicht aktiv (außerhalb Zeitfenster)</span>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
         <p style="margin-top:4px; color:#555;">
             Wenn der Party-Mode aktiv ist, werden auf den Bestell- und Simple-Login-Seiten keine Buchungen mehr zugelassen, sondern nur die unten stehende Nachricht angezeigt.
         </p>
@@ -93,6 +102,40 @@ $this->setup([
                 <input type="checkbox" name="party_mode_enabled" value="1" <?= $partyModeEnabled ? 'checked' : '' ?>>
                 Party-Mode aktiv
             </label>
+            <?php
+            // Pre-fill start/end (YYYY-MM-DDTHH:MM for datetime-local)
+            $partyModeStartOpt = '';
+            $partyModeEndOpt = '';
+            try { $partyModeStartOpt = $this->option('party_mode.start', ''); } catch (\RuntimeException $e) {}
+            try { $partyModeEndOpt = $this->option('party_mode.end', ''); } catch (\RuntimeException $e) {}
+            // Expect stored format ISO 8601 (Y-m-d H:i:s). Convert to datetime-local value.
+            $toLocalValue = function($val) {
+                if (!$val) return '';
+                // Accept either 'Y-m-d H:i:s' or already 'Y-m-dTH:i'
+                if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/', $val)) return $val;
+                if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $val)) {
+                    return substr($val,0,16); // Y-m-d H:i -> need 'T'
+                }
+                if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/', $val)) {
+                    return str_replace(' ','T',$val);
+                }
+                return '';
+            };
+            $partyModeStartLocal = str_replace(' ','T',$toLocalValue($partyModeStartOpt));
+            $partyModeEndLocal = str_replace(' ','T',$toLocalValue($partyModeEndOpt));
+            ?>
+            <div style="display:flex; flex-wrap:wrap; gap:16px; margin:12px 0;">
+                <div style="flex:1 1 240px; min-width:220px;">
+                    <label for="party-mode-start" style="font-weight:bold; display:block; margin:0 0 4px;">Start (optional)</label>
+                    <input type="datetime-local" id="party-mode-start" name="party_mode_start" value="<?= $this->escapeHtmlAttr($partyModeStartLocal) ?>" style="width:100%; box-sizing:border-box; padding:6px 8px;">
+                    <div class="small gray" style="font-size:0.78em; margin-top:2px;">Aktiv erst ab diesem Zeitpunkt</div>
+                </div>
+                <div style="flex:1 1 240px; min-width:220px;">
+                    <label for="party-mode-end" style="font-weight:bold; display:block; margin:0 0 4px;">Ende (optional)</label>
+                    <input type="datetime-local" id="party-mode-end" name="party_mode_end" value="<?= $this->escapeHtmlAttr($partyModeEndLocal) ?>" style="width:100%; box-sizing:border-box; padding:6px 8px;">
+                    <div class="small gray" style="font-size:0.78em; margin-top:2px;">Automatisch deaktivieren danach</div>
+                </div>
+            </div>
             <div style="margin:8px 0;">
                 <label for="party-mode-message" style="font-weight:bold; display:block; margin-bottom:4px;">Nachricht (wird Benutzern angezeigt)</label>
                 <textarea id="party-mode-message" name="party_mode_message" rows="3" style="width:100%; box-sizing:border-box;"><?= $this->escapeHtml($partyModeMessage) ?></textarea>

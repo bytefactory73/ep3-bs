@@ -1313,6 +1313,8 @@ class AccountController extends AbstractActionController
         $optionManager = $serviceManager->get('Base\Manager\OptionManager');
         $partyModeEnabled = false;
         $partyModeMessage = '';
+        $partyModeStart = '';
+        $partyModeEnd = '';
         try {
             $rawEnabled = $optionManager->get('party_mode.enabled', false);
             $partyModeEnabled = ($rawEnabled === '1' || $rawEnabled === 1 || $rawEnabled === true);
@@ -1320,9 +1322,26 @@ class AccountController extends AbstractActionController
         try {
             $partyModeMessage = (string)$optionManager->get('party_mode.message', '');
         } catch (\RuntimeException $e) {}
+        try { $partyModeStart = (string)$optionManager->get('party_mode.start', ''); } catch (\RuntimeException $e) {}
+        try { $partyModeEnd = (string)$optionManager->get('party_mode.end', ''); } catch (\RuntimeException $e) {}
+
+        // Time window enforcement
+        $now = time();
+        $activeWithinWindow = true;
+        $startTs = null; $endTs = null;
+        if ($partyModeStart && ($ts = strtotime($partyModeStart)) !== false) { $startTs = $ts; }
+        if ($partyModeEnd && ($ts = strtotime($partyModeEnd)) !== false) { $endTs = $ts; }
+        if ($startTs && $now < $startTs) { $activeWithinWindow = false; }
+        if ($endTs && $now > $endTs) { $activeWithinWindow = false; }
+        $partyModeActiveComputed = $partyModeEnabled && $activeWithinWindow;
+        // For the settings page we must show the TRUE stored value of the checkbox (unfiltered by timeframe).
+        // Provide both: raw stored flag (partyModeEnabled) and currently active state (partyModeActive).
         return [
-            'partyModeEnabled' => $partyModeEnabled,
+            'partyModeEnabled' => $partyModeEnabled,          // raw stored value for checkbox
+            'partyModeActive' => $partyModeActiveComputed,    // computed active (may be false outside window)
             'partyModeMessage' => $partyModeMessage,
+            'partyModeStart' => $partyModeStart,
+            'partyModeEnd' => $partyModeEnd,
         ];
     }
 
@@ -1837,11 +1856,39 @@ class AccountController extends AbstractActionController
 
         $enabled = $this->params()->fromPost('party_mode_enabled') ? '1' : '0';
         $message = trim($this->params()->fromPost('party_mode_message', ''));
-        // sanitize basic (strip tags to avoid HTML injection in message display; keep line breaks)
+        $startRaw = trim($this->params()->fromPost('party_mode_start', ''));
+        $endRaw = trim($this->params()->fromPost('party_mode_end', ''));
+
+        // sanitize message (strip all tags)
         $message = strip_tags($message);
+
+        // Normalize and validate datetimes (allow empty). Accept formats: 'Y-m-dTH:i', 'Y-m-d H:i', optionally with :ss
+        $normalize = function($val) {
+            if ($val === '' || $val === null) return '';
+            $val = str_replace('T', ' ', $val);
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $val)) {
+                $val .= ' 00:00:00';
+            } elseif (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/', $val)) {
+                $val .= ':00';
+            } elseif (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $val)) {
+                // already fine
+            } else {
+                return ''; // invalid format -> drop
+            }
+            return $val;
+        };
+        $start = $normalize($startRaw);
+        $end = $normalize($endRaw);
+
+        // If both set and end before start -> swap
+        if ($start && $end && strtotime($end) < strtotime($start)) {
+            $tmp = $start; $start = $end; $end = $tmp;
+        }
 
         $optionManager->set('party_mode.enabled', $enabled);
         $optionManager->set('party_mode.message', $message);
+        $optionManager->set('party_mode.start', $start);
+        $optionManager->set('party_mode.end', $end);
 
         if (method_exists($this, 'flashMessenger')) {
             $this->flashMessenger()->addSuccessMessage($this->t('Party-Mode Einstellungen gespeichert.'));

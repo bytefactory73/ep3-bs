@@ -5,35 +5,24 @@ $drinks = $this->drinks ?? [];
 // drinksEnabled: should be set by controller, fallback to true for BC
 $drinksEnabled = isset($this->drinksEnabled) ? (bool)$this->drinksEnabled : true;
 
-// Party-Mode early check (defensive retrieval: option() may throw if keys not yet set)
-$partyModeEnabled = false;
-$partyModeMessage = '';
+// Party Mode early block (with timeframe gating) - uses option() helper per key
+$__partyModeEnabled = false; $__partyModeMessage = ''; $__partyModeStart=''; $__partyModeEnd='';
 try {
-    $rawEnabled = $this->option('party_mode.enabled', false);
-    $partyModeEnabled = ($rawEnabled === '1' || $rawEnabled === 1 || $rawEnabled === true);
-} catch (\RuntimeException $e) {
-    // not set yet
-}
-try {
-    $partyModeMessage = trim((string)$this->option('party_mode.message', ''));
-} catch (\RuntimeException $e) {
-    // not set
-}
-if ($partyModeEnabled) {
-    $this->setup([
-        'title' => 'Party-Mode',
-        'panel' => 'centered-panel',
-        'back' => true,
-    ]);
-    ?>
-    <div style="margin:32px auto; max-width:640px; padding:32px; background:#fff7e6; border:1px solid #ffc107; border-radius:10px;">
-        <h1 style="margin-top:0;"><?= $this->t('Party-Mode aktiv') ?></h1>
-        <div style="font-size:1.05em; line-height:1.4;">
-            <?= nl2br($this->escapeHtml($partyModeMessage ?: 'Getränkebuchungen sind vorübergehend deaktiviert.'), false) ?>
-        </div>
-    </div>
-    <?php
-    return; // stop normal drink ordering / history rendering
+    try { $__partyModeEnabledRaw = $this->option('party_mode.enabled', false); } catch (RuntimeException $e) { $__partyModeEnabledRaw = false; }
+    $__partyModeEnabledBase = ($__partyModeEnabledRaw === '1' || $__partyModeEnabledRaw === 1 || $__partyModeEnabledRaw === true);
+    try { $__partyModeMessage = (string)$this->option('party_mode.message', ''); } catch (RuntimeException $e) {}
+    try { $__partyModeStart = (string)$this->option('party_mode.start', ''); } catch (RuntimeException $e) {}
+    try { $__partyModeEnd = (string)$this->option('party_mode.end', ''); } catch (RuntimeException $e) {}
+    $now = time(); $activeWithin = true;
+    $sTs = $__partyModeStart && ($ts=strtotime($__partyModeStart))!==false ? $ts : null;
+    $eTs = $__partyModeEnd && ($ts=strtotime($__partyModeEnd))!==false ? $ts : null;
+    if ($sTs && $now < $sTs) $activeWithin = false;
+    if ($eTs && $now > $eTs) $activeWithin = false;
+    $__partyModeEnabled = $__partyModeEnabledBase && $activeWithin;
+} catch (Exception $e) { $__partyModeEnabled = false; }
+if ($__partyModeEnabled) {
+    echo '<div class="party-mode-block" style="margin:20px 0;font-size:1.2em;line-height:1.4;">' . nl2br($this->escapeHtml($__partyModeMessage ?: $this->t('Ordering is currently disabled.'))) . '</div>';
+    return;
 }
 ?>
 

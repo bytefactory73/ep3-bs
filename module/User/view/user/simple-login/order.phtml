@@ -13,11 +13,22 @@
 </head>
 <body>
 <?php
-// Party-Mode early block (prefer controller-provided variables)
+// Party-Mode early block (prefer controller-provided computed state, else compute with timeframe)
 if (!isset($partyModeEnabled) || !isset($partyModeMessage)) {
-    $partyModeEnabled = false; $partyModeMessage = '';
-    try { $rawEnabled = $this->option('party_mode.enabled', false); $partyModeEnabled = ($rawEnabled === '1' || $rawEnabled === 1 || $rawEnabled === true); } catch (\RuntimeException $e) {}
+    $partyModeEnabled = false; $partyModeMessage = ''; $partyModeStart=''; $partyModeEnd='';
+    try { $rawEnabled = $this->option('party_mode.enabled', false); $partyModeEnabledBase = ($rawEnabled === '1' || $rawEnabled === 1 || $rawEnabled === true); } catch (\RuntimeException $e) { $partyModeEnabledBase = false; }
     try { $partyModeMessage = trim((string)$this->option('party_mode.message', '')); } catch (\RuntimeException $e) {}
+    try { $partyModeStart = (string)$this->option('party_mode.start', ''); } catch (\RuntimeException $e) {}
+    try { $partyModeEnd = (string)$this->option('party_mode.end', ''); } catch (\RuntimeException $e) {}
+    $now = time(); $activeWithin = true;
+    $sTs = $partyModeStart && ($ts=strtotime($partyModeStart))!==false ? $ts : null;
+    $eTs = $partyModeEnd && ($ts=strtotime($partyModeEnd))!==false ? $ts : null;
+    if ($sTs && $now < $sTs) $activeWithin = false;
+    if ($eTs && $now > $eTs) $activeWithin = false;
+    $partyModeEnabled = $partyModeEnabledBase && $activeWithin;
+}
+if (isset($partyModeActive)) { // controller may pass both
+    $partyModeEnabled = $partyModeActive; // respect computed active state from controller
 }
 if ($partyModeEnabled) {
     ?>
