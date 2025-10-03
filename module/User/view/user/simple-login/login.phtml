@@ -57,13 +57,24 @@ if (!isset($partyModeEnabled) || !isset($partyModeMessage)) {
     try { $partyModeMessage = trim((string)$this->option('party_mode.message', '')); } catch (\RuntimeException $e) {}
 }
 if ($partyModeEnabled) {
+    // Split message into first line and remainder
+    $pmRawMsg = $partyModeMessage ?: 'Login ist vorübergehend deaktiviert.';
+    $pmLines = preg_split('/\r?\n/', $pmRawMsg);
+    $pmFirstLine = '';
+    $pmRemainder = '';
+    if ($pmLines && count($pmLines) > 0) {
+        $pmFirstLine = trim(array_shift($pmLines));
+        $pmRemainder = trim(implode("\n", $pmLines));
+    }
     ?>
     <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;box-sizing:border-box;">
         <div style="max-width:640px;width:100%;background:#fff7e6;border:1px solid #ffc107;border-radius:14px;padding:40px 36px;box-shadow:0 10px 28px -6px rgba(0,0,0,0.18);text-align:center;">
-            <h1 style="margin-top:0;color:#c77700;font-size:2em;">Party-Mode aktiv</h1>
+            <h1 style="margin-top:0;color:#c77700;font-size:2em;"><?= $this->escapeHtml($pmFirstLine !== '' ? $pmFirstLine : 'Party-Mode') ?></h1>
+            <?php if ($pmRemainder !== ''): ?>
             <p style="font-size:1.15em;line-height:1.45;margin:0;color:#5a4100;">
-                <?= nl2br($this->escapeHtml($partyModeMessage ?: 'Login ist vorübergehend deaktiviert.'), false) ?>
+                <?= nl2br($this->escapeHtml($pmRemainder), false) ?>
             </p>
+            <?php endif; ?>
         </div>
     </div>
     </body></html>

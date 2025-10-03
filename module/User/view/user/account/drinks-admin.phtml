@@ -84,23 +84,23 @@ $this->setup([
     ?>
 
     <div style="margin: 0 0 24px 0; padding:16px; border:1px solid #ddd; border-radius:8px; background:#fafafa;">
-        <h2 style="margin-top:0;">Party-Mode</h2>
-        <?php if (isset($partyModeActive) && $partyModeEnabled): ?>
-            <div style="margin:4px 0 12px; font-size:0.85em;">
+        <div style="display:flex; align-items:center; gap:12px; margin:0 0 12px 0; flex-wrap:nowrap;">
+            <h2 style="margin:0; flex:0 0 auto; display:inline-flex; align-items:center;">System Nachricht</h2>
+            <?php if (isset($partyModeActive) && $partyModeEnabled): ?>
                 <?php if ($partyModeActive): ?>
-                    <span style="display:inline-block; padding:4px 8px; background:#d4edda; color:#155724; border:1px solid #c3e6cb; border-radius:4px;">Aktiv (innerhalb Zeitfenster)</span>
+                    <span style="display:inline-block; padding:4px 8px; background:#d4edda; color:#155724; border:1px solid #c3e6cb; border-radius:4px; font-size:0.85em;">Aktiv (innerhalb Zeitfenster)</span>
                 <?php else: ?>
-                    <span style="display:inline-block; padding:4px 8px; background:#fff3cd; color:#856404; border:1px solid #ffeeba; border-radius:4px;">Aktuell nicht aktiv (außerhalb Zeitfenster)</span>
+                    <span style="display:inline-block; padding:4px 8px; background:#fff3cd; color:#856404; border:1px solid #ffeeba; border-radius:4px; font-size:0.85em;">Aktuell nicht aktiv (außerhalb Zeitfenster)</span>
                 <?php endif; ?>
-            </div>
-        <?php endif; ?>
+            <?php endif; ?>
+        </div>
         <p style="margin-top:4px; color:#555;">
-            Wenn der Party-Mode aktiv ist, werden auf den Bestell- und Simple-Login-Seiten keine Buchungen mehr zugelassen, sondern nur die unten stehende Nachricht angezeigt.
+            Wenn der "System Nachricht" aktiv ist, werden auf den Bestell- und Simple-Login-Seiten keine Buchungen mehr zugelassen, sondern nur die unten stehende Nachricht angezeigt.
         </p>
         <form method="post" action="<?= $this->url('user/drinks-admin/party-mode-save') ?>">
             <label style="display:flex; align-items:center; gap:8px; font-weight:bold; margin:8px 0;">
                 <input type="checkbox" name="party_mode_enabled" value="1" <?= $partyModeEnabled ? 'checked' : '' ?>>
-                Party-Mode aktiv
+                System Nachricht aktiv
             </label>
             <?php
             // Pre-fill start/end (YYYY-MM-DDTHH:MM for datetime-local)
@@ -127,21 +127,52 @@ $this->setup([
             <div style="display:flex; flex-wrap:wrap; gap:16px; margin:12px 0;">
                 <div style="flex:1 1 240px; min-width:220px;">
                     <label for="party-mode-start" style="font-weight:bold; display:block; margin:0 0 4px;">Start (optional)</label>
-                    <input type="datetime-local" id="party-mode-start" name="party_mode_start" value="<?= $this->escapeHtmlAttr($partyModeStartLocal) ?>" style="width:100%; box-sizing:border-box; padding:6px 8px;">
+                    <input type="datetime-local" id="party-mode-start" name="party_mode_start" value="<?= $this->escapeHtmlAttr($partyModeStartLocal) ?>" style="width:100%; box-sizing:border-box; padding:6px 8px;" <?= $partyModeEnabled ? '' : 'readonly' ?>>
                     <div class="small gray" style="font-size:0.78em; margin-top:2px;">Aktiv erst ab diesem Zeitpunkt</div>
                 </div>
                 <div style="flex:1 1 240px; min-width:220px;">
                     <label for="party-mode-end" style="font-weight:bold; display:block; margin:0 0 4px;">Ende (optional)</label>
-                    <input type="datetime-local" id="party-mode-end" name="party_mode_end" value="<?= $this->escapeHtmlAttr($partyModeEndLocal) ?>" style="width:100%; box-sizing:border-box; padding:6px 8px;">
+                    <input type="datetime-local" id="party-mode-end" name="party_mode_end" value="<?= $this->escapeHtmlAttr($partyModeEndLocal) ?>" style="width:100%; box-sizing:border-box; padding:6px 8px;" <?= $partyModeEnabled ? '' : 'readonly' ?>>
                     <div class="small gray" style="font-size:0.78em; margin-top:2px;">Automatisch deaktivieren danach</div>
                 </div>
             </div>
             <div style="margin:8px 0;">
                 <label for="party-mode-message" style="font-weight:bold; display:block; margin-bottom:4px;">Nachricht (wird Benutzern angezeigt)</label>
-                <textarea id="party-mode-message" name="party_mode_message" rows="3" style="width:100%; box-sizing:border-box;"><?= $this->escapeHtml($partyModeMessage) ?></textarea>
+                <textarea id="party-mode-message" name="party_mode_message" rows="3" style="width:100%; box-sizing:border-box;" <?= $partyModeEnabled ? '' : 'readonly' ?>><?= $this->escapeHtml($partyModeMessage) ?></textarea>
             </div>
             <button type="submit" class="default-button" style="font-weight:bold;">Speichern</button>
         </form>
     </div>
+
+    <script>
+    (function(){
+        var checkbox = document.querySelector('input[name="party_mode_enabled"]');
+        if(!checkbox) return;
+                var fields = [
+                    document.getElementById('party-mode-start'),
+                    document.getElementById('party-mode-end'),
+                    document.getElementById('party-mode-message')
+                ];
+                function sync(){
+                    var en = checkbox.checked;
+                    fields.forEach(function(f){
+                        if(!f) return;
+                        if(en){
+                            f.removeAttribute('readonly');
+                            f.classList.remove('pm-readonly');
+                        } else {
+                            f.setAttribute('readonly','readonly');
+                            f.classList.add('pm-readonly');
+                        }
+                    });
+                }
+        checkbox.addEventListener('change', sync);
+        sync();
+    })();
+    </script>
+        <style>
+            .pm-readonly { background:#f5f5f5 !important; color:#555; }
+            .pm-readonly:focus { outline:none; }
+        </style>
 
 </div>
