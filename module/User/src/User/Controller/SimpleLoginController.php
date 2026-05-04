@@ -98,10 +98,11 @@ class SimpleLoginController extends AbstractActionController
         $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($userId));
         // Use DrinkManager for balance calculation
         $currentBalance = $drinkManager->calculateUserDrinkBalance($userId, $this->getServiceLocator());
-        // Fetch thekenadmin flag from drink_aliases
+        // Fetch flags from drink_aliases
         $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
-        $row = $db->query('SELECT thekenadmin FROM drink_aliases WHERE user_id = ?', [$userId])->current();
+        $row = $db->query('SELECT thekenadmin, is_team FROM drink_aliases WHERE user_id = ?', [$userId])->current();
         $thekenadmin = ($row && !empty($row['thekenadmin'])) ? true : false;
+        $isTeamAccount = ($row && !empty($row['is_team'])) ? true : false;
         $drinkHistory = [];
         foreach ($drinkDeposits as $deposit) {
             $drinkHistory[] = [
@@ -166,6 +167,7 @@ class SimpleLoginController extends AbstractActionController
             'drinkStats' => [],
             'simpleOrderMode' => true,
             'thekenadmin' => $thekenadmin,
+            'isTeamAccount' => $isTeamAccount,
             'partyModeEnabled' => $partyModeEnabled,
             'partyModeMessage' => $partyModeMessage,
         ]);

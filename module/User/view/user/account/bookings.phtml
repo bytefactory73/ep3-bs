@@ -4,6 +4,7 @@ $simpleOrderMode = $simpleOrderMode ?? ($this->simpleOrderMode ?? false);
 $drinks = $this->drinks ?? [];
 // drinksEnabled: should be set by controller, fallback to true for BC
 $drinksEnabled = isset($this->drinksEnabled) ? (bool)$this->drinksEnabled : true;
+$isTeamAccount = isset($this->isTeamAccount) ? (bool)$this->isTeamAccount : false;
 
 // Party Mode early block (with timeframe gating) - uses option() helper per key
 $__partyModeEnabled = false; $__partyModeMessage = ''; $__partyModeStart=''; $__partyModeEnd='';
@@ -51,7 +52,7 @@ if ($__partyModeEnabled) {
         <?php if (isset($drinks) && $drinksEnabled): ?>
             <div style="margin-left:16px; margin-right:16px; margin-bottom: 8px; width: 100%-32px; min-height: 24px; display: flex; align-items: center;">
                 <!-- Placeholder for line 2 (e.g., navigation, info, etc.) -->
-                <?php if ($simpleOrderMode): ?>
+                <?php if ($simpleOrderMode && !$isTeamAccount): ?>
                     <!-- Guthaben aufladen ribbon overlay (cleaned up, CSS classes only) -->
                     <div id="balance-recharge-btn-container" class="balance-recharge-ribbon-container">
                         <div class="balance-recharge-ribbon">
