@@ -5,6 +5,8 @@ $drinks = $this->drinks ?? [];
 // drinksEnabled: should be set by controller, fallback to true for BC
 $drinksEnabled = isset($this->drinksEnabled) ? (bool)$this->drinksEnabled : true;
 $isTeamAccount = isset($this->isTeamAccount) ? (bool)$this->isTeamAccount : false;
+$showFullBalanceInSimple = ($simpleOrderMode && !empty($this->thekenadmin));
+$showBalanceColumn = (!$simpleOrderMode || $showFullBalanceInSimple || $isTeamAccount);
 
 // Party Mode early block (with timeframe gating) - uses option() helper per key
 $__partyModeEnabled = false; $__partyModeMessage = ''; $__partyModeStart=''; $__partyModeEnd='';
@@ -40,12 +42,31 @@ if ($__partyModeEnabled) {
             <span style="flex:1; text-align:left; display:block; text-overflow:ellipsis; overflow:hidden; min-width:0; white-space:nowrap;">
                 <?= $this->escapeHtml($this->userName) ?>
             </span>
-            <?php if (!$simpleOrderMode): ?>
+            <?php if ($simpleOrderMode && $isTeamAccount): ?>
+                <span id="spieltag-select-wrap" style="display:inline-flex; margin-left:8px;">
+                    <select id="spieltag-select" style="font-size:0.5em; max-width:280px; padding:4px 6px; border:1px solid #2196f3; border-radius:6px; color:#1769aa;">
+                        <?php
+                        $currentSpieltagValue = isset($this->currentSpieltag) ? trim((string)$this->currentSpieltag) : '';
+                        $availableSpieltageValues = isset($this->availableSpieltage) && is_array($this->availableSpieltage) ? $this->availableSpieltage : [];
+                        foreach ($availableSpieltageValues as $spieltagValue):
+                            $spieltagLabel = trim((string)$spieltagValue);
+                            if ($spieltagLabel === '') continue;
+                        ?>
+                            <option value="<?= $this->escapeHtmlAttr($spieltagLabel) ?>"<?= $currentSpieltagValue === $spieltagLabel ? ' selected' : '' ?>>
+                                <?= $this->escapeHtml($spieltagLabel) ?>
+                            </option>
+                        <?php endforeach; ?>
+                        <option value="__new__"><?= $this->t('Neuen Spieltag anlegen') ?></option>
+                    </select>
+                </span>
+            <?php endif; ?>
+            <?php if (!$simpleOrderMode || $showFullBalanceInSimple): ?>
                 <div id="current-balance-display" class="<?= $currentBalance < 0 ? 'negative-balance' : '' ?>" style="color: #2196f3; display: inline-flex; align-items: center;">
                     <?= $this->t('Guthaben:') ?>
                     <span id="current-balance-value" style="margin-left: 8px"></span>
                 </div>
-            <?php else: ?>
+            <?php endif; ?>
+            <?php if ($simpleOrderMode): ?>
                 <span id="logout-timer" style="display:inline-flex; align-items:center; margin-left:16px; font-size:0.85em; color:#d32f2f; background:#fff3f3; border:1px solid #d32f2f; border-radius:6px; padding:2px 10px; display:none; white-space:nowrap;"></span>
             <?php endif; ?>
         </div>
@@ -88,6 +109,17 @@ if ($__partyModeEnabled) {
                                 <line x1="20" y1="8" x2="20" y2="24" stroke="#2196f3" stroke-width="1.5"/>
                             </svg>
                             <span class="sr-only" style="position:absolute;left:-9999px;"> <?= $this->t('Gesamtauswertung') ?> </span>
+                        </button>
+                <?php endif; ?>
+                <?php if ($simpleOrderMode && $isTeamAccount) : ?>
+                        <button id="team-stats-btn" type="button" class="default-button" title="<?= $this->t('Team-Statistik') ?>" style="font-size: 1.1em; font-weight: bold; background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; padding: 4px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 0; width: 52px; height: 44px; justify-content: center;" onclick="event.preventDefault(); if (typeof openTeamStatsModal === 'function') openTeamStatsModal();">
+                            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <rect x="6" y="7" width="20" height="18" rx="3" fill="#f7fbff" stroke="#2196f3" stroke-width="2"/>
+                                <line x1="6" y1="13" x2="26" y2="13" stroke="#2196f3" stroke-width="1.5"/>
+                                <line x1="6" y1="19" x2="26" y2="19" stroke="#2196f3" stroke-width="1.5"/>
+                                <line x1="14" y1="7" x2="14" y2="25" stroke="#2196f3" stroke-width="1.5"/>
+                            </svg>
+                            <span class="sr-only" style="position:absolute;left:-9999px;"> <?= $this->t('Team-Statistik') ?> </span>
                         </button>
                 <?php endif; ?>
                         <button type="submit" form="drink-order-form" name="drink_order_submit" value="1" class="default-button stc-main-button" style="background: #2196f3; color: #fff; border: 1px solid #2196f3; border-radius: 6px; padding: 4px 14px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 1em; height: 44px; justify-content: center; font-weight: bold;">
@@ -928,7 +960,11 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
                             alert('<?= $this->t('Bestellung erfolgreich!') ?>');
                             <?php endif; ?>
                             if (window.SIMPLE_ORDER_MODE) {
+                                <?php if ($isTeamAccount): ?>
+                                window.location.reload();
+                                <?php else: ?>
                                 window.location.replace('<?= $this->url("user/simple-login") ?>');
+                                <?php endif; ?>
                             } else {
                                 window.location.reload();
                             }
@@ -952,6 +988,77 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
         var clearBtn = document.getElementById('clear-drink-selection');
         if (clearBtn) {
             clearBtn.addEventListener('click', function() { clearSelectionAndLogout(false); });
+        }
+        var spieltagSelect = document.getElementById('spieltag-select');
+        if (spieltagSelect) {
+            spieltagSelect.addEventListener('change', function() {
+                var selected = spieltagSelect.value || '';
+                if (selected === '__new__') {
+                    var today = new Date();
+                    var year = today.getFullYear();
+                    var month = String(today.getMonth() + 1).padStart(2, '0');
+                    var day = String(today.getDate()).padStart(2, '0');
+                    var defaultSpieltagName = 'Spieltag ' + year + '-' + month + '-' + day;
+                    var newName = window.prompt('<?= $this->t('Neuen Spieltag eingeben:') ?>', defaultSpieltagName);
+                    if (!newName) {
+                        return;
+                    }
+                    var paramsNew = 'spieltag=' + encodeURIComponent('__new__') + '&new_spieltag=' + encodeURIComponent(newName);
+                    fetch('simple-order/spieltag', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: paramsNew
+                    }).then(function(resp) { return resp.json(); }).then(function(data) {
+                        if (!data || !data.success) {
+                            alert((data && data.error) ? data.error : '<?= $this->t('Fehler beim Speichern des Spieltags.') ?>');
+                            return;
+                        }
+                        if (typeof window.teamSpieltagUpdateFromApi === 'function') {
+                            window.teamSpieltagUpdateFromApi(data);
+                        }
+                        window.location.reload();
+                    }).catch(function() {
+                        alert('<?= $this->t('Netzwerkfehler beim Speichern des Spieltags.') ?>');
+                    });
+                    return;
+                }
+
+                var params = 'spieltag=' + encodeURIComponent(selected);
+                fetch('simple-order/spieltag', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: params
+                }).then(function(resp) { return resp.json(); }).then(function(data) {
+                    if (!data || !data.success) {
+                        alert((data && data.error) ? data.error : '<?= $this->t('Fehler beim Setzen des Spieltags.') ?>');
+                        return;
+                    }
+                    if (typeof window.teamSpieltagUpdateFromApi === 'function') {
+                        window.teamSpieltagUpdateFromApi(data);
+                    }
+                    window.location.reload();
+                }).catch(function() {
+                    alert('<?= $this->t('Netzwerkfehler beim Setzen des Spieltags.') ?>');
+                });
+            });
+
+            fetch('simple-order/spieltag', {
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            }).then(function(resp) { return resp.json(); }).then(function(data) {
+                if (!data || !data.success) return;
+                if (typeof window.teamSpieltagUpdateFromApi === 'function') {
+                    window.teamSpieltagUpdateFromApi(data);
+                }
+            }).catch(function() {});
         }
         var minusBtns = document.querySelectorAll('.drink-minus');
         for (var i = 0; i < minusBtns.length; i++) {
@@ -1046,14 +1153,17 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
         var initialBalance = parseFloat("<?= $currentBalance ?>");
         var newBalance = initialBalance - total;
         var formattedBalance = "";
-        if (window.SIMPLE_ORDER_MODE) {
+        var showFullBalanceInSimple = <?= $showFullBalanceInSimple ? 'true' : 'false' ?>;
+        if (window.SIMPLE_ORDER_MODE && !showFullBalanceInSimple) {
             formattedBalance = newBalance > 0 ? " > 0 €" : " < 0 €";
         } else {
             formattedBalance = newBalance.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
             var balanceElem = document.getElementById('current-balance-value');
             var balanceBox = document.getElementById('current-balance-display');
-            balanceElem.textContent = formattedBalance;
-            balanceElem.style.color = (newBalance < 0) ? '#d32f2f' : '#2196f3';
+            if (balanceElem) {
+                balanceElem.textContent = formattedBalance;
+                balanceElem.style.color = (newBalance < 0) ? '#d32f2f' : '#2196f3';
+            }
             if (balanceBox) {
                 if (newBalance < 0) {
                     balanceBox.classList.add('negative-balance');
@@ -1176,7 +1286,7 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
                 <th style="text-align:left;">
                     <?= $this->t('Total') ?>
                 </th>
-                <?php if (!$simpleOrderMode): ?>
+                <?php if ($showBalanceColumn): ?>
                 <th style="text-align:left;">
                     <?= $this->t('Kontostand') ?>
                 </th>
@@ -1214,16 +1324,31 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
             }
             // Build a flat list of top-level items (date group or deposit), sorted oldest to newest for math
             $topLevel = [];
+            $startBalanceForWindow = null;
+            $historyLookbackHours = 18;
             if ($simpleOrderMode) {
-                $now = time();
-                $cutoff = $now - 18 * 3600; // 18 hours ago
-                foreach ($entriesByDay as $date => $orders) {
-                    // Filter orders in this group to only those within last 18 hours
-                    $recentOrders = array_filter($orders, function($entry) use ($cutoff) {
-                        return strtotime($entry['datetime']) >= $cutoff;
-                    });
-                    if (count($recentOrders) > 0) {
-                        $topLevel[] = [ 'type' => 'day', 'date' => $date, 'orders' => $recentOrders ];
+                if ($isTeamAccount) {
+                    $startBalanceForWindow = null;
+                    foreach ($entriesByDay as $date => $orders) {
+                        if (count($orders) > 0) {
+                            $topLevel[] = [ 'type' => 'day', 'date' => $date, 'orders' => $orders ];
+                        }
+                    }
+                    foreach ($deposits as $deposit) {
+                        $topLevel[] = [ 'type' => 'deposit', 'datetime' => $deposit['datetime'], 'entry' => $deposit ];
+                    }
+                } else {
+                    $now = time();
+                    $historyLookbackHours = 18;
+                    $cutoff = $now - $historyLookbackHours * 3600;
+                    foreach ($entriesByDay as $date => $orders) {
+                        // Filter orders in this group by the configured simple-order window
+                        $recentOrders = array_filter($orders, function($entry) use ($cutoff) {
+                            return strtotime($entry['datetime']) >= $cutoff;
+                        });
+                        if (count($recentOrders) > 0) {
+                            $topLevel[] = [ 'type' => 'day', 'date' => $date, 'orders' => $recentOrders ];
+                        }
                     }
                 }
             } else {
@@ -1241,7 +1366,7 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
                 return $aTime <=> $bTime;
             });
             // Calculate balances for each top-level group
-            $balance = 0;
+            $balance = ($simpleOrderMode && $isTeamAccount && $startBalanceForWindow !== null) ? $startBalanceForWindow : 0;
             $groupBalances = [];
             foreach ($topLevel as $idx => $item) {
                 if ($item['type'] === 'day') {
@@ -1284,7 +1409,7 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
                     echo '<td style="font-weight:bold;">' . $dayDrinkSum . '</td>';
                     echo '<td style="font-weight:bold;"></td>';
                     echo '<td style="font-weight:bold;">' . $this->priceFormat(-$dayTotalAmount * 100.0, null, null, null, null, null, true, false, false) . '</td>';
-                    if (!$simpleOrderMode) echo '<td style="font-weight:bold;'.($balanceAfter < 0 ? ' color:#d32f2f;' : '').'">' . $this->priceFormat($balanceAfter * 100.0, null, null, null, null, null, true, true, false) . '</td>';
+                    if ($showBalanceColumn) echo '<td style="font-weight:bold;'.($balanceAfter < 0 ? ' color:#d32f2f;' : '').'">' . $this->priceFormat($balanceAfter * 100.0, null, null, null, null, null, true, true, false) . '</td>';
                     echo '</tr>';
                     // Sort orders inside the group newest to oldest
                     $ordersSorted = $orders;
@@ -1336,7 +1461,7 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
                         echo '<td>' . $strikeOpen . (int)$entry['quantity'] . $strikeClose . '</td>';
                         echo '<td>' . $strikeOpen . $this->priceFormat($entry['price'] * 100.0, null, null, null, null, null, true, false, false) . $strikeClose . '</td>';
                         echo '<td>' . $strikeOpen . $this->priceFormat($entry['total'] * 100.0, null, null, null, null, null, true, false, false) . $strikeClose . '</td>';
-                        if (!$simpleOrderMode) echo '<td></td>';
+                        if ($showBalanceColumn) echo '<td></td>';
                         echo '</tr>';
                     }
                     $groupIndex++;
@@ -1351,9 +1476,20 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
                     echo '<td></td>';
                     echo '<td>' . $createdBy . '</td>';
                     echo '<td>' . $this->priceFormat($amount * 100.0, null, null, null, null, null, true, true, false) . '</td>';
-                    if (!$simpleOrderMode) echo '<td>' . $this->priceFormat($balanceAfter * 100.0, null, null, null, null, null, true, true, false) . '</td>';
+                    if ($showBalanceColumn) echo '<td>' . $this->priceFormat($balanceAfter * 100.0, null, null, null, null, null, true, true, false) . '</td>';
                     echo '</tr>';
                 }
+            }
+            if ($simpleOrderMode && $isTeamAccount && $startBalanceForWindow !== null) {
+                $lookbackDays = (int)($historyLookbackHours / 24);
+                echo '<tr style="background:#fff7e6; font-weight:bold;">';
+                echo '<td></td>';
+                echo '<td>' . $this->t('Startguthaben') . ' (' . $this->t('vor') . ' ' . $lookbackDays . ' ' . $this->t('Tagen') . ')</td>';
+                echo '<td></td>';
+                echo '<td></td>';
+                echo '<td>' . $this->priceFormat($startBalanceForWindow * 100.0, null, null, null, null, null, true, true, false) . '</td>';
+                if ($showBalanceColumn) echo '<td></td>';
+                echo '</tr>';
             }
             ?>
         </table>

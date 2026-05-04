@@ -20,7 +20,7 @@ class DrinkOrderManager
         return $statement->execute();
     }
 
-    public function addOrder($userId, $drinkId, $quantity, $addedByUserId = null, $isAutoOrder = 0, $comment = null, $customPrice = null)
+    public function addOrder($userId, $drinkId, $quantity, $addedByUserId = null, $isAutoOrder = 0, $comment = null, $customPrice = null, $teamEventId = null)
     {
         if ($drinkId == 1) {
             // For "Sonstiges" (custom entry), use the provided price, allow 0 as valid
@@ -41,11 +41,11 @@ class DrinkOrderManager
             }
         }
         if ($addedByUserId !== null) {
-            $sql = 'INSERT INTO drink_orders (user_id, drink_id, quantity, price, comment, user_id_added, is_auto_order) VALUES (?, ?, ?, ?, ?, ?, ?)';
-            $params = [$userId, $drinkId, $quantity, $price, $comment, $addedByUserId, $isAutoOrder];
+            $sql = 'INSERT INTO drink_orders (user_id, drink_id, quantity, price, comment, teamevent_id, user_id_added, is_auto_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
+            $params = [$userId, $drinkId, $quantity, $price, $comment, $teamEventId, $addedByUserId, $isAutoOrder];
         } else {
-            $sql = 'INSERT INTO drink_orders (user_id, drink_id, quantity, price, comment, is_auto_order) VALUES (?, ?, ?, ?, ?, ?)';
-            $params = [$userId, $drinkId, $quantity, $price, $comment, $isAutoOrder];
+            $sql = 'INSERT INTO drink_orders (user_id, drink_id, quantity, price, comment, teamevent_id, is_auto_order) VALUES (?, ?, ?, ?, ?, ?, ?)';
+            $params = [$userId, $drinkId, $quantity, $price, $comment, $teamEventId, $isAutoOrder];
         }
         $statement = $this->dbAdapter->createStatement($sql, $params);
         return $statement->execute();

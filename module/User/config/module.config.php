@@ -257,6 +257,26 @@ return array(
                                     ),
                                 ),
                             ),
+                            'team-stats' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/team-stats',
+                                    'defaults' => array(
+                                        'controller' => 'User\\Controller\\SimpleLogin',
+                                        'action' => 'teamStats',
+                                    ),
+                                ),
+                            ),
+                            'spieltag' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/spieltag',
+                                    'defaults' => array(
+                                        'controller' => 'User\\Controller\\SimpleLogin',
+                                        'action' => 'spieltag',
+                                    ),
+                                ),
+                            ),
                         ),
                     ),
                     'drinks-admin' => array(
@@ -309,6 +329,16 @@ return array(
                             'defaults' => array(
                                 'controller' => 'User\Controller\Account',
                                 'action' => 'getUserDepositsData',
+                            ),
+                        ),
+                    ),
+                    'create-team-event' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/create-team-event',
+                            'defaults' => array(
+                                'controller' => 'User\Controller\Account',
+                                'action' => 'createTeamEvent',
                             ),
                         ),
                     ),

@@ -1,15 +1,20 @@
 <?php
 namespace User\Controller;
 
+use User\Controller\Traits\TeamEventTrait;
 use Zend\Mvc\Controller\AbstractActionController;
 use Zend\View\Model\ViewModel;
 
 class SimpleLoginController extends AbstractActionController
 {
+    use TeamEventTrait;
+
     /**
      * Number of hours to look back for recent orders
      */
     const RECENT_ORDERS_CUTOFF_HOURS = 2;
+
+    const TEAM_SPIELTAG_NEW_OPTION = '__new__';
 
     public function loginAction()
     {
@@ -103,14 +108,32 @@ class SimpleLoginController extends AbstractActionController
         $row = $db->query('SELECT thekenadmin, is_team FROM drink_aliases WHERE user_id = ?', [$userId])->current();
         $thekenadmin = ($row && !empty($row['thekenadmin'])) ? true : false;
         $isTeamAccount = ($row && !empty($row['is_team'])) ? true : false;
+        $teamAdminUserId = $userId;
+        $currentTeamEventLabel = '';
+        $availableTeamEventLabels = [];
+        $currentTeamEventId = 0;
+        if ($isTeamAccount) {
+            list($currentTeamEventLabel, $availableTeamEventLabels) = $this->resolveSessionTeamEventSelection($teamAdminUserId, $session);
+            $currentTeamEventId = isset($session->current_teamevent_id) ? (int)$session->current_teamevent_id : 0;
+            if ($currentTeamEventId <= 0 && $currentTeamEventLabel !== '') {
+                $event = $this->getTeamEventByLabel($teamAdminUserId, $currentTeamEventLabel);
+                if ($event && isset($event['id'])) {
+                    $currentTeamEventId = (int)$event['id'];
+                    $session->current_teamevent_id = $currentTeamEventId;
+                }
+            }
+        }
         $drinkHistory = [];
         foreach ($drinkDeposits as $deposit) {
+            $depositComment = isset($deposit['comment']) ? trim((string)$deposit['comment']) : '';
             $drinkHistory[] = [
                 'type' => 'deposit',
                 'amount' => $deposit['amount'],
                 'created_at' => $deposit['deposit_time'],
                 'datetime' => $deposit['deposit_time'],
                 'id' => $deposit['id'],
+                'comment' => $depositComment,
+                'teamevent_id' => isset($deposit['teamevent_id']) ? (int)$deposit['teamevent_id'] : 0,
             ];
         }
         foreach ($drinkOrders as $order) {
@@ -133,7 +156,20 @@ class SimpleLoginController extends AbstractActionController
                 'id' => $order['id'],
                 'deleted' => $order['deleted'],
                 'comment' => $comment,
+                'teamevent_id' => isset($order['teamevent_id']) ? (int)$order['teamevent_id'] : 0,
             ];
+        }
+        if ($isTeamAccount && $currentTeamEventLabel !== '') {
+            $drinkHistory = array_values(array_filter($drinkHistory, function ($entry) use ($currentTeamEventId, $currentTeamEventLabel) {
+                $entryTeamEventId = isset($entry['teamevent_id']) ? (int)$entry['teamevent_id'] : 0;
+                if ($currentTeamEventId > 0 && $entryTeamEventId > 0) {
+                    return $entryTeamEventId === $currentTeamEventId;
+                }
+
+                // Backward compatibility for legacy data without teamevent_id.
+                $entryComment = isset($entry['comment']) ? trim((string)$entry['comment']) : '';
+                return $entryTeamEventId === 0 && $entryComment !== '' && $entryComment === $currentTeamEventLabel;
+            }));
         }
         usort($drinkHistory, function($a, $b) {
             return strtotime($b['created_at']) - strtotime($a['created_at']);
@@ -168,6 +204,8 @@ class SimpleLoginController extends AbstractActionController
             'simpleOrderMode' => true,
             'thekenadmin' => $thekenadmin,
             'isTeamAccount' => $isTeamAccount,
+            'currentSpieltag' => $currentTeamEventLabel,
+            'availableSpieltage' => $availableTeamEventLabels,
             'partyModeEnabled' => $partyModeEnabled,
             'partyModeMessage' => $partyModeMessage,
         ]);
@@ -195,6 +233,136 @@ class SimpleLoginController extends AbstractActionController
         return $this->getResponse()->setContent(json_encode(['success' => false, 'error_message' => 'Update failed.']))->setStatusCode(500);
     }
 
+    public function teamStatsAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $sessionManager = $this->getServiceLocator()->get('Zend\Session\SessionManager');
+        $sessionManager->start();
+        $session = new \Zend\Session\Container('SimpleLogin');
+        if (empty($session->user_id)) {
+            return $this->getResponse()->setStatusCode(401)->setContent(json_encode(['success' => false, 'error' => 'Not authenticated.']));
+        }
+
+        $userId = (int)$session->user_id;
+        $teamAdminUserId = $userId;
+        $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
+        $aliasRow = $db->query('SELECT is_team FROM drink_aliases WHERE user_id = ?', [$userId])->current();
+        if (!$aliasRow || empty($aliasRow['is_team'])) {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'Kein Team-Account.']));
+        }
+        $requestedTeamEventLabel = $this->normalizeTeamEventLabel($this->params()->fromQuery('spieltag', isset($session->current_spieltag) ? $session->current_spieltag : ''));
+        if ($requestedTeamEventLabel === '') {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Kein Spieltag ausgewählt.']));
+        }
+
+        $event = $this->getTeamEventByLabel($teamAdminUserId, $requestedTeamEventLabel);
+        if (!$event) {
+            return $this->getResponse()->setContent(json_encode([
+                'success' => true,
+                'spieltag' => $requestedTeamEventLabel,
+                'rows' => [],
+                'total_sum' => 0,
+            ]));
+        }
+        $teamEventId = (int)$event['id'];
+
+        $sqlOrders = '
+            SELECT
+                d.name AS article,
+                SUM(o.quantity) AS quantity,
+                (0 - o.price) AS single_price,
+                (0 - SUM(o.quantity * o.price)) AS total_price
+            FROM drink_orders o
+            JOIN drinks d ON d.id = o.drink_id
+            WHERE o.user_id = ?
+              AND o.deleted = 0
+              AND (o.teamevent_id = ? OR (o.teamevent_id IS NULL AND TRIM(COALESCE(o.comment, "")) = ?))
+            GROUP BY o.drink_id, d.name, o.price
+            ORDER BY d.name ASC, o.price ASC
+        ';
+
+        $rows = $db->query($sqlOrders, [$userId, $teamEventId, $requestedTeamEventLabel])->toArray();
+
+        $sqlDeposits = '
+            SELECT
+                amount AS single_price,
+                COUNT(*) AS quantity,
+                SUM(amount) AS total_price
+            FROM drink_deposits
+            WHERE user_id = ?
+              AND deleted = 0
+              AND (teamevent_id = ? OR (teamevent_id IS NULL AND TRIM(COALESCE(comment, "")) = ?))
+            GROUP BY amount
+            ORDER BY amount ASC
+        ';
+        $depositRows = $db->query($sqlDeposits, [$userId, $teamEventId, $requestedTeamEventLabel])->toArray();
+        foreach ($depositRows as $depositRow) {
+            $rows[] = [
+                'article' => 'Einzahlung',
+                'quantity' => (int)$depositRow['quantity'],
+                'single_price' => (float)$depositRow['single_price'],
+                'total_price' => (float)$depositRow['total_price'],
+            ];
+        }
+
+        $totalSum = 0.0;
+        foreach ($rows as &$row) {
+            $row['quantity'] = (int)$row['quantity'];
+            $row['single_price'] = (float)$row['single_price'];
+            $row['total_price'] = (float)$row['total_price'];
+            $totalSum += $row['total_price'];
+        }
+        unset($row);
+
+        return $this->getResponse()->setContent(json_encode([
+            'success' => true,
+            'spieltag' => $requestedTeamEventLabel,
+            'rows' => $rows,
+            'total_sum' => $totalSum,
+        ]));
+    }
+
+    public function spieltagAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $sessionManager = $this->getServiceLocator()->get('Zend\Session\SessionManager');
+        $sessionManager->start();
+        $session = new \Zend\Session\Container('SimpleLogin');
+        if (empty($session->user_id)) {
+            return $this->getResponse()->setStatusCode(401)->setContent(json_encode(['success' => false, 'error' => 'Not authenticated.']));
+        }
+
+        $userId = (int)$session->user_id;
+        $teamAdminUserId = $userId;
+        $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
+        $aliasRow = $db->query('SELECT is_team FROM drink_aliases WHERE user_id = ?', [$userId])->current();
+        if (!$aliasRow || empty($aliasRow['is_team'])) {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'Kein Team-Account.']));
+        }
+        if ($this->getRequest()->isPost()) {
+            $selected = $this->normalizeTeamEventLabel($this->params()->fromPost('spieltag', ''));
+            if ($selected === self::TEAM_SPIELTAG_NEW_OPTION || $selected === '') {
+                $selected = $this->normalizeTeamEventLabel($this->params()->fromPost('new_spieltag', ''));
+            }
+            if ($selected === '') {
+                return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungueltiger Spieltag.']));
+            }
+            $event = $this->getOrCreateTeamEventByLabel($teamAdminUserId, $selected);
+            if (!$event) {
+                return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Spieltag konnte nicht gespeichert werden.']));
+            }
+            $session->current_spieltag = $selected;
+            $session->current_teamevent_id = (int)$event['id'];
+        }
+
+        list($currentTeamEventLabel, $availableTeamEventLabels) = $this->resolveSessionTeamEventSelection($teamAdminUserId, $session);
+        return $this->getResponse()->setContent(json_encode([
+            'success' => true,
+            'current_spieltag' => $currentTeamEventLabel,
+            'spieltage' => $availableTeamEventLabels,
+        ]));
+    }
+
     public function submitOrderAction()
     {
         $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
@@ -209,7 +377,26 @@ class SimpleLoginController extends AbstractActionController
         $drinkManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkManager');
         $drinkCounts = $this->params()->fromPost('drink_counts', []);
         $isAutoOrder = (int)$this->params()->fromPost('is_auto_order', 0);
-        $result = $drinkManager->addOrdersAndNotify($user, $drinkCounts, [$this, 't'], $this->getServiceLocator(), $isAutoOrder);
+        $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
+        $row = $db->query('SELECT is_team FROM drink_aliases WHERE user_id = ?', [$session->user_id])->current();
+        $isTeamAccount = ($row && !empty($row['is_team'])) ? true : false;
+        $comment = null;
+        $teamEventId = null;
+        if ($isTeamAccount) {
+            $teamAdminUserId = (int)$session->user_id;
+            $selectedTeamEventLabel = $this->normalizeTeamEventLabel(isset($session->current_spieltag) ? $session->current_spieltag : '');
+            if ($selectedTeamEventLabel === '') {
+                list($selectedTeamEventLabel) = $this->resolveSessionTeamEventSelection($teamAdminUserId, $session);
+            }
+            $event = $this->getOrCreateTeamEventByLabel($teamAdminUserId, $selectedTeamEventLabel);
+            if ($event) {
+                $teamEventId = (int)$event['id'];
+                $session->current_teamevent_id = $teamEventId;
+            }
+            // Spieltag is stored via teamevent_id only; keep comment for actual free-text comments.
+            $comment = null;
+        }
+        $result = $drinkManager->addOrdersAndNotify($user, $drinkCounts, [$this, 't'], $this->getServiceLocator(), $isAutoOrder, $comment, $teamEventId);
         if ($result['success']) {
             return $this->getResponse()->setContent(json_encode(['success' => true, 'balance' => $result['balance']]))->setStatusCode(200);
         }

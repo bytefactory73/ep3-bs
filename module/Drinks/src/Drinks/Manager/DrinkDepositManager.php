@@ -26,15 +26,15 @@ class DrinkDepositManager
         return $statement->execute();
     }
 
-    public function addDeposit($userId, $amount, $comment = null, $createdByUserId = null, $userIdDeleted = null)
+    public function addDeposit($userId, $amount, $comment = null, $createdByUserId = null, $userIdDeleted = null, $teamEventId = null)
     {
         // Both deleted and user_id_deleted are optional/nullable
         if ($userIdDeleted === null) {
-            $sql = 'INSERT INTO drink_deposits (user_id, amount, comment, createdbyuserid) VALUES (?, ?, ?, ?)';
-            $params = [$userId, $amount, $comment, $createdByUserId];
+            $sql = 'INSERT INTO drink_deposits (user_id, amount, comment, teamevent_id, createdbyuserid) VALUES (?, ?, ?, ?, ?)';
+            $params = [$userId, $amount, $comment, $teamEventId, $createdByUserId];
         } else {
-            $sql = 'INSERT INTO drink_deposits (user_id, amount, comment, createdbyuserid, user_id_deleted) VALUES (?, ?, ?, ?, ?)';
-            $params = [$userId, $amount, $comment, $createdByUserId, $userIdDeleted];
+            $sql = 'INSERT INTO drink_deposits (user_id, amount, comment, teamevent_id, createdbyuserid, user_id_deleted) VALUES (?, ?, ?, ?, ?, ?)';
+            $params = [$userId, $amount, $comment, $teamEventId, $createdByUserId, $userIdDeleted];
         }
         $statement = $this->dbAdapter->createStatement($sql, $params);
         return $statement->execute();

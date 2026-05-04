@@ -25,6 +25,8 @@ $this->setup([
         <input type="hidden" name="deposit_user_id" id="deposit_user_id" />
         <div id="user-search-list" style="position:relative; grid-column:2; z-index:10;"></div>
 
+        <div id="current-balance-box" style="display:none; grid-column:1 / span 2; margin-bottom:10px; margin-top:8px; font-weight:bold; color:#2196f3;"></div>
+
         <label for="deposit_drinks_enabled" style="grid-column:1;">Theke erlaubt:</label>
         <input type="checkbox" id="deposit_drinks_enabled" name="deposit_drinks_enabled" value="1" style="vertical-align:middle; grid-column:2; justify-self: start;">
 
@@ -41,7 +43,15 @@ $this->setup([
             </div>
         </div>
 
-        <div id="current-balance-box" style="display:none; grid-column:1 / span 2; margin-bottom:10px; margin-top:16px; font-weight:bold; color:#2196f3;"></div>
+        <div id="team-spieltag-row" style="display:none; grid-column:1 / span 2; margin-top:8px;">
+            <div style="display:grid; grid-template-columns: 160px 1fr; align-items:center; gap:10px 18px;">
+                <label for="deposit_teamevent_id" style="grid-column:1;">Spieltag:</label>
+                <span style="grid-column:2; display:flex; align-items:center; gap:8px;">
+                    <select id="deposit_teamevent_id" name="deposit_teamevent_id" style="min-width:260px;"></select>
+                    <input type="hidden" id="deposit_new_spieltag" name="deposit_new_spieltag" value="" />
+                </span>
+            </div>
+        </div>
 
         <label for="deposit_amount" style="grid-column:1;">Guthaben aufladen:</label>
         <input type="number" name="deposit_amount" id="deposit_amount" min="0.01" step="0.01" placeholder="<?= $this->t('Betrag') ?>" required style="grid-column:2;" />
@@ -128,6 +138,12 @@ document.addEventListener('DOMContentLoaded', function() {
     var userSearchList = document.getElementById('user-search-list');
     var drinksEnabledCheckbox = document.getElementById('deposit_drinks_enabled');
     var isTeamCheckbox = document.getElementById('deposit_is_team');
+    var teamSpieltagRow = document.getElementById('team-spieltag-row');
+    var teamSpieltagSelect = document.getElementById('deposit_teamevent_id');
+    var teamNewSpieltagInput = document.getElementById('deposit_new_spieltag');
+    var pendingNewSpieltagName = '';
+    var currentUserContextUid = '';
+    var selectedTeamEventIdInContext = '';
     var aliasRow = document.getElementById('alias-row');
     var aliasInput = document.getElementById('deposit_alias');
     var balanceBox = document.getElementById('current-balance-box');
@@ -138,6 +154,182 @@ document.addEventListener('DOMContentLoaded', function() {
     var addDrinksBtn = document.getElementById('add-drinks-btn');
     var multiDrinkTotalPrice = document.getElementById('multi-drink-total-price');
     var drinkRowId = 0;
+
+    function clearActiveTeamEventContext() {
+        pendingNewSpieltagName = '';
+        selectedTeamEventIdInContext = '';
+        if (teamNewSpieltagInput) teamNewSpieltagInput.value = '';
+        if (teamSpieltagSelect) {
+            teamSpieltagSelect.innerHTML = '';
+            teamSpieltagSelect.setAttribute('data-last-real-value', '');
+        }
+    }
+
+    function switchUserContext(uid) {
+        var nextUid = String(uid || '').trim();
+        if (currentUserContextUid !== nextUid) {
+            clearActiveTeamEventContext();
+            currentUserContextUid = nextUid;
+        }
+    }
+
+    function getDefaultSpieltagName() {
+        var today = new Date();
+        var year = today.getFullYear();
+        var month = String(today.getMonth() + 1).padStart(2, '0');
+        var day = String(today.getDate()).padStart(2, '0');
+        return 'Spieltag ' + year + '-' + month + '-' + day;
+    }
+
+    function fillTeamSpieltagOptions(events, selectedId) {
+        if (!teamSpieltagSelect) return;
+        teamSpieltagSelect.innerHTML = '';
+        pendingNewSpieltagName = '';
+        if (teamNewSpieltagInput) teamNewSpieltagInput.value = '';
+
+        var hasAny = Array.isArray(events) && events.length > 0;
+        if (hasAny) {
+            events.forEach(function(evt) {
+                var id = evt && evt.id ? String(evt.id) : '';
+                var label = evt && evt.label ? String(evt.label) : '';
+                if (!id || !label) return;
+                var option = document.createElement('option');
+                option.value = id;
+                option.textContent = label;
+                if (String(selectedId || '') === id) option.selected = true;
+                teamSpieltagSelect.appendChild(option);
+            });
+        }
+
+        var newOption = document.createElement('option');
+        newOption.value = '__new__';
+        newOption.textContent = '<?= $this->t('Neuen Spieltag anlegen') ?>';
+        teamSpieltagSelect.appendChild(newOption);
+
+        if (!hasAny) {
+            teamSpieltagSelect.value = '__new__';
+        } else if (selectedId && !teamSpieltagSelect.value) {
+            teamSpieltagSelect.value = String(selectedId);
+        } else if (!selectedId && hasAny) {
+            teamSpieltagSelect.value = String(events[0].id || '');
+        }
+        teamSpieltagSelect.setAttribute('data-last-real-value', teamSpieltagSelect.value !== '__new__' ? teamSpieltagSelect.value : '');
+    }
+
+    function promptForNewTeamSpieltag() {
+        var newName = window.prompt('<?= $this->t('Neuen Spieltag eingeben:') ?>', getDefaultSpieltagName());
+        if (!newName) {
+            return null;
+        }
+        newName = newName.trim();
+        if (!newName) {
+            return null;
+        }
+        pendingNewSpieltagName = newName;
+        if (teamNewSpieltagInput) teamNewSpieltagInput.value = newName;
+        return newName;
+    }
+
+    async function createAndSelectTeamSpieltag(uid, label) {
+        if (!uid || !label) return null;
+        const resp = await fetch('<?= $this->url('user/create-team-event') ?>', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            credentials: 'same-origin',
+            body: new URLSearchParams({
+                uid: uid,
+                label: label
+            })
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data || !data.success) {
+            throw new Error((data && data.error) ? data.error : '<?= $this->t('Spieltag konnte nicht angelegt werden.') ?>');
+        }
+
+        var createdId = String(data.team_event_id || '');
+        var createdLabel = String(data.label || label).trim();
+        if (!createdId || !createdLabel || !teamSpieltagSelect) {
+            throw new Error('<?= $this->t('Spieltag konnte nicht angelegt werden.') ?>');
+        }
+
+        var existingOption = teamSpieltagSelect.querySelector('option[value="' + createdId.replace(/"/g, '\\"') + '"]');
+        if (!existingOption) {
+            existingOption = document.createElement('option');
+            existingOption.value = createdId;
+            existingOption.textContent = createdLabel;
+            var newOption = teamSpieltagSelect.querySelector('option[value="__new__"]');
+            teamSpieltagSelect.insertBefore(existingOption, newOption || null);
+        } else {
+            existingOption.textContent = createdLabel;
+        }
+
+        teamSpieltagSelect.value = createdId;
+        teamSpieltagSelect.setAttribute('data-last-real-value', createdId);
+        pendingNewSpieltagName = '';
+        if (teamNewSpieltagInput) teamNewSpieltagInput.value = '';
+        selectedTeamEventIdInContext = createdId;
+        return { teamEventId: createdId, label: createdLabel };
+    }
+
+    function resolveTeamSpieltagSelection() {
+        var isTeam = !!(isTeamCheckbox && isTeamCheckbox.checked);
+        if (!isTeam || !teamSpieltagSelect) {
+            if (teamNewSpieltagInput) teamNewSpieltagInput.value = '';
+            pendingNewSpieltagName = '';
+            return { teamEventId: '', newSpieltag: '' };
+        }
+
+        var value = teamSpieltagSelect.value || '';
+        if (value === '__new__') {
+            var newName = pendingNewSpieltagName || promptForNewTeamSpieltag();
+            if (!newName) {
+                return null;
+            }
+            if (teamNewSpieltagInput) teamNewSpieltagInput.value = newName;
+            return { teamEventId: '', newSpieltag: newName };
+        }
+
+        pendingNewSpieltagName = '';
+        if (teamNewSpieltagInput) teamNewSpieltagInput.value = '';
+        teamSpieltagSelect.setAttribute('data-last-real-value', value);
+        selectedTeamEventIdInContext = value;
+        return { teamEventId: value, newSpieltag: '' };
+    }
+
+    if (teamSpieltagSelect) {
+        teamSpieltagSelect.addEventListener('change', async function() {
+            var value = teamSpieltagSelect.value || '';
+            if (value === '__new__') {
+                var newName = promptForNewTeamSpieltag();
+                if (!newName) {
+                    var fallbackValue = teamSpieltagSelect.getAttribute('data-last-real-value') || '';
+                    if (fallbackValue) {
+                        teamSpieltagSelect.value = fallbackValue;
+                    }
+                    return;
+                }
+                try {
+                    var uid = userIdInput.value;
+                    var created = await createAndSelectTeamSpieltag(uid, newName);
+                    if (!created) {
+                        throw new Error('<?= $this->t('Spieltag konnte nicht angelegt werden.') ?>');
+                    }
+                } catch (e) {
+                    alert((e && e.message) ? e.message : '<?= $this->t('Spieltag konnte nicht angelegt werden.') ?>');
+                    var fallbackValue = teamSpieltagSelect.getAttribute('data-last-real-value') || '';
+                    if (fallbackValue) {
+                        teamSpieltagSelect.value = fallbackValue;
+                    }
+                }
+                return;
+            }
+
+            pendingNewSpieltagName = '';
+            if (teamNewSpieltagInput) teamNewSpieltagInput.value = '';
+            teamSpieltagSelect.setAttribute('data-last-real-value', value);
+            selectedTeamEventIdInContext = value;
+        });
+    }
 
     function createDrinkRow(selectedId, countValue, commentValue) {
         var row = document.createElement('div');
@@ -285,6 +477,10 @@ document.addEventListener('DOMContentLoaded', function() {
             alert('<?= $this->t('Bitte zuerst einen Benutzer auswählen.') ?>');
             return;
         }
+        var teamSelection = resolveTeamSpieltagSelection();
+        if (teamSelection === null) {
+            return;
+        }
         var rows = Array.from(drinkRowsContainer.children);
         var orders = [];
         var globalComment = document.getElementById('multi-drink-comment') ? document.getElementById('multi-drink-comment').value : '';
@@ -332,7 +528,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 credentials: 'same-origin',
                 body: JSON.stringify({
                     uid: uid,
-                    orders: orders
+                    orders: orders,
+                    team_event_id: teamSelection.teamEventId,
+                    new_spieltag: teamSelection.newSpieltag
                 })
             });
             const data = await resp.json();
@@ -344,6 +542,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 ensureAtLeastOneRow();
                 var globalCommentInput = document.getElementById('multi-drink-comment');
                 if (globalCommentInput) globalCommentInput.value = '';
+                if (teamSelection.newSpieltag && teamNewSpieltagInput) {
+                    teamNewSpieltagInput.value = '';
+                }
             }
         } catch (e) {
             alert('<?= $this->t('Netzwerkfehler beim Buchen der Getränke.') ?>');
@@ -352,6 +553,22 @@ document.addEventListener('DOMContentLoaded', function() {
             addDrinksBtn.textContent = '<?= $this->t('Getränke buchen') ?>';
         }
     });
+
+    var depositForm = document.getElementById('deposit-form');
+    if (depositForm) {
+        depositForm.addEventListener('submit', function(e) {
+            var teamSelection = resolveTeamSpieltagSelection();
+            if (teamSelection === null) {
+                e.preventDefault();
+                return;
+            }
+            if (teamSpieltagSelect) {
+                if (teamSelection.teamEventId) {
+                    teamSpieltagSelect.value = teamSelection.teamEventId;
+                }
+            }
+        });
+    }
     // Persist showStorno state in localStorage
     var showStorno = localStorage.getItem('deposits_show_storno') === '1';
 
@@ -389,6 +606,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 e.preventDefault();
                 userSearch.value = u.alias + ' (' + u.email + ')';
                 userIdInput.value = u.uid;
+                switchUserContext(u.uid);
                 userSearchList.innerHTML = '';
                 updateDrinksFields();
                 updateUserInfo();
@@ -404,10 +622,12 @@ document.addEventListener('DOMContentLoaded', function() {
         var user = findUserByString(userSearch.value);
         if (user) {
             userIdInput.value = user.uid;
+            switchUserContext(user.uid);
             updateDrinksFields();
             updateUserInfo();
         } else {
             userIdInput.value = '';
+            switchUserContext('');
         }
     });
     userSearch.addEventListener('blur', function() {
@@ -425,6 +645,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (user) {
             userSearch.value = user.alias + ' (' + user.email + ')';
             userIdInput.value = user.uid;
+            switchUserContext(user.uid);
             updateDrinksFields();
             updateUserInfo();
             // Remove uid from URL after preselecting
@@ -441,6 +662,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (user) {
                 userSearch.value = user.alias + ' (' + user.email + ')';
                 userIdInput.value = user.uid;
+                switchUserContext(user.uid);
                 updateDrinksFields();
                 updateUserInfo();
             }
@@ -462,6 +684,16 @@ document.addEventListener('DOMContentLoaded', function() {
         drinksEnabledCheckbox.disabled = !user;
         isTeamCheckbox.checked = isTeam;
         isTeamCheckbox.disabled = !user;
+        if (teamSpieltagRow) {
+            teamSpieltagRow.style.display = isTeam ? '' : 'none';
+        }
+        if (!isTeam && teamNewSpieltagInput) {
+            teamNewSpieltagInput.value = '';
+        }
+        if (!isTeam) {
+            pendingNewSpieltagName = '';
+            selectedTeamEventIdInContext = '';
+        }
         if (typeof drinksAliasFromApi === 'string') {
             aliasInput.value = drinksAliasFromApi;
         } else if (user) {
@@ -528,6 +760,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 const data = await resp.json();
                 if (!data.success) {
                     alert('Fehler beim Speichern: ' + (data.error || 'Unbekannter Fehler'));
+                } else {
+                    updateUserInfo();
                 }
             } catch (e) {
                 alert('Netzwerkfehler beim Speichern der Mannschafts-Account-Einstellung.');
@@ -574,6 +808,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     async function updateUserInfo(scrollToEntry) {
         var uid = userIdInput.value;
+        switchUserContext(uid);
         localStorage.setItem('deposits_selected_uid', uid);
         balanceBox.style.display = 'none';
         balanceBox.textContent = '';
@@ -582,6 +817,9 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 // Always send showStorno state to backend
                 var url = '<?= $this->url('user/get-user-deposits-data') ?>?uid=' + encodeURIComponent(uid) + '&showStorno=' + (showStorno ? '1' : '0');
+                if (selectedTeamEventIdInContext) {
+                    url += '&selected_teamevent_id=' + encodeURIComponent(selectedTeamEventIdInContext);
+                }
                 const resp = await fetch(url, { credentials: 'same-origin' });
                 if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 const data = await resp.json();
@@ -596,11 +834,60 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else {
                     updateDrinksFields();
                 }
+                if (data && data.is_team && Array.isArray(data.team_events)) {
+                    var selectedTeamEventId = selectedTeamEventIdInContext || (data.current_teamevent_id ? String(data.current_teamevent_id) : '');
+                    fillTeamSpieltagOptions(data.team_events, selectedTeamEventId);
+                    if (teamSpieltagSelect && teamSpieltagSelect.value && teamSpieltagSelect.value !== '__new__') {
+                        selectedTeamEventIdInContext = teamSpieltagSelect.value;
+                    }
+                } else {
+                    selectedTeamEventIdInContext = '';
+                    fillTeamSpieltagOptions([], null);
+                }
                 if (typeof data.balance !== 'undefined' && data.balance !== null) {
                     balanceBox.style.display = '';
                     balanceBox.textContent = '<?= $this->t('Aktueller Kontostand:') ?> ' + formatCurrency(data.balance);
                 }
                 function renderHistory(history, showStorno) {
+                    function escapeHtml(value) {
+                        return String(value == null ? '' : value)
+                            .replace(/&/g, '&amp;')
+                            .replace(/</g, '&lt;')
+                            .replace(/>/g, '&gt;')
+                            .replace(/"/g, '&quot;')
+                            .replace(/'/g, '&#39;');
+                    }
+
+                    function hashLabelColor(label) {
+                        var s = String(label || '');
+                        var hash = 2166136261;
+                        for (var idx = 0; idx < s.length; idx++) {
+                            hash ^= s.charCodeAt(idx);
+                            hash = Math.imul(hash, 16777619);
+                        }
+                        hash += hash << 13;
+                        hash ^= hash >>> 7;
+                        hash += hash << 3;
+                        hash ^= hash >>> 17;
+                        hash += hash << 5;
+                        return hash >>> 0;
+                    }
+
+                    function renderSpieltagBadge(entry) {
+                        var label = entry && entry.spieltag_label ? String(entry.spieltag_label).trim() : '';
+                        if (!label) return '';
+                        var hash = hashLabelColor(label);
+                        var hue = (hash % 360 + ((hash >>> 11) % 37)) % 360;
+                        var saturation = 52 + ((hash >>> 5) % 24);
+                        var backgroundLightness = 88 + ((hash >>> 9) % 7);
+                        var borderLightness = 52 + ((hash >>> 15) % 12);
+                        var textLightness = 20 + ((hash >>> 21) % 10);
+                        var bg = 'hsl(' + hue + ', ' + saturation + '%, ' + backgroundLightness + '%)';
+                        var border = 'hsl(' + hue + ', ' + Math.max(36, saturation - 18) + '%, ' + borderLightness + '%)';
+                        var text = 'hsl(' + hue + ', ' + Math.max(34, saturation - 14) + '%, ' + textLightness + '%)';
+                        return ' <span style="display:inline-block; margin-left:6px; padding:1px 6px; border:1px solid ' + border + '; border-radius:5px; background:' + bg + '; color:' + text + '; font-size:11px; font-weight:600; line-height:1.2; text-decoration:none; vertical-align:middle;">' + escapeHtml(label) + '</span>';
+                    }
+
                     var html = '<h2><?= $this->t('Buchungs- und Einzahlungsverlauf') ?></h2>' +
                         '<div style="margin-bottom:10px;"><label><input type="checkbox" id="show-storno-checkbox"' + (showStorno ? ' checked' : '') + '> <?= $this->t('Zeige Storno') ?></label></div>';
                     // Calculate running balance in chronological order and attach to each entry
@@ -679,7 +966,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             html += '<tr style="' + style + '">';
                             html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + xBtn + entry.type + '</td>';
                             html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + formatCurrency(entry.amount) + '</td>';
-                            html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + (entry.desc || '') + (timeStr ? ' <span style=\"color:#888;font-size:90%;margin-left:8px;\">' + timeStr + '</span>' : '') + '</td>';
+                            html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + (entry.desc || '') + (timeStr ? ' <span style=\"color:#888;font-size:90%;margin-left:8px;\">' + timeStr + '</span>' : '') + renderSpieltagBadge(entry) + '</td>';
                             html += '</tr>';
                         }
                         // Show orders (reverse for most recent first)
@@ -726,7 +1013,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             html += '<tr style="' + style + '">';
                             html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + xBtn + entry.type + '</td>';
                             html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + formatCurrency(entry.amount) + '</td>';
-                            html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + descWithComment + (timeStr ? ' <span style="color:#888;font-size:90%;margin-left:8px;">' + timeStr + '</span>' : '') + '</td>';
+                            html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + descWithComment + (timeStr ? ' <span style="color:#888;font-size:90%;margin-left:8px;">' + timeStr + '</span>' : '') + renderSpieltagBadge(entry) + '</td>';
                             html += '</tr>';
                         }
                         html += '<tr style="font-weight:bold;background:#fafdff;">' +

@@ -8,6 +8,17 @@ CREATE TABLE IF NOT EXISTS drinks (
     FOREIGN KEY (category) REFERENCES drink_categories(id)
 );
 
+-- Team events for team-mode accounting/statistics
+CREATE TABLE IF NOT EXISTS drinks_teamevents (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    team_admin_user_id INT UNSIGNED NOT NULL,
+    comment VARCHAR(255) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (team_admin_user_id) REFERENCES bs_users(uid),
+    INDEX idx_drinks_teamevents_admin (team_admin_user_id),
+    INDEX idx_drinks_teamevents_comment (comment)
+);
+
 -- Table for drink orders per user
 CREATE TABLE IF NOT EXISTS drink_orders (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -16,6 +27,7 @@ CREATE TABLE IF NOT EXISTS drink_orders (
     quantity INT NOT NULL,
     price DECIMAL(10,2) NOT NULL,
     comment VARCHAR(255) DEFAULT NULL,
+    teamevent_id INT DEFAULT NULL,
     order_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted TINYINT(1) NOT NULL DEFAULT 0,
     user_id_added INT UNSIGNED NOT NULL DEFAULT NULL,
@@ -23,6 +35,7 @@ CREATE TABLE IF NOT EXISTS drink_orders (
     is_auto_order TINYINT(1) NOT NULL DEFAULT 0,
     FOREIGN KEY (user_id) REFERENCES bs_users(uid),
     FOREIGN KEY (drink_id) REFERENCES drinks(id),
+    FOREIGN KEY (teamevent_id) REFERENCES drinks_teamevents(id),
     FOREIGN KEY (user_id_added) REFERENCES bs_users(uid),
     FOREIGN KEY (user_id_deleted) REFERENCES bs_users(uid)
 );
@@ -33,11 +46,13 @@ CREATE TABLE IF NOT EXISTS drink_deposits (
     user_id INT UNSIGNED NOT NULL,
     amount DECIMAL(10,2) NOT NULL,
     comment VARCHAR(255) DEFAULT NULL,
+    teamevent_id INT DEFAULT NULL,
     deposit_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     createdbyuserid INT UNSIGNED DEFAULT NULL,
     deleted TINYINT(1) DEFAULT 0,
     user_id_deleted INT UNSIGNED DEFAULT NULL,
     FOREIGN KEY (user_id) REFERENCES bs_users(uid),
+    FOREIGN KEY (teamevent_id) REFERENCES drinks_teamevents(id),
     FOREIGN KEY (createdbyuserid) REFERENCES bs_users(uid),
     FOREIGN KEY (user_id_deleted) REFERENCES bs_users(uid)
 );
@@ -68,6 +83,17 @@ CREATE TABLE IF NOT EXISTS drink_aliases (
 -- ALTER TABLE drink_aliases MODIFY order_email_option VARCHAR(20) DEFAULT 'order';
 -- UPDATE drink_aliases SET order_email_option = 'order' WHERE order_email_option IS NULL OR order_email_option = '';
 -- ALTER TABLE drink_aliases ADD COLUMN is_team TINYINT(1) DEFAULT 0;
+-- CREATE TABLE drinks_teamevents (
+--   id INT AUTO_INCREMENT PRIMARY KEY,
+--   team_admin_user_id INT UNSIGNED NOT NULL,
+--   comment VARCHAR(255) NOT NULL,
+--   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+--   FOREIGN KEY (team_admin_user_id) REFERENCES bs_users(uid)
+-- );
+-- ALTER TABLE drink_orders ADD COLUMN teamevent_id INT DEFAULT NULL;
+-- ALTER TABLE drink_orders ADD CONSTRAINT fk_drink_orders_teamevent_id FOREIGN KEY (teamevent_id) REFERENCES drinks_teamevents(id);
+-- ALTER TABLE drink_deposits ADD COLUMN teamevent_id INT DEFAULT NULL;
+-- ALTER TABLE drink_deposits ADD CONSTRAINT fk_drink_deposits_teamevent_id FOREIGN KEY (teamevent_id) REFERENCES drinks_teamevents(id);
     FOREIGN KEY (user_id) REFERENCES bs_users(uid) ON DELETE CASCADE
 );
 

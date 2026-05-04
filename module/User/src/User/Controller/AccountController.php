@@ -2,11 +2,52 @@
 
 namespace User\Controller;
 
+use User\Controller\Traits\TeamEventTrait;
 use Zend\Mvc\Controller\AbstractActionController;
 use Zend\Crypt\Password\Bcrypt;
 
 class AccountController extends AbstractActionController
 {
+    use TeamEventTrait;
+
+    public function createTeamEventAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $admin = $userSessionManager->getSessionUser();
+        if (!$admin || $admin->get('status') !== 'admin') {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'No permission']));
+        }
+        $request = $this->getRequest();
+        if (!$request->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required']));
+        }
+
+        $uid = (int)$this->params()->fromPost('uid', 0);
+        $teamEventLabel = $this->normalizeTeamEventLabel($this->params()->fromPost('label', ''));
+        if ($uid <= 0 || $teamEventLabel === '') {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Invalid input']));
+        }
+
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+        $aliasRow = $dbAdapter->query('SELECT is_team FROM drink_aliases WHERE user_id = ?', [$uid])->current();
+        if (!$aliasRow || empty($aliasRow['is_team'])) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'User is not a team account']));
+        }
+
+        $eventRow = $this->getOrCreateTeamEventByLabel($uid, $teamEventLabel);
+        if (!$eventRow || empty($eventRow['id'])) {
+            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Spieltag konnte nicht angelegt werden.']));
+        }
+
+        return $this->getResponse()->setContent(json_encode([
+            'success' => true,
+            'team_event_id' => (int)$eventRow['id'],
+            'label' => isset($eventRow['comment']) ? trim((string)$eventRow['comment']) : $teamEventLabel,
+        ]));
+    }
+
     /**
      * Admin: Übersicht aller Nutzer mit Buchungen oder Einzahlungen, sortiert nach Kontostand
      */
@@ -254,6 +295,8 @@ class AccountController extends AbstractActionController
             $data = json_decode($request->getContent(), true);
             $uid = isset($data['uid']) ? (int)$data['uid'] : 0;
             $orders = isset($data['orders']) && is_array($data['orders']) ? $data['orders'] : [];
+            $requestedTeamEventId = isset($data['team_event_id']) ? (int)$data['team_event_id'] : 0;
+            $requestedNewTeamEventLabel = isset($data['new_spieltag']) ? $data['new_spieltag'] : '';
             if (!$uid || empty($orders)) {
                 return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Invalid input']));
             }
@@ -264,6 +307,17 @@ class AccountController extends AbstractActionController
             }
             $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
             $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
+            $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+            $aliasRow = $dbAdapter->query('SELECT is_team FROM drink_aliases WHERE user_id = ?', [$uid])->current();
+            $isTeamAccount = ($aliasRow && !empty($aliasRow['is_team'])) ? true : false;
+            $teamEventId = null;
+            if ($isTeamAccount) {
+                $teamEvent = $this->resolveTeamEventForSelection($uid, $requestedTeamEventId, $requestedNewTeamEventLabel);
+                if (!$teamEvent || empty($teamEvent['id'])) {
+                    return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Bitte gueltigen Spieltag auswaehlen.']));
+                }
+                $teamEventId = (int)$teamEvent['id'];
+            }
             try {
                 foreach ($orders as $order) {
                     $drinkId = isset($order['drink_id']) ? (int)$order['drink_id'] : 0;
@@ -272,9 +326,9 @@ class AccountController extends AbstractActionController
                     if ($drinkId && $count > 0) {
                         if ($drinkId === 1 && isset($order['price'])) {
                             $customPrice = (float)$order['price'];
-                            $drinkOrderManager->addOrder($uid, $drinkId, $count, $admin ? $admin->get('uid') : null, 0, $comment, $customPrice);
+                            $drinkOrderManager->addOrder($uid, $drinkId, $count, $admin ? $admin->get('uid') : null, 0, $comment, $customPrice, $teamEventId);
                         } else {
-                            $drinkOrderManager->addOrder($uid, $drinkId, $count, $admin ? $admin->get('uid') : null, 0, $comment);
+                            $drinkOrderManager->addOrder($uid, $drinkId, $count, $admin ? $admin->get('uid') : null, 0, $comment, null, $teamEventId);
                         }
                     }
                 }
@@ -308,7 +362,6 @@ class AccountController extends AbstractActionController
                 // Calculate new balance
                 $balance = $drinkManager->calculateUserDrinkBalance($uid, $serviceManager);
                 // Fetch order_email_option from drink_aliases
-                $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
                 $aliasRow = $dbAdapter->query('SELECT order_email_option FROM drink_aliases WHERE user_id = ?', [$uid])->current();
                 $orderEmailOption = $aliasRow && isset($aliasRow['order_email_option']) ? $aliasRow['order_email_option'] : null;
                 $shouldSend = false;
@@ -343,6 +396,8 @@ class AccountController extends AbstractActionController
             $uid = (int)$this->params()->fromPost('uid');
             $drinkId = (int)$this->params()->fromPost('drink_id');
             $count = (int)$this->params()->fromPost('count', 1);
+            $requestedTeamEventId = (int)$this->params()->fromPost('team_event_id', 0);
+            $requestedNewTeamEventLabel = $this->params()->fromPost('new_spieltag', '');
             if (!$uid || !$drinkId || $count < 1) {
                 return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Invalid input']));
             }
@@ -352,8 +407,19 @@ class AccountController extends AbstractActionController
                 return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'User not found']));
             }
             $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
+            $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+            $aliasRow = $dbAdapter->query('SELECT is_team FROM drink_aliases WHERE user_id = ?', [$uid])->current();
+            $isTeamAccount = ($aliasRow && !empty($aliasRow['is_team'])) ? true : false;
+            $teamEventId = null;
+            if ($isTeamAccount) {
+                $teamEvent = $this->resolveTeamEventForSelection($uid, $requestedTeamEventId, $requestedNewTeamEventLabel);
+                if (!$teamEvent || empty($teamEvent['id'])) {
+                    return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Bitte gueltigen Spieltag auswaehlen.']));
+                }
+                $teamEventId = (int)$teamEvent['id'];
+            }
             try {
-                $drinkOrderManager->addOrder($uid, $drinkId, $count, $admin ? $admin->get('uid') : null);
+                $drinkOrderManager->addOrder($uid, $drinkId, $count, $admin ? $admin->get('uid') : null, 0, null, null, $teamEventId);
             } catch (\Exception $e) {
                 return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => $e->getMessage()]));
             }
@@ -1380,9 +1446,26 @@ class AccountController extends AbstractActionController
                 $depositUserId = intval($post['deposit_user_id']);
                 $depositAmount = floatval($post['deposit_amount']);
                 $depositComment = isset($post['deposit_comment']) ? trim($post['deposit_comment']) : null;
+                $requestedTeamEventId = isset($post['deposit_teamevent_id']) ? (int)$post['deposit_teamevent_id'] : 0;
+                $requestedNewTeamEventLabel = isset($post['deposit_new_spieltag']) ? $post['deposit_new_spieltag'] : '';
                 $createdByUserId = $user ? $user->need('uid') : null;
                 if ($depositUserId > 0 && $depositAmount > 0) {
-                    $serviceManager->get('Drinks\Manager\DrinkDepositManager')->addDeposit($depositUserId, $depositAmount, $depositComment, $createdByUserId);
+                    $teamEventId = null;
+                    $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+                    $aliasRow = $dbAdapter->query('SELECT is_team FROM drink_aliases WHERE user_id = ?', [$depositUserId])->current();
+                    if ($aliasRow && !empty($aliasRow['is_team'])) {
+                        $eventRow = $this->resolveTeamEventForSelection($depositUserId, $requestedTeamEventId, $requestedNewTeamEventLabel);
+                        if (!$eventRow || empty($eventRow['id'])) {
+                            $message = 'Bitte gueltigen Spieltag auswaehlen.';
+                            return new \Zend\View\Model\ViewModel([
+                                'users' => $users,
+                                'drinks' => $drinks,
+                                'message' => $message,
+                            ]);
+                        }
+                        $teamEventId = (int)$eventRow['id'];
+                    }
+                    $serviceManager->get('Drinks\Manager\DrinkDepositManager')->addDeposit($depositUserId, $depositAmount, $depositComment, $createdByUserId, null, $teamEventId);
                     // Use DrinkManager for balance calculation
                     $balance = $drinkManager->calculateUserDrinkBalance($depositUserId, $serviceManager);
                     // E-Mail an den Nutzer senden
@@ -1445,6 +1528,36 @@ class AccountController extends AbstractActionController
 		    $drinksAlias = $drinksAliasRow ? $drinksAliasRow['alias'] : null;
 		    $thekenadmin = ($drinksAliasRow && isset($drinksAliasRow['thekenadmin']) && (int)$drinksAliasRow['thekenadmin'] === 1);
 		    $isTeam = ($drinksAliasRow && isset($drinksAliasRow['is_team']) && (int)$drinksAliasRow['is_team'] === 1);
+        $teamEvents = [];
+        $teamEventLabelById = [];
+        $latestTeamEventId = null;
+        $currentTeamEventId = null;
+        $preferredTeamEventId = (int)$this->params()->fromQuery('selected_teamevent_id', 0);
+        if ($isTeam) {
+            $eventRows = $dbAdapter->query('SELECT id, comment FROM drinks_teamevents WHERE team_admin_user_id = ? ORDER BY created_at DESC, id DESC', [$uid])->toArray();
+            foreach ($eventRows as $eventRow) {
+                $eventId = isset($eventRow['id']) ? (int)$eventRow['id'] : 0;
+                $label = isset($eventRow['comment']) ? trim((string)$eventRow['comment']) : '';
+                if ($label === '') {
+                    continue;
+                }
+                $teamEvents[] = [
+                    'id' => $eventId,
+                    'label' => $label,
+                ];
+                if ($eventId > 0) {
+                    if ($latestTeamEventId === null) {
+                        $latestTeamEventId = $eventId;
+                    }
+                    $teamEventLabelById[$eventId] = $label;
+                }
+            }
+            if ($preferredTeamEventId > 0 && isset($teamEventLabelById[$preferredTeamEventId])) {
+                $currentTeamEventId = $preferredTeamEventId;
+            } else {
+                $currentTeamEventId = $latestTeamEventId;
+            }
+        }
 
         // Check if showStorno is requested (from query param)
         $showStorno = $this->params()->fromQuery('showStorno') === '1';
@@ -1467,6 +1580,12 @@ class AccountController extends AbstractActionController
                 'datetime' => $d['deposit_time'],
                 'deleted' => isset($d['deleted']) ? (int)$d['deleted'] : 0,
                 'createdby' => $creatorName,
+                'teamevent_id' => isset($d['teamevent_id']) ? (int)$d['teamevent_id'] : 0,
+                'spieltag_label' => (
+                    isset($d['teamevent_id'])
+                    && (int)$d['teamevent_id'] > 0
+                    && isset($teamEventLabelById[(int)$d['teamevent_id']])
+                ) ? $teamEventLabelById[(int)$d['teamevent_id']] : '',
             ];
         }
         foreach ($orders as $o) {
@@ -1489,6 +1608,12 @@ class AccountController extends AbstractActionController
                 'comment' => $comment,
                 'drink_id' => $drinkId,
                 'quantity' => isset($o['quantity']) ? (int)$o['quantity'] : null,
+                'teamevent_id' => isset($o['teamevent_id']) ? (int)$o['teamevent_id'] : 0,
+                'spieltag_label' => (
+                    isset($o['teamevent_id'])
+                    && (int)$o['teamevent_id'] > 0
+                    && isset($teamEventLabelById[(int)$o['teamevent_id']])
+                ) ? $teamEventLabelById[(int)$o['teamevent_id']] : '',
             ];
         }
         usort($history, function($a, $b) { return strcmp($a['datetime'], $b['datetime']); });
@@ -1518,6 +1643,8 @@ class AccountController extends AbstractActionController
             'drinks_enabled' => $drinksEnabled,
             'drinks_alias' => $drinksAlias,
             'is_team' => $isTeam,
+            'team_events' => $teamEvents,
+            'current_teamevent_id' => $currentTeamEventId,
         ]));
     }
 
