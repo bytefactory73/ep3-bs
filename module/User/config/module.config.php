@@ -176,6 +176,16 @@ return array(
                             ),
                         ),
                     ),
+                    'send-money' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/send-money',
+                            'defaults' => array(
+                                'controller' => 'User\Controller\Account',
+                                'action' => 'sendMoney',
+                            ),
+                        ),
+                    ),
                     'manage-drinks' => array(
                         'type' => 'Literal',
                         'options' => array(
@@ -274,6 +284,16 @@ return array(
                                     'defaults' => array(
                                         'controller' => 'User\\Controller\\SimpleLogin',
                                         'action' => 'spieltag',
+                                    ),
+                                ),
+                            ),
+                            'send-money' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/send-money',
+                                    'defaults' => array(
+                                        'controller' => 'User\\Controller\\SimpleLogin',
+                                        'action' => 'sendMoney',
                                     ),
                                 ),
                             ),

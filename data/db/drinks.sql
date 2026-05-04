@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS drink_orders (
     quantity INT NOT NULL,
     price DECIMAL(10,2) NOT NULL,
     comment VARCHAR(255) DEFAULT NULL,
+    transfer_reference VARCHAR(64) DEFAULT NULL,
     teamevent_id INT DEFAULT NULL,
     order_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted TINYINT(1) NOT NULL DEFAULT 0,
@@ -38,6 +39,7 @@ CREATE TABLE IF NOT EXISTS drink_orders (
     FOREIGN KEY (teamevent_id) REFERENCES drinks_teamevents(id),
     FOREIGN KEY (user_id_added) REFERENCES bs_users(uid),
     FOREIGN KEY (user_id_deleted) REFERENCES bs_users(uid)
+    ,INDEX idx_drink_orders_transfer_reference (transfer_reference)
 );
 
 -- Table for user balance deposits
@@ -46,6 +48,7 @@ CREATE TABLE IF NOT EXISTS drink_deposits (
     user_id INT UNSIGNED NOT NULL,
     amount DECIMAL(10,2) NOT NULL,
     comment VARCHAR(255) DEFAULT NULL,
+    transfer_reference VARCHAR(64) DEFAULT NULL,
     teamevent_id INT DEFAULT NULL,
     deposit_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     createdbyuserid INT UNSIGNED DEFAULT NULL,
@@ -54,7 +57,8 @@ CREATE TABLE IF NOT EXISTS drink_deposits (
     FOREIGN KEY (user_id) REFERENCES bs_users(uid),
     FOREIGN KEY (teamevent_id) REFERENCES drinks_teamevents(id),
     FOREIGN KEY (createdbyuserid) REFERENCES bs_users(uid),
-    FOREIGN KEY (user_id_deleted) REFERENCES bs_users(uid)
+    FOREIGN KEY (user_id_deleted) REFERENCES bs_users(uid),
+    INDEX idx_drink_deposits_transfer_reference (transfer_reference)
 );
 
 -- Create drink_barcodes table for mapping barcode to drink_id
@@ -94,6 +98,10 @@ CREATE TABLE IF NOT EXISTS drink_aliases (
 -- ALTER TABLE drink_orders ADD CONSTRAINT fk_drink_orders_teamevent_id FOREIGN KEY (teamevent_id) REFERENCES drinks_teamevents(id);
 -- ALTER TABLE drink_deposits ADD COLUMN teamevent_id INT DEFAULT NULL;
 -- ALTER TABLE drink_deposits ADD CONSTRAINT fk_drink_deposits_teamevent_id FOREIGN KEY (teamevent_id) REFERENCES drinks_teamevents(id);
+-- ALTER TABLE drink_orders ADD COLUMN transfer_reference VARCHAR(64) DEFAULT NULL;
+-- ALTER TABLE drink_orders ADD INDEX idx_drink_orders_transfer_reference (transfer_reference);
+-- ALTER TABLE drink_deposits ADD COLUMN transfer_reference VARCHAR(64) DEFAULT NULL;
+-- ALTER TABLE drink_deposits ADD INDEX idx_drink_deposits_transfer_reference (transfer_reference);
     FOREIGN KEY (user_id) REFERENCES bs_users(uid) ON DELETE CASCADE
 );
 

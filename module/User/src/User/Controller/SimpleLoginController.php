@@ -1,6 +1,7 @@
 <?php
 namespace User\Controller;
 
+use User\Controller\Traits\MoneyTransferTrait;
 use User\Controller\Traits\TeamEventTrait;
 use Zend\Mvc\Controller\AbstractActionController;
 use Zend\View\Model\ViewModel;
@@ -8,6 +9,7 @@ use Zend\View\Model\ViewModel;
 class SimpleLoginController extends AbstractActionController
 {
     use TeamEventTrait;
+    use MoneyTransferTrait;
 
     /**
      * Number of hours to look back for recent orders
@@ -191,6 +193,29 @@ class SimpleLoginController extends AbstractActionController
             if ($eTs && $now > $eTs) $activeWithin = false;
             $partyModeEnabled = $partyModeEnabledBase && $activeWithin;
         } catch (\Exception $e) {}
+
+        $moneyRecipients = [];
+        $allUsers = $userManager->getAll('alias ASC');
+        foreach ($allUsers as $candidateUser) {
+            $status = $candidateUser->get('status');
+            if ($status !== 'enabled' && $status !== 'admin' && $status !== 'assist') {
+                continue;
+            }
+            $candidateUid = (int)$candidateUser->get('uid');
+            if ($candidateUid <= 0 || $candidateUid === (int)$userId) {
+                continue;
+            }
+            $candidateAlias = trim((string)$candidateUser->get('alias'));
+            $candidateName = trim((string)$candidateUser->get('name'));
+            $candidateEmail = trim((string)$candidateUser->get('email'));
+            $displayName = $candidateAlias !== '' ? $candidateAlias : ($candidateName !== '' ? $candidateName : ('User ' . $candidateUid));
+            $moneyRecipients[] = [
+                'uid' => $candidateUid,
+                'name' => $displayName,
+                'email' => $candidateEmail,
+            ];
+        }
+
         return $viewModel->setVariables([
             'drinks' => $drinks,
             'drinkHistory' => $drinkHistory,
@@ -208,6 +233,7 @@ class SimpleLoginController extends AbstractActionController
             'availableSpieltage' => $availableTeamEventLabels,
             'partyModeEnabled' => $partyModeEnabled,
             'partyModeMessage' => $partyModeMessage,
+            'moneyRecipients' => $moneyRecipients,
         ]);
     }
 
@@ -370,6 +396,47 @@ class SimpleLoginController extends AbstractActionController
             'current_spieltag' => $currentTeamEventLabel,
             'spieltage' => $availableTeamEventLabels,
         ]));
+    }
+
+    public function sendMoneyAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $request = $this->getRequest();
+        if (!$request->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required.']));
+        }
+
+        $serviceManager = $this->getServiceLocator();
+
+        $senderUserId = 0;
+        $sessionManager = $serviceManager->get('Zend\Session\SessionManager');
+        $sessionManager->start();
+        $simpleSession = new \Zend\Session\Container('SimpleLogin');
+        if (!empty($simpleSession->user_id)) {
+            $senderUserId = (int)$simpleSession->user_id;
+        }
+
+        if ($senderUserId <= 0) {
+            $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+            $sessionUser = $userSessionManager->getSessionUser();
+            if ($sessionUser) {
+                $senderUserId = (int)$sessionUser->need('uid');
+            }
+        }
+
+        if ($senderUserId <= 0) {
+            return $this->getResponse()->setStatusCode(401)->setContent(json_encode(['success' => false, 'error' => 'Not authenticated.']));
+        }
+
+        $receiverUserId = (int)$this->params()->fromPost('receiver_user_id', 0);
+        $amountRaw = trim((string)$this->params()->fromPost('amount', ''));
+        $amountRaw = str_replace(',', '.', $amountRaw);
+        $amount = round((float)$amountRaw, 2);
+
+        $transferResult = $this->executeMoneyTransfer($senderUserId, $receiverUserId, $amount);
+        return $this->getResponse()
+            ->setStatusCode($transferResult['statusCode'])
+            ->setContent(json_encode($transferResult['payload']));
     }
 
     public function submitOrderAction()

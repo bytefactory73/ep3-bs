@@ -7,6 +7,7 @@ class DrinkOrderManager
 {
     const CANCEL_WINDOW_SECONDS = 600; // 10 minutes
     protected $dbAdapter;
+    protected $hasTransferReferenceColumns = null;
 
     public function __construct(Adapter $dbAdapter)
     {
@@ -51,6 +52,23 @@ class DrinkOrderManager
         return $statement->execute();
     }
 
+    protected function canUseTransferReferenceColumns()
+    {
+        if ($this->hasTransferReferenceColumns !== null) {
+            return $this->hasTransferReferenceColumns;
+        }
+
+        try {
+            $orderCol = $this->dbAdapter->query("SHOW COLUMNS FROM drink_orders LIKE 'transfer_reference'", [])->current();
+            $depositCol = $this->dbAdapter->query("SHOW COLUMNS FROM drink_deposits LIKE 'transfer_reference'", [])->current();
+            $this->hasTransferReferenceColumns = (bool)$orderCol && (bool)$depositCol;
+        } catch (\Exception $e) {
+            $this->hasTransferReferenceColumns = false;
+        }
+
+        return $this->hasTransferReferenceColumns;
+    }
+
     public function dropOrder($orderId, $userId = null, $deletedByUserId = null)
     {
         if ($userId) {
@@ -90,7 +108,27 @@ class DrinkOrderManager
             $params = [$deletedByUserId, $orderId];
         }
         $statement = $this->dbAdapter->createStatement($sql, $params);
-        return $statement->execute();
+        $result = $statement->execute();
+
+        // Keep transfer counterpart (deposit) in sync when a transfer order is cancelled.
+        if ($result->getAffectedRows() > 0 && $this->canUseTransferReferenceColumns()) {
+            try {
+                $transferRow = $this->dbAdapter->query('SELECT transfer_reference FROM drink_orders WHERE id = ?', [$orderId])->current();
+                $transferReference = $transferRow && isset($transferRow['transfer_reference'])
+                    ? trim((string)$transferRow['transfer_reference'])
+                    : '';
+                if ($transferReference !== '') {
+                    $this->dbAdapter->query(
+                        'UPDATE drink_deposits SET deleted = 1, user_id_deleted = ? WHERE transfer_reference = ?',
+                        [$deletedByUserId, $transferReference]
+                    );
+                }
+            } catch (\Exception $e) {
+                // Do not fail primary order cancellation if counterpart sync fails.
+            }
+        }
+
+        return $result;
     }
 
     /**

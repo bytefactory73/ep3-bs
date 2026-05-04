@@ -2,6 +2,7 @@
 
 namespace User\Controller;
 
+use User\Controller\Traits\MoneyTransferTrait;
 use User\Controller\Traits\TeamEventTrait;
 use Zend\Mvc\Controller\AbstractActionController;
 use Zend\Crypt\Password\Bcrypt;
@@ -9,6 +10,18 @@ use Zend\Crypt\Password\Bcrypt;
 class AccountController extends AbstractActionController
 {
     use TeamEventTrait;
+    use MoneyTransferTrait;
+
+    protected function canUseTransferReferenceColumns($dbAdapter)
+    {
+        try {
+            $orderCol = $dbAdapter->query("SHOW COLUMNS FROM drink_orders LIKE 'transfer_reference'", [])->current();
+            $depositCol = $dbAdapter->query("SHOW COLUMNS FROM drink_deposits LIKE 'transfer_reference'", [])->current();
+            return (bool)$orderCol && (bool)$depositCol;
+        } catch (\Exception $e) {
+            return false;
+        }
+    }
 
     public function createTeamEventAction()
     {
@@ -154,16 +167,24 @@ class AccountController extends AbstractActionController
             return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'No entry_id or entry_type']));
         }
         $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+        $canUseTransferReference = $this->canUseTransferReferenceColumns($dbAdapter);
         $userManager = $serviceManager->get('User\Manager\UserManager');
         $mailService = $serviceManager->get('User\Service\MailService');
         if ($entryType === 'deposit') {
             $row = $dbAdapter->query('SELECT * FROM drink_deposits WHERE id = ?', [$entryId])->current();
             if ($row) {
                 $newDeleted = empty($row['deleted']) ? 1 : 0;
+                $transferReference = ($canUseTransferReference && isset($row['transfer_reference'])) ? trim((string)$row['transfer_reference']) : '';
                 if ($newDeleted) {
                     $dbAdapter->query('UPDATE drink_deposits SET deleted = 1, user_id_deleted = ? WHERE id = ?', [$admin->get('uid'), $entryId]);
+                    if ($transferReference !== '') {
+                        $dbAdapter->query('UPDATE drink_orders SET deleted = 1, user_id_deleted = ? WHERE transfer_reference = ?', [$admin->get('uid'), $transferReference]);
+                    }
                 } else {
                     $dbAdapter->query('UPDATE drink_deposits SET deleted = 0, user_id_deleted = NULL WHERE id = ?', [$entryId]);
+                    if ($transferReference !== '') {
+                        $dbAdapter->query('UPDATE drink_orders SET deleted = 0, user_id_deleted = NULL WHERE transfer_reference = ?', [$transferReference]);
+                    }
                 }
                 // Send notification email to user
                 $user = $userManager->get($row['user_id']);
@@ -189,10 +210,17 @@ class AccountController extends AbstractActionController
             $row = $dbAdapter->query('SELECT * FROM drink_orders WHERE id = ?', [$entryId])->current();
             if ($row) {
                 $newDeleted = empty($row['deleted']) ? 1 : 0;
+                $transferReference = ($canUseTransferReference && isset($row['transfer_reference'])) ? trim((string)$row['transfer_reference']) : '';
                 if ($newDeleted) {
                     $dbAdapter->query('UPDATE drink_orders SET deleted = 1, user_id_deleted = ? WHERE id = ?', [$admin->get('uid'), $entryId]);
+                    if ($transferReference !== '') {
+                        $dbAdapter->query('UPDATE drink_deposits SET deleted = 1, user_id_deleted = ? WHERE transfer_reference = ?', [$admin->get('uid'), $transferReference]);
+                    }
                 } else {
                     $dbAdapter->query('UPDATE drink_orders SET deleted = 0, user_id_deleted = NULL WHERE id = ?', [$entryId]);
+                    if ($transferReference !== '') {
+                        $dbAdapter->query('UPDATE drink_deposits SET deleted = 0, user_id_deleted = NULL WHERE transfer_reference = ?', [$transferReference]);
+                    }
                 }
                 // Send notification email to user only if order_email_option is 'order',
                 // or if it is 'negative' and the balance is zero or negative
@@ -979,6 +1007,28 @@ class AccountController extends AbstractActionController
             }
         }
 
+        $moneyRecipients = [];
+        $allUsers = $userManager->getAll('alias ASC');
+        foreach ($allUsers as $candidateUser) {
+            $status = $candidateUser->get('status');
+            if ($status !== 'enabled' && $status !== 'admin' && $status !== 'assist') {
+                continue;
+            }
+            $candidateUid = (int)$candidateUser->get('uid');
+            if ($candidateUid <= 0 || $candidateUid === (int)$userId) {
+                continue;
+            }
+            $candidateAlias = trim((string)$candidateUser->get('alias'));
+            $candidateName = trim((string)$candidateUser->get('name'));
+            $candidateEmail = trim((string)$candidateUser->get('email'));
+            $displayName = $candidateAlias !== '' ? $candidateAlias : ($candidateName !== '' ? $candidateName : ('User ' . $candidateUid));
+            $moneyRecipients[] = [
+                'uid' => $candidateUid,
+                'name' => $displayName,
+                'email' => $candidateEmail,
+            ];
+        }
+
         // Pass cancel window from backend constant
         $drinkOrderCancelWindow = \Drinks\Manager\DrinkOrderManager::CANCEL_WINDOW_SECONDS;
         return array(
@@ -996,6 +1046,7 @@ class AccountController extends AbstractActionController
             'userName' => $userName,
             'drinkOrderCancelWindow' => $drinkOrderCancelWindow,
             'drinksEnabled' => $drinksEnabled,
+            'moneyRecipients' => $moneyRecipients,
         );
     }
 
@@ -1381,6 +1432,33 @@ class AccountController extends AbstractActionController
         } else {
             return $this->getResponse()->setContent(json_encode(['success' => false, 'error' => $result['error']]))->setStatusCode(400);
         }
+    }
+
+    public function sendMoneyAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $request = $this->getRequest();
+        if (!$request->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required.']));
+        }
+
+        $serviceManager = $this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $sessionUser = $userSessionManager->getSessionUser();
+        if (!$sessionUser) {
+            return $this->getResponse()->setStatusCode(401)->setContent(json_encode(['success' => false, 'error' => 'Not authenticated.']));
+        }
+
+        $senderUserId = (int)$sessionUser->need('uid');
+        $receiverUserId = (int)$this->params()->fromPost('receiver_user_id', 0);
+        $amountRaw = trim((string)$this->params()->fromPost('amount', ''));
+        $amountRaw = str_replace(',', '.', $amountRaw);
+        $amount = round((float)$amountRaw, 2);
+
+        $transferResult = $this->executeMoneyTransfer($senderUserId, $receiverUserId, $amount);
+        return $this->getResponse()
+            ->setStatusCode($transferResult['statusCode'])
+            ->setContent(json_encode($transferResult['payload']));
     }
 
     public function drinksAdminAction()
