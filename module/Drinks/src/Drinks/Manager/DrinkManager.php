@@ -110,6 +110,35 @@ class DrinkManager
             }
             $userMailService = $serviceManager->get('User\Service\MailService');
             $userMailService->sendFromTheke($user, $subject, $text, ['isHtml' => true]);
+
+            // If this was a transfer order, notify the counterpart (deposit side)
+            if (!empty($order['transfer_reference'])) {
+                try {
+                    $counterRow = $dbAdapter->query(
+                        'SELECT * FROM drink_deposits WHERE transfer_reference = ? LIMIT 1',
+                        [$order['transfer_reference']]
+                    )->current();
+                    if ($counterRow && (int)$counterRow['user_id'] !== (int)$user->need('uid')) {
+                        $userManager = $serviceManager->get('User\Manager\UserManager');
+                        $counterUser = $userManager->get($counterRow['user_id']);
+                        if ($counterUser) {
+                            $counterBalance = $this->calculateUserDrinkBalance($counterRow['user_id'], $serviceManager);
+                            $senderName = $user->get('alias') ?: $user->get('name');
+                            $counterSubject = call_user_func($tCallback, 'Geldüberweisung storniert');
+                            $counterText = sprintf(
+                                call_user_func($tCallback, 'Eine Geldüberweisung von %s an Dich wurde storniert.') . '<br><br>' .
+                                call_user_func($tCallback, 'Kontostand nach Stornierung:') . '<b> %.2f EUR </b>',
+                                htmlspecialchars($senderName),
+                                $counterBalance
+                            );
+                            $userMailService->sendFromTheke($counterUser, $counterSubject, $counterText, ['isHtml' => true]);
+                        }
+                    }
+                } catch (\Exception $e) {
+                    // Do not fail primary notification if counterpart email fails.
+                }
+            }
+
             return true;
         }
         return false;

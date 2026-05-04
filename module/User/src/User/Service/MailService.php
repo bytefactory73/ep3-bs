@@ -25,7 +25,7 @@ class MailService extends AbstractService
     public function sendTo($fromAddress, $fromName, $replyToAddress, $replyToName, User $recipient, $subject, $text, $optionsOrAttachments = array())
     {
         $toAddress = $recipient->need('email');
-        $toName = $recipient->need('alias');
+        $toName = $recipient->get('alias') ?: $recipient->get('name') ?: '';
 
         // Compatibility: if 4th argument is not an array or is a numerically indexed array, treat as attachments (old usage)
         $isHtml = false;

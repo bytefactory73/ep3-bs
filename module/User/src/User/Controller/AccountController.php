@@ -186,23 +186,29 @@ class AccountController extends AbstractActionController
                         $dbAdapter->query('UPDATE drink_orders SET deleted = 0, user_id_deleted = NULL WHERE transfer_reference = ?', [$transferReference]);
                     }
                 }
-                // Send notification email to user
+                // Send notification email to deposit owner
+                $action = $newDeleted ? 'storniert' : 'wiederhergestellt';
+                $adminName = ($admin->get('alias') ?: $admin->get('name')) ?: 'Administrator';
+                $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
                 $user = $userManager->get($row['user_id']);
                 if ($user) {
-                    // Calculate new balance
-                    $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
                     $balance = $drinkManager->calculateUserDrinkBalance($row['user_id'], $serviceManager);
-                    $action = $newDeleted ? 'storniert' : 'wiederhergestellt';
                     $subject = 'Einzahlung ' . ucfirst($action);
-                    $adminName = '';
-                    if (isset($admin) && $admin) {
-                        $adminName = $admin->get('alias') ?: $admin->get('name');
-                    }
-                    if (!$adminName) {
-                        $adminName = 'Administrator';
-                    }
                     $body = 'Ihre Einzahlung am ' . $row['deposit_time'] . ' wurde von ' . htmlspecialchars($adminName) . ' ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>';
                     $mailService->sendFromTheke($user, $subject, $body, ['isHtml' => true]);
+                }
+                // Send notification email to transfer counterpart (the order side)
+                if ($transferReference !== '') {
+                    $counterRow = $dbAdapter->query('SELECT * FROM drink_orders WHERE transfer_reference = ? LIMIT 1', [$transferReference])->current();
+                    if ($counterRow && (int)$counterRow['user_id'] !== (int)$row['user_id']) {
+                        $counterUser = $userManager->get($counterRow['user_id']);
+                        if ($counterUser) {
+                            $counterBalance = $drinkManager->calculateUserDrinkBalance($counterRow['user_id'], $serviceManager);
+                            $counterSubject = 'Geldüberweisung ' . ucfirst($action);
+                            $counterBody = 'Eine Geldüberweisung, die Ihr Konto betrifft, wurde von ' . htmlspecialchars($adminName) . ' ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($counterBalance, 2, ',', '.') . ' EUR</b>';
+                            $mailService->sendFromTheke($counterUser, $counterSubject, $counterBody, ['isHtml' => true]);
+                        }
+                    }
                 }
                 return $this->getResponse()->setContent(json_encode(['success' => true]));
             }
@@ -281,6 +287,22 @@ class AccountController extends AbstractActionController
                         }
                         $body = 'Ihre Getränkebuchung (' . $label . ') am ' . $row['order_time'] . ' wurde von ' . htmlspecialchars($adminName) . ' ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>';
                         $mailService->sendFromTheke($user, $subject, $body, ['isHtml' => true]);
+                    }
+                }
+                // Send notification email to transfer counterpart (the deposit side)
+                if ($transferReference !== '') {
+                    $drinkManagerInner = $serviceManager->get('Drinks\Manager\DrinkManager');
+                    $counterRow = $dbAdapter->query('SELECT * FROM drink_deposits WHERE transfer_reference = ? LIMIT 1', [$transferReference])->current();
+                    if ($counterRow && (int)$counterRow['user_id'] !== (int)$row['user_id']) {
+                        $counterUser = $userManager->get($counterRow['user_id']);
+                        if ($counterUser) {
+                            $action2 = $newDeleted ? 'storniert' : 'wiederhergestellt';
+                            $adminName2 = ($admin->get('alias') ?: $admin->get('name')) ?: 'Administrator';
+                            $counterBalance = $drinkManagerInner->calculateUserDrinkBalance($counterRow['user_id'], $serviceManager);
+                            $counterSubject = 'Geldüberweisung ' . ucfirst($action2);
+                            $counterBody = 'Eine Geldüberweisung, die Ihr Konto betrifft, wurde von ' . htmlspecialchars($adminName2) . ' ' . $action2 . '.<br><br>Kontostand nach Änderung: <b>' . number_format($counterBalance, 2, ',', '.') . ' EUR</b>';
+                            $mailService->sendFromTheke($counterUser, $counterSubject, $counterBody, ['isHtml' => true]);
+                        }
                     }
                 }
                 return $this->getResponse()->setContent(json_encode(['success' => true]));
