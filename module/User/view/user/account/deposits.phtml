@@ -28,6 +28,9 @@ $this->setup([
         <label for="deposit_drinks_enabled" style="grid-column:1;">Theke erlaubt:</label>
         <input type="checkbox" id="deposit_drinks_enabled" name="deposit_drinks_enabled" value="1" style="vertical-align:middle; grid-column:2; justify-self: start;">
 
+        <label for="deposit_is_team" style="grid-column:1;">Mannschafts-Account:</label>
+        <input type="checkbox" id="deposit_is_team" name="deposit_is_team" value="1" style="vertical-align:middle; grid-column:2; justify-self: start;">
+
         <div id="alias-row" style="display:none; grid-column:1 / span 2; margin-top:8px;">
             <div style="display:grid; grid-template-columns: 160px 1fr; align-items:center; gap:10px 18px;">
                 <label for="deposit_alias" style="grid-column:1;">Theken-ID:</label>
@@ -97,7 +100,8 @@ document.addEventListener('DOMContentLoaded', function() {
             alias: "<?= $this->escapeJs($user->get('alias')) ?>",
             email: "<?= $this->escapeJs($user->get('email')) ?>",
             drinks_enabled: <?= (int)$user->getExtra('drinks_enabled') ?>,
-            drinks_alias: "<?= $this->escapeJs($user->getExtra('drinks_alias')) ?>"
+            drinks_alias: "<?= $this->escapeJs($user->getExtra('drinks_alias')) ?>",
+            is_team: <?= (int)$user->getExtra('is_team') ?>
         },
         <?php endif; ?>
         <?php endforeach; ?>
@@ -123,6 +127,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var userIdInput = document.getElementById('deposit_user_id');
     var userSearchList = document.getElementById('user-search-list');
     var drinksEnabledCheckbox = document.getElementById('deposit_drinks_enabled');
+    var isTeamCheckbox = document.getElementById('deposit_is_team');
     var aliasRow = document.getElementById('alias-row');
     var aliasInput = document.getElementById('deposit_alias');
     var balanceBox = document.getElementById('current-balance-box');
@@ -441,7 +446,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     }
-    function updateDrinksFields(drinksEnabledFromApi, drinksAliasFromApi) {
+    function updateDrinksFields(drinksEnabledFromApi, drinksAliasFromApi, isTeamFromApi) {
         var uid = userIdInput.value;
         var user = findUserByUid(uid);
         var drinksEnabled = typeof drinksEnabledFromApi === 'boolean'
@@ -450,8 +455,13 @@ document.addEventListener('DOMContentLoaded', function() {
         var alias = typeof drinksAliasFromApi === 'string'
             ? drinksAliasFromApi
             : (user ? user.drinks_alias : '');
+        var isTeam = typeof isTeamFromApi === 'boolean'
+            ? isTeamFromApi
+            : (user ? user.is_team === 1 : false);
         drinksEnabledCheckbox.checked = drinksEnabled;
         drinksEnabledCheckbox.disabled = !user;
+        isTeamCheckbox.checked = isTeam;
+        isTeamCheckbox.disabled = !user;
         if (typeof drinksAliasFromApi === 'string') {
             aliasInput.value = drinksAliasFromApi;
         } else if (user) {
@@ -494,6 +504,33 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             } catch (e) {
                 alert('Netzwerkfehler beim Speichern der Drinks-Einstellung.');
+            }
+        }
+    });
+    isTeamCheckbox.addEventListener('change', async function() {
+        var uid = userIdInput.value;
+        var user = findUserByUid(uid);
+        var isTeam = isTeamCheckbox.checked;
+        if (user) {
+            user.is_team = isTeam ? 1 : 0;
+        }
+        if (uid) {
+            try {
+                const resp = await fetch('<?= $this->url('user/set-user-drinks-settings') ?>', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    credentials: 'same-origin',
+                    body: new URLSearchParams({
+                        uid: uid,
+                        is_team: isTeam ? '1' : '0'
+                    })
+                });
+                const data = await resp.json();
+                if (!data.success) {
+                    alert('Fehler beim Speichern: ' + (data.error || 'Unbekannter Fehler'));
+                }
+            } catch (e) {
+                alert('Netzwerkfehler beim Speichern der Mannschafts-Account-Einstellung.');
             }
         }
     });
@@ -548,12 +585,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 const resp = await fetch(url, { credentials: 'same-origin' });
                 if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 const data = await resp.json();
-                if (typeof data.drinks_enabled !== 'undefined' || typeof data.drinks_alias !== 'undefined') {
-                    updateDrinksFields(data.drinks_enabled, data.drinks_alias);
+                if (typeof data.drinks_enabled !== 'undefined' || typeof data.drinks_alias !== 'undefined' || typeof data.is_team !== 'undefined') {
+                    updateDrinksFields(data.drinks_enabled, data.drinks_alias, typeof data.is_team !== 'undefined' ? data.is_team : undefined);
                     var user = findUserByUid(uid);
                     if (user) {
                         if (typeof data.drinks_enabled !== 'undefined') user.drinks_enabled = data.drinks_enabled ? 1 : 0;
                         if (typeof data.drinks_alias !== 'undefined') user.drinks_alias = data.drinks_alias || '';
+                        if (typeof data.is_team !== 'undefined') user.is_team = data.is_team ? 1 : 0;
                     }
                 } else {
                     updateDrinksFields();

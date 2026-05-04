@@ -381,6 +381,7 @@ class AccountController extends AbstractActionController
         $uid = (int)$this->params()->fromPost('uid');
         $drinksEnabled = $this->params()->fromPost('drinks_enabled', null);
         $drinksAlias = $this->params()->fromPost('drinks_alias', null);
+        $isTeam = $this->params()->fromPost('is_team', null);
         if (!$uid) {
             return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'No user selected']));
         }
@@ -391,6 +392,11 @@ class AccountController extends AbstractActionController
             if ($drinksAlias !== '' && !preg_match('/^[\w\-\s]{1,50}$/u', $drinksAlias)) {
                 return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'Invalid alias']));
             }
+        }
+        // Normalize is_team
+        $isTeamVal = null;
+        if ($isTeam !== null) {
+            $isTeamVal = ($isTeam === '1' || $isTeam === 1 || $isTeam === true || $isTeam === 'true') ? 1 : 0;
         }
         try {
             $row = $dbAdapter->query('SELECT * FROM drink_aliases WHERE user_id = ?', [$uid])->current();
@@ -410,6 +416,10 @@ class AccountController extends AbstractActionController
                 if (isset($thekenadmin)) {
                     $fields[] = 'thekenadmin = ?';
                     $params[] = $thekenadmin ? 1 : 0;
+                }
+                if ($isTeamVal !== null) {
+                    $fields[] = 'is_team = ?';
+                    $params[] = $isTeamVal;
                 }
                 if (!empty($fields)) {
                     $params[] = $uid;
@@ -432,6 +442,11 @@ class AccountController extends AbstractActionController
                         $values[] = $thekenadmin ? 1 : 0;
                         $updates[] = 'thekenadmin = VALUES(thekenadmin)';
                     }
+                    if ($isTeamVal !== null) {
+                        $columns[] = 'is_team';
+                        $values[] = $isTeamVal;
+                        $updates[] = 'is_team = VALUES(is_team)';
+                    }
                     $columns = array_merge(['user_id'], $columns);
                     $values = array_merge([$uid], $values);
                     $sql = 'INSERT INTO drink_aliases (' . implode(', ', $columns) . ') VALUES (' . rtrim(str_repeat('?, ', count($columns)), ', ') . ') ON DUPLICATE KEY UPDATE ' . implode(', ', $updates);
@@ -439,12 +454,13 @@ class AccountController extends AbstractActionController
                 }
             } else {
                 // Insert: require all fields
-                if ($drinksAlias === null && $drinksEnabled === null && !isset($thekenadmin)) {
+                if ($drinksAlias === null && $drinksEnabled === null && !isset($thekenadmin) && $isTeamVal === null) {
                     return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'Alias, enabled, and thekenadmin required for new entry']));
                 }
                 $enabledVal = ($drinksEnabled === '1' || $drinksEnabled === 1 || $drinksEnabled === true || $drinksEnabled === 'true') ? 1 : 0;
                 $thekenadminVal = isset($thekenadmin) ? ($thekenadmin ? 1 : 0) : 0;
-                $dbAdapter->query('INSERT INTO drink_aliases (user_id, alias, enabled, thekenadmin) VALUES (?, ?, ?, ?)', [$uid, $drinksAlias, $enabledVal, $thekenadminVal]);
+                $isTeamInsert = $isTeamVal !== null ? $isTeamVal : 0;
+                $dbAdapter->query('INSERT INTO drink_aliases (user_id, alias, enabled, thekenadmin, is_team) VALUES (?, ?, ?, ?, ?)', [$uid, $drinksAlias, $enabledVal, $thekenadminVal, $isTeamInsert]);
             }
         } catch (\Exception $e) {
             return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['error' => 'DB error', 'details' => $e->getMessage()]));
@@ -1424,10 +1440,11 @@ class AccountController extends AbstractActionController
             return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['error' => 'User not found']));
         }
         // Query drinks_enabled and alias from drink_aliases
-        $drinksAliasRow = $dbAdapter->query('SELECT enabled, alias, thekenadmin FROM drink_aliases WHERE user_id = ?', [$uid])->current();
+        $drinksAliasRow = $dbAdapter->query('SELECT enabled, alias, thekenadmin, is_team FROM drink_aliases WHERE user_id = ?', [$uid])->current();
 		    $drinksEnabled = $drinksAliasRow ? (bool)$drinksAliasRow['enabled'] : false;
 		    $drinksAlias = $drinksAliasRow ? $drinksAliasRow['alias'] : null;
 		    $thekenadmin = ($drinksAliasRow && isset($drinksAliasRow['thekenadmin']) && (int)$drinksAliasRow['thekenadmin'] === 1);
+		    $isTeam = ($drinksAliasRow && isset($drinksAliasRow['is_team']) && (int)$drinksAliasRow['is_team'] === 1);
 
         // Check if showStorno is requested (from query param)
         $showStorno = $this->params()->fromQuery('showStorno') === '1';
@@ -1500,6 +1517,7 @@ class AccountController extends AbstractActionController
             'history' => $userHistory,
             'drinks_enabled' => $drinksEnabled,
             'drinks_alias' => $drinksAlias,
+            'is_team' => $isTeam,
         ]));
     }
 
