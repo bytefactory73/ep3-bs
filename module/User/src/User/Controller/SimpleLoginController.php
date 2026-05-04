@@ -246,6 +246,9 @@ class SimpleLoginController extends AbstractActionController
         $userId = (int)$session->user_id;
         $teamAdminUserId = $userId;
         $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
+        $serviceManager = $this->getServiceLocator();
+        $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
+        $accountBalance = (float)$drinkManager->calculateUserDrinkBalance($userId, $serviceManager);
         $aliasRow = $db->query('SELECT is_team FROM drink_aliases WHERE user_id = ?', [$userId])->current();
         if (!$aliasRow || empty($aliasRow['is_team'])) {
             return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'Kein Team-Account.']));
@@ -254,17 +257,6 @@ class SimpleLoginController extends AbstractActionController
         if ($requestedTeamEventLabel === '') {
             return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Kein Spieltag ausgewählt.']));
         }
-
-        $event = $this->getTeamEventByLabel($teamAdminUserId, $requestedTeamEventLabel);
-        if (!$event) {
-            return $this->getResponse()->setContent(json_encode([
-                'success' => true,
-                'spieltag' => $requestedTeamEventLabel,
-                'rows' => [],
-                'total_sum' => 0,
-            ]));
-        }
-        $teamEventId = (int)$event['id'];
 
         $sqlOrders = '
             SELECT
@@ -276,12 +268,20 @@ class SimpleLoginController extends AbstractActionController
             JOIN drinks d ON d.id = o.drink_id
             WHERE o.user_id = ?
               AND o.deleted = 0
-              AND (o.teamevent_id = ? OR (o.teamevent_id IS NULL AND TRIM(COALESCE(o.comment, "")) = ?))
+                            AND (
+                                        o.teamevent_id IN (
+                                                SELECT e.id
+                                                FROM drinks_teamevents e
+                                                WHERE e.team_admin_user_id = ?
+                                                    AND TRIM(COALESCE(e.comment, "")) = ?
+                                        )
+                                        OR (o.teamevent_id IS NULL AND TRIM(COALESCE(o.comment, "")) = ?)
+                                    )
             GROUP BY o.drink_id, d.name, o.price
             ORDER BY d.name ASC, o.price ASC
         ';
 
-        $rows = $db->query($sqlOrders, [$userId, $teamEventId, $requestedTeamEventLabel])->toArray();
+                $rows = $db->query($sqlOrders, [$userId, $teamAdminUserId, $requestedTeamEventLabel, $requestedTeamEventLabel])->toArray();
 
         $sqlDeposits = '
             SELECT
@@ -291,11 +291,19 @@ class SimpleLoginController extends AbstractActionController
             FROM drink_deposits
             WHERE user_id = ?
               AND deleted = 0
-              AND (teamevent_id = ? OR (teamevent_id IS NULL AND TRIM(COALESCE(comment, "")) = ?))
+                            AND (
+                                        teamevent_id IN (
+                                                SELECT e.id
+                                                FROM drinks_teamevents e
+                                                WHERE e.team_admin_user_id = ?
+                                                    AND TRIM(COALESCE(e.comment, "")) = ?
+                                        )
+                                        OR (teamevent_id IS NULL AND TRIM(COALESCE(comment, "")) = ?)
+                                    )
             GROUP BY amount
             ORDER BY amount ASC
         ';
-        $depositRows = $db->query($sqlDeposits, [$userId, $teamEventId, $requestedTeamEventLabel])->toArray();
+                $depositRows = $db->query($sqlDeposits, [$userId, $teamAdminUserId, $requestedTeamEventLabel, $requestedTeamEventLabel])->toArray();
         foreach ($depositRows as $depositRow) {
             $rows[] = [
                 'article' => 'Einzahlung',
@@ -319,6 +327,7 @@ class SimpleLoginController extends AbstractActionController
             'spieltag' => $requestedTeamEventLabel,
             'rows' => $rows,
             'total_sum' => $totalSum,
+            'account_balance' => $accountBalance,
         ]));
     }
 
