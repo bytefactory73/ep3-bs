@@ -153,8 +153,7 @@ if ($__partyModeEnabled) {
                                 <div>
                                     <label for="money-send-recipient" style="display:block; margin-bottom:8px; font-weight:600; color:#1769aa; font-size:14px;"><?= $this->t('EMPFÄNGER') ?></label>
                                     <div style="position:relative; display:flex; align-items:center; gap:6px;">
-                                        <input type="text" id="money-send-recipient" autocomplete="off" placeholder="<?= $this->t('Namen tippen...') ?>" style="flex:1; min-width:0; padding:8px 12px; border:1px solid #ccc; border-radius:12px; font-size:15px; min-height:36px; -webkit-appearance:none; -webkit-user-select:text; line-height:1.2;" />
-                                        <input type="hidden" id="money-send-recipient-id" />
+                                        <input type="text" id="money-send-recipient" name="money_send_recipient_search" autocomplete="off" placeholder="<?= $this->t('Namen tippen...') ?>" style="flex:1; min-width:0; padding:8px 12px; border:1px solid #ccc; border-radius:12px; font-size:15px; min-height:36px; -webkit-appearance:none; -webkit-user-select:text; line-height:1.2;" />
                                         <button type="button" id="money-send-recipient-clear" title="<?= $this->t('Feld leeren') ?>" style="background:none; border:none; padding:6px; font-size:20px; color:#aaa; cursor:pointer; line-height:1; min-height:36px; display:flex; align-items:center; justify-content:center; min-width:36px;">&times;</button>
                                         <div id="money-send-recipient-list" style="position:absolute; top:100%; left:0; right:58px; z-index:10; margin-top:4px;"></div>
                                     </div>
@@ -163,11 +162,20 @@ if ($__partyModeEnabled) {
                                 <div>
                                     <label for="money-send-amount" style="display:block; margin-bottom:8px; font-weight:600; color:#1769aa; font-size:14px;"><?= $this->t('BETRAG') ?></label>
                                     <div style="position:relative; display:flex; align-items:center; gap:6px;">
-                                        <span style="position:absolute; left:14px; color:#999; font-weight:600; pointer-events:none; font-size:16px;">€</span>
-                                        <input id="money-send-amount" type="number" min="0.01" step="0.01" placeholder="0,00" style="flex:1; min-width:0; padding:8px 12px 8px 32px; border:1px solid #ccc; border-radius:12px; font-size:15px; min-height:36px; -webkit-appearance:none; -webkit-user-select:text; line-height:1.2;" />
+                                        <textarea id="money-send-amount" autocomplete="off" inputmode="decimal" placeholder="<?= $this->t('0,00') ?>" rows="1" style="flex:1; min-width:0; height:36px; padding:8px 12px; border:1px solid #ccc; border-radius:12px; box-sizing:border-box; font-size:15px; font-family:Verdana, sans-serif; -webkit-appearance:none; -webkit-user-select:text; line-height:20px; resize:none; overflow:hidden; white-space:nowrap;"></textarea>
                                         <button type="button" id="money-send-amount-clear" title="<?= $this->t('Feld leeren') ?>" style="background:none; border:none; padding:6px; font-size:20px; color:#aaa; cursor:pointer; line-height:1; min-height:36px; display:flex; align-items:center; justify-content:center; min-width:36px;">&times;</button>
                                     </div>
                                 </div>
+                                <?php if ($simpleOrderMode): ?>
+                                <div>
+                                    <label for="money-send-password" style="display:block; margin-bottom:8px; font-weight:600; color:#1769aa; font-size:14px;"><?= $this->t('DEIN PASSWORT') ?></label>
+                                    <div style="position:relative; display:flex; align-items:center; gap:6px;">
+                                        <input type="password" id="money-send-password" name="money_send_secret" autocomplete="off" placeholder="<?= $this->t('DEIN PASSWORT') ?>" style="flex:1; min-width:0; padding:8px 12px; border:1px solid #ccc; border-radius:12px; font-size:15px; min-height:36px; -webkit-appearance:none; -webkit-user-select:text; line-height:1.2;" />
+                                        <button type="button" id="money-send-password-toggle" title="<?= $this->t('Passwort anzeigen/ausblenden') ?>" style="background:none; border:none; padding:6px; font-size:18px; color:#666; cursor:pointer; line-height:1; min-height:36px; display:flex; align-items:center; justify-content:center; min-width:36px;">&#128065;</button>
+                                        <button type="button" id="money-send-password-clear" title="<?= $this->t('Feld leeren') ?>" style="background:none; border:none; padding:6px; font-size:20px; color:#aaa; cursor:pointer; line-height:1; min-height:36px; display:flex; align-items:center; justify-content:center; min-width:36px;">&times;</button>
+                                    </div>
+                                </div>
+                                <?php endif; ?>
                                 <!-- Error Message -->
                                 <div id="money-send-error" style="color:#d32f2f; font-size:13px; min-height:18px; padding:6px 0;"></div>
                             </div>
@@ -185,26 +193,51 @@ if ($__partyModeEnabled) {
                 var moneySendBtn = document.getElementById('money-send-btn');
                 var moneySendModal = document.getElementById('money-send-modal');
                 var moneySendRecipientInput = document.getElementById('money-send-recipient');
-                var moneySendRecipientId = document.getElementById('money-send-recipient-id');
                 var moneySendRecipientList = document.getElementById('money-send-recipient-list');
                 var moneySendRecipientClear = document.getElementById('money-send-recipient-clear');
                 var moneySendAmount = document.getElementById('money-send-amount');
                 var moneySendAmountClear = document.getElementById('money-send-amount-clear');
+                var moneySendPassword = document.getElementById('money-send-password');
+                var moneySendPasswordToggle = document.getElementById('money-send-password-toggle');
+                var moneySendPasswordClear = document.getElementById('money-send-password-clear');
                 var moneySendCancel = document.getElementById('money-send-cancel');
                 var moneySendConfirm = document.getElementById('money-send-confirm');
                 var moneySendCloseBtn = document.getElementById('money-send-close-btn');
                 var moneySendError = document.getElementById('money-send-error');
+                var isSimpleOrderMode = <?= $simpleOrderMode ? 'true' : 'false' ?>;
                 var moneyRecipients = <?= json_encode(isset($this->moneyRecipients) && is_array($this->moneyRecipients) ? $this->moneyRecipients : [], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) ?>;
                 var moneyRecipientSelectedIndex = -1;
                 var modalMouseDownTarget = null;
+                var selectedRecipientId = '';
+
+                function normalizeMoneyAmount(rawValue) {
+                    var value = String(rawValue || '').trim().replace(/\s+/g, '');
+                    if (value === '') return '';
+
+                    var hasComma = value.indexOf(',') !== -1;
+                    var hasDot = value.indexOf('.') !== -1;
+
+                    if (hasComma && hasDot) {
+                        if (value.lastIndexOf(',') > value.lastIndexOf('.')) {
+                            value = value.replace(/\./g, '').replace(',', '.');
+                        } else {
+                            value = value.replace(/,/g, '');
+                        }
+                    } else if (hasComma) {
+                        value = value.replace(',', '.');
+                    }
+
+                    return value;
+                }
 
                 function closeMoneySendModal() {
                     if (!moneySendModal) return;
                     moneySendModal.style.display = 'none';
                     if (moneySendError) moneySendError.textContent = '';
                     if (moneySendAmount) moneySendAmount.value = '';
+                    if (moneySendPassword) moneySendPassword.value = '';
                     if (moneySendRecipientInput) moneySendRecipientInput.value = '';
-                    if (moneySendRecipientId) moneySendRecipientId.value = '';
+                    selectedRecipientId = '';
                     if (moneySendRecipientList) moneySendRecipientList.innerHTML = '';
                     moneyRecipientSelectedIndex = -1;
                 }
@@ -254,7 +287,7 @@ if ($__partyModeEnabled) {
                         item.addEventListener('mousedown', function(e) {
                             e.preventDefault();
                             if (moneySendRecipientInput) moneySendRecipientInput.value = displayText;
-                            if (moneySendRecipientId) moneySendRecipientId.value = recipient.uid;
+                            selectedRecipientId = String(recipient.uid || '');
                             if (moneySendRecipientList) moneySendRecipientList.innerHTML = '';
                             moneyRecipientSelectedIndex = -1;
                         });
@@ -279,15 +312,17 @@ if ($__partyModeEnabled) {
                         moneySendRecipientInput.value = '';
                         setTimeout(function() { moneySendRecipientInput.focus(); }, 100);
                     }
-                    if (moneySendRecipientId) moneySendRecipientId.value = '';
+                    selectedRecipientId = '';
                     if (moneySendRecipientList) moneySendRecipientList.innerHTML = '';
                     if (moneySendAmount) moneySendAmount.value = '';
+                    if (moneySendPassword) moneySendPassword.value = '';
                     moneyRecipientSelectedIndex = -1;
                     moneySendModal.style.display = 'flex';
                 }
 
                 if (moneySendRecipientInput) {
                     moneySendRecipientInput.addEventListener('input', function() {
+                        selectedRecipientId = '';
                         var filter = (moneySendRecipientInput.value || '').trim().toLowerCase();
                         renderMoneyRecipientList(filter);
                     });
@@ -358,7 +393,7 @@ if ($__partyModeEnabled) {
                                             var recipient = currentMatches[dataIndex];
                                             var displayText = recipient.name + ' (' + recipient.email + ')';
                                             if (moneySendRecipientInput) moneySendRecipientInput.value = displayText;
-                                            if (moneySendRecipientId) moneySendRecipientId.value = recipient.uid;
+                                            selectedRecipientId = String(recipient.uid || '');
                                             if (moneySendRecipientList) moneySendRecipientList.innerHTML = '';
                                             moneyRecipientSelectedIndex = -1;
                                         }
@@ -384,7 +419,7 @@ if ($__partyModeEnabled) {
                             moneySendRecipientInput.value = '';
                             moneySendRecipientInput.focus();
                         }
-                        if (moneySendRecipientId) moneySendRecipientId.value = '';
+                        selectedRecipientId = '';
                         if (moneySendRecipientList) moneySendRecipientList.innerHTML = '';
                     });
                 }
@@ -405,20 +440,6 @@ if ($__partyModeEnabled) {
                     });
                 }
 
-                if (moneySendAmount) {
-                    moneySendAmount.addEventListener('keydown', function(e) {
-                        if (e.key === 'Shift' || e.key === 'Tab') {
-                            // Note: Shift+Tab browser default is usually working, but we can enhance
-                            return;
-                        } else if (e.key === 'Enter') {
-                            e.preventDefault();
-                            if (moneySendConfirm) {
-                                moneySendConfirm.click();
-                            }
-                        }
-                    });
-                }
-
                 if (moneySendAmountClear) {
                     moneySendAmountClear.addEventListener('click', function(e) {
                         e.preventDefault();
@@ -426,6 +447,28 @@ if ($__partyModeEnabled) {
                             moneySendAmount.value = '';
                             moneySendAmount.focus();
                         }
+                    });
+                }
+
+                if (moneySendPasswordClear) {
+                    moneySendPasswordClear.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        if (moneySendPassword) {
+                            moneySendPassword.value = '';
+                            moneySendPassword.focus();
+                        }
+                    });
+                }
+
+
+                if (moneySendPasswordToggle) {
+                    moneySendPasswordToggle.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        if (!moneySendPassword) return;
+                        var isPassword = moneySendPassword.getAttribute('type') === 'password';
+                        moneySendPassword.setAttribute('type', isPassword ? 'text' : 'password');
+                        moneySendPasswordToggle.style.color = isPassword ? '#1769aa' : '#666';
+                        moneySendPassword.focus();
                     });
                 }
 
@@ -464,10 +507,11 @@ if ($__partyModeEnabled) {
                 
                 if (moneySendConfirm) {
                     moneySendConfirm.addEventListener('click', function() {
-                        if (!moneySendRecipientId || !moneySendAmount) return;
-                        var receiverUserId = moneySendRecipientId.value || '';
-                        var amountRaw = (moneySendAmount.value || '').replace(',', '.');
+                        if (!moneySendAmount) return;
+                        var receiverUserId = selectedRecipientId || '';
+                        var amountRaw = normalizeMoneyAmount(moneySendAmount.value || '');
                         var amount = Number(amountRaw);
+                        var passwordRaw = moneySendPassword ? (moneySendPassword.value || '') : '';
 
                         if (!receiverUserId) {
                             if (moneySendError) moneySendError.textContent = '<?= $this->t('Bitte Empfänger auswählen.') ?>';
@@ -475,6 +519,11 @@ if ($__partyModeEnabled) {
                         }
                         if (!amount || amount <= 0) {
                             if (moneySendError) moneySendError.textContent = '<?= $this->t('Betrag muss positiv sein.') ?>';
+                            return;
+                        }
+                        if (isSimpleOrderMode && !passwordRaw) {
+                            if (moneySendError) moneySendError.textContent = '<?= $this->t('Bitte Passwort eingeben.') ?>';
+                            if (moneySendPassword) moneySendPassword.focus();
                             return;
                         }
 
@@ -487,7 +536,9 @@ if ($__partyModeEnabled) {
                                 'X-Requested-With': 'XMLHttpRequest'
                             },
                             credentials: 'same-origin',
-                            body: 'receiver_user_id=' + encodeURIComponent(receiverUserId) + '&amount=' + encodeURIComponent(amountRaw)
+                            body: 'receiver_user_id=' + encodeURIComponent(receiverUserId)
+                                + '&amount=' + encodeURIComponent(amountRaw)
+                                + (isSimpleOrderMode ? ('&password=' + encodeURIComponent(passwordRaw)) : '')
                         })
                         .then(function(resp) {
                             return resp.text().then(function(text) {
@@ -641,6 +692,7 @@ button, .category-btn, input, select, textarea {
 .order-cancel-btn:hover .icon-trash, #clear-drink-selection:hover .icon-trash { transform: scale(1.05); transition: transform .15s ease; }
 button#clear-drink-selection[disabled] .icon-trash { transform:none !important; }
 button#clear-drink-selection[disabled]:hover .icon-trash { transform:none !important; }
+
 /* Fallback / Revert Notes:
      If the emoji rendering looks inconsistent across platforms, replace the span.icon-trash
      with the previous SVG (see git history) or wrap this in a feature toggle.

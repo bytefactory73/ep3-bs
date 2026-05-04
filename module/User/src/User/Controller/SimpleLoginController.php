@@ -3,6 +3,7 @@ namespace User\Controller;
 
 use User\Controller\Traits\MoneyTransferTrait;
 use User\Controller\Traits\TeamEventTrait;
+use Zend\Crypt\Password\Bcrypt;
 use Zend\Mvc\Controller\AbstractActionController;
 use Zend\View\Model\ViewModel;
 
@@ -412,7 +413,9 @@ class SimpleLoginController extends AbstractActionController
         $sessionManager = $serviceManager->get('Zend\Session\SessionManager');
         $sessionManager->start();
         $simpleSession = new \Zend\Session\Container('SimpleLogin');
+        $isSimpleModeRequest = false;
         if (!empty($simpleSession->user_id)) {
+            $isSimpleModeRequest = true;
             $senderUserId = (int)$simpleSession->user_id;
         }
 
@@ -426,6 +429,25 @@ class SimpleLoginController extends AbstractActionController
 
         if ($senderUserId <= 0) {
             return $this->getResponse()->setStatusCode(401)->setContent(json_encode(['success' => false, 'error' => 'Not authenticated.']));
+        }
+
+        if ($isSimpleModeRequest) {
+            $password = (string)$this->params()->fromPost('password', '');
+            if ($password === '') {
+                return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Bitte Passwort eingeben.']));
+            }
+
+            $userManager = $serviceManager->get('User\Manager\UserManager');
+            $senderUser = $userManager->get($senderUserId);
+            if (!$senderUser) {
+                return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'Nutzer nicht gefunden.']));
+            }
+
+            $bcrypt = new Bcrypt();
+            $bcrypt->setCost(6);
+            if (!$bcrypt->verify($password, $senderUser->need('pw'))) {
+                return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'Passwort ist falsch.']));
+            }
         }
 
         $receiverUserId = (int)$this->params()->fromPost('receiver_user_id', 0);
