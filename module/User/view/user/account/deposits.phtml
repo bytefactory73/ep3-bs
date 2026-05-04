@@ -25,25 +25,17 @@ $this->setup([
         <input type="hidden" name="deposit_user_id" id="deposit_user_id" />
         <div id="user-search-list" style="position:relative; grid-column:2; z-index:10;"></div>
 
-        <div id="current-balance-box" style="display:none; grid-column:1 / span 2; margin-bottom:10px; margin-top:8px; font-weight:bold; color:#2196f3;"></div>
+        <div id="current-balance-box" style="display:block; grid-column:1 / span 2; margin-bottom:10px; margin-top:8px; font-weight:bold; color:#2196f3;"><?= $this->t('Aktueller Kontostand:') ?> —</div>
 
-        <label for="deposit_drinks_enabled" style="grid-column:1;">Theke erlaubt:</label>
-        <input type="checkbox" id="deposit_drinks_enabled" name="deposit_drinks_enabled" value="1" style="vertical-align:middle; grid-column:2; justify-self: start;">
+        <div style="grid-column:1 / span 2; border-top:1px solid #d9e7f7; margin:2px 0 10px 0;"></div>
 
-        <label for="deposit_is_team" style="grid-column:1;">Mannschafts-Account:</label>
-        <input type="checkbox" id="deposit_is_team" name="deposit_is_team" value="1" style="vertical-align:middle; grid-column:2; justify-self: start;">
-
-        <div id="alias-row" style="display:none; grid-column:1 / span 2; margin-top:8px;">
-            <div style="display:grid; grid-template-columns: 160px 1fr; align-items:center; gap:10px 18px;">
-                <label for="deposit_alias" style="grid-column:1;">Theken-ID:</label>
-                <span style="grid-column:2; display:flex; align-items:center; gap:8px;">
-                    <input type="text" id="deposit_alias" name="deposit_alias" maxlength="50" style="width:200px;">
-                    <button type="button" id="set-alias-btn" class="mini-button">Theken ID speichern</button>
-                </span>
-            </div>
+        <div id="deposit-tabs" style="grid-column:1 / span 2; display:flex; gap:8px; margin:6px 0 10px 0; flex-wrap:wrap;">
+            <button type="button" id="deposit-tab-einzahlung" class="mini-button" data-tab="einzahlung" style="border:1px solid #1769aa; background:#1769aa; color:#fff; font-size:1rem; padding:8px 16px; min-height:40px; border-radius:8px;">Einzahlung</button>
+            <button type="button" id="deposit-tab-buchungen" class="mini-button" data-tab="buchungen" style="border:1px solid #1769aa; background:#fff; color:#1769aa; font-size:1rem; padding:8px 16px; min-height:40px; border-radius:8px;">Buchungen</button>
+            <button type="button" id="deposit-tab-options" class="mini-button" data-tab="options" style="border:1px solid #1769aa; background:#fff; color:#1769aa; font-size:1rem; padding:8px 16px; min-height:40px; border-radius:8px;">Optionen</button>
         </div>
 
-        <div id="team-spieltag-row" style="display:none; grid-column:1 / span 2; margin-top:8px;">
+        <div id="team-spieltag-row" style="display:none; grid-column:1 / span 2; margin-top:2px; margin-bottom:8px;">
             <div style="display:grid; grid-template-columns: 160px 1fr; align-items:center; gap:10px 18px;">
                 <label for="deposit_teamevent_id" style="grid-column:1;">Spieltag:</label>
                 <span style="grid-column:2; display:flex; align-items:center; gap:8px;">
@@ -53,31 +45,52 @@ $this->setup([
             </div>
         </div>
 
-        <label for="deposit_amount" style="grid-column:1;">Guthaben aufladen:</label>
-        <input type="number" name="deposit_amount" id="deposit_amount" min="0.01" step="0.01" placeholder="<?= $this->t('Betrag') ?>" required style="grid-column:2;" />
+        <div id="tab-panel-options" style="grid-column:1 / span 2; display:grid; grid-template-columns:160px 1fr; gap:10px 18px; align-items:center;">
+            <label for="deposit_drinks_enabled" style="grid-column:1;">Theke erlaubt:</label>
+            <input type="checkbox" id="deposit_drinks_enabled" name="deposit_drinks_enabled" value="1" style="vertical-align:middle; grid-column:2; justify-self: start;">
 
-        <label for="deposit_comment" style="grid-column:1;">Bemerkung:</label>
-        <input type="text" name="deposit_comment" id="deposit_comment" maxlength="255" placeholder="<?= $this->t('Kommentar (optional)') ?>" style="grid-column:2;" />
+            <label for="deposit_is_team" style="grid-column:1;">Mannschafts-Account:</label>
+            <input type="checkbox" id="deposit_is_team" name="deposit_is_team" value="1" style="vertical-align:middle; grid-column:2; justify-self: start;">
 
-        <button type="submit" name="add_deposit" class="default-button mini-button" style="grid-column:1 / span 2; justify-self: start;">
-            <?= $this->t('Einzahlung hinzufügen') ?>
-        </button>
-
-        <!-- Multi-drink selection row -->
-        <div id="multi-drink-section" style="grid-column:1 / span 2; display:flex; flex-direction:column; gap:8px;">
-            <label style="margin-bottom:4px; font-weight:bold;">Buchung nachtragen:</label>
-            <div id="drink-rows"></div>
-            <button type="button" id="add-drink-row-btn" class="mini-button" style="width:fit-content; margin-top:4px;">
-                + weiteres Getränk
-            </button>
-            <div style="margin-top:8px; font-weight:bold; color:#388e3c;">
-                <span id="multi-drink-total-price">0,00 €</span>
+            <div id="alias-row" style="display:none; grid-column:1 / span 2; margin-top:8px;">
+                <div style="display:grid; grid-template-columns: 160px 1fr; align-items:center; gap:10px 18px;">
+                    <label for="deposit_alias" style="grid-column:1;">Theken-ID:</label>
+                    <span style="grid-column:2; display:flex; align-items:center; gap:8px;">
+                        <input type="text" id="deposit_alias" name="deposit_alias" maxlength="50" style="width:200px;">
+                        <button type="button" id="set-alias-btn" class="mini-button">Theken ID speichern</button>
+                    </span>
+                </div>
             </div>
-            <label for="multi-drink-comment" style="font-weight:normal; margin-top:8px;">Bemerkung:</label>
-            <input type="text" id="multi-drink-comment" name="multi_drink_comment" maxlength="255" placeholder="<?= $this->t('Kommentar (optional)') ?>" style="margin-bottom:4px;">
-            <button type="button" id="add-drinks-btn" class="default-button mini-button" style="width:fit-content; margin-top:8px;">
-                <?= $this->t('Getränke buchen') ?>
+        </div>
+
+        <div id="tab-panel-einzahlung" style="grid-column:1 / span 2; display:none; grid-template-columns:160px 1fr; gap:10px 18px; align-items:center;">
+            <label for="deposit_amount" style="grid-column:1;">Guthaben aufladen:</label>
+            <input type="number" name="deposit_amount" id="deposit_amount" min="0.01" step="0.01" placeholder="<?= $this->t('Betrag') ?>" required style="grid-column:2;" />
+
+            <label for="deposit_comment" style="grid-column:1;">Bemerkung:</label>
+            <input type="text" name="deposit_comment" id="deposit_comment" maxlength="255" placeholder="<?= $this->t('Kommentar (optional)') ?>" style="grid-column:2;" />
+
+            <button type="submit" name="add_deposit" class="default-button mini-button" style="grid-column:1 / span 2; justify-self: start;">
+                <?= $this->t('Einzahlung hinzufügen') ?>
             </button>
+        </div>
+
+        <div id="tab-panel-buchungen" style="grid-column:1 / span 2; display:none;">
+            <div id="multi-drink-section" style="display:flex; flex-direction:column; gap:8px;">
+                <label style="margin-bottom:4px; font-weight:bold;">Buchung nachtragen:</label>
+                <div id="drink-rows"></div>
+                <button type="button" id="add-drink-row-btn" class="mini-button" style="width:fit-content; margin-top:4px;">
+                    + weiteres Getränk
+                </button>
+                <div style="margin-top:8px; font-weight:bold; color:#388e3c;">
+                    <span id="multi-drink-total-price">0,00 €</span>
+                </div>
+                <label for="multi-drink-comment" style="font-weight:normal; margin-top:8px;">Bemerkung:</label>
+                <input type="text" id="multi-drink-comment" name="multi_drink_comment" maxlength="255" placeholder="<?= $this->t('Kommentar (optional)') ?>" style="margin-bottom:4px;">
+                <button type="button" id="add-drinks-btn" class="default-button mini-button" style="width:fit-content; margin-top:8px;">
+                    <?= $this->t('Getränke buchen') ?>
+                </button>
+            </div>
         </div>
     </form>
 </div>
@@ -154,6 +167,62 @@ document.addEventListener('DOMContentLoaded', function() {
     var addDrinksBtn = document.getElementById('add-drinks-btn');
     var multiDrinkTotalPrice = document.getElementById('multi-drink-total-price');
     var drinkRowId = 0;
+    var tabButtons = {
+        options: document.getElementById('deposit-tab-options'),
+        einzahlung: document.getElementById('deposit-tab-einzahlung'),
+        buchungen: document.getElementById('deposit-tab-buchungen')
+    };
+    var tabPanels = {
+        options: document.getElementById('tab-panel-options'),
+        einzahlung: document.getElementById('tab-panel-einzahlung'),
+        buchungen: document.getElementById('tab-panel-buchungen')
+    };
+    var activeDepositTab = 'einzahlung';
+
+    function updateTeamSpieltagVisibility() {
+        var isTeam = !!(isTeamCheckbox && isTeamCheckbox.checked);
+        var tabNeedsSpieltag = activeDepositTab === 'einzahlung' || activeDepositTab === 'buchungen';
+        if (teamSpieltagRow) {
+            teamSpieltagRow.style.display = (isTeam && tabNeedsSpieltag) ? '' : 'none';
+        }
+    }
+
+    function setActiveDepositTab(tabName) {
+        if (!tabPanels[tabName] || !tabButtons[tabName]) {
+            return;
+        }
+        activeDepositTab = tabName;
+
+        ['einzahlung', 'buchungen', 'options'].forEach(function(name) {
+            var panel = tabPanels[name];
+            var button = tabButtons[name];
+            if (panel) {
+                panel.style.display = (name === tabName) ? (name === 'buchungen' ? 'block' : 'grid') : 'none';
+            }
+            if (button) {
+                if (name === tabName) {
+                    button.style.background = '#1769aa';
+                    button.style.color = '#fff';
+                } else {
+                    button.style.background = '#fff';
+                    button.style.color = '#1769aa';
+                }
+            }
+        });
+
+        updateTeamSpieltagVisibility();
+    }
+
+    if (tabButtons.options) {
+        tabButtons.options.addEventListener('click', function() { setActiveDepositTab('options'); });
+    }
+    if (tabButtons.einzahlung) {
+        tabButtons.einzahlung.addEventListener('click', function() { setActiveDepositTab('einzahlung'); });
+    }
+    if (tabButtons.buchungen) {
+        tabButtons.buchungen.addEventListener('click', function() { setActiveDepositTab('buchungen'); });
+    }
+    setActiveDepositTab('einzahlung');
 
     function clearActiveTeamEventContext() {
         pendingNewSpieltagName = '';
@@ -684,9 +753,7 @@ document.addEventListener('DOMContentLoaded', function() {
         drinksEnabledCheckbox.disabled = !user;
         isTeamCheckbox.checked = isTeam;
         isTeamCheckbox.disabled = !user;
-        if (teamSpieltagRow) {
-            teamSpieltagRow.style.display = isTeam ? '' : 'none';
-        }
+        updateTeamSpieltagVisibility();
         if (!isTeam && teamNewSpieltagInput) {
             teamNewSpieltagInput.value = '';
         }
@@ -810,9 +877,9 @@ document.addEventListener('DOMContentLoaded', function() {
         var uid = userIdInput.value;
         switchUserContext(uid);
         localStorage.setItem('deposits_selected_uid', uid);
-        balanceBox.style.display = 'none';
-        balanceBox.textContent = '';
-        historySection.innerHTML = '';
+        balanceBox.style.display = '';
+        balanceBox.textContent = '<?= $this->t('Aktueller Kontostand:') ?> —';
+        historySection.innerHTML = '<h2><?= $this->t('Buchungs- und Einzahlungsverlauf') ?></h2><div style="color:#666;"><?= $this->t('Bitte zuerst einen Benutzer auswählen.') ?></div>';
         if (uid) {
             try {
                 // Always send showStorno state to backend
@@ -1060,6 +1127,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.error('Fehler beim Laden der Daten:', e);
                 }
             }
+        } else {
+            updateDrinksFields();
         }
     }
     // Only update if a user is preselected
