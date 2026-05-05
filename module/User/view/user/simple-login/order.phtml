@@ -223,10 +223,10 @@ async function loadTeamStatsForSpieltag(selectedSpieltag) {
         } else {
             html += '<table class="default-table" style="width:100%; margin:0;">';
             html += '<tr style="background:#e3f0fa;">';
-            html += '<th style="text-align:left;">Artikel</th>';
-            html += '<th style="text-align:right;">Menge</th>';
-            html += '<th style="text-align:right;">Einzelpreis</th>';
-            html += '<th style="text-align:right;">Gesamtpreis</th>';
+            html += '<th style="text-align:left; padding:6px 8px;">Artikel</th>';
+            html += '<th style="text-align:right; padding:6px 8px;">Menge</th>';
+            html += '<th style="text-align:right; padding:6px 8px;">Einzelpreis</th>';
+            html += '<th style="text-align:right; padding:6px 8px;">Gesamtpreis</th>';
             html += '</tr>';
 
             var lastCategory = null;
@@ -242,16 +242,16 @@ async function loadTeamStatsForSpieltag(selectedSpieltag) {
                     }
                 }
                 html += '<tr>';
-                html += '<td>' + teamStatsEscapeHtml(row.article || '') + '</td>';
-                html += '<td style="text-align:right;">' + teamStatsEscapeHtml(row.quantity || 0) + '</td>';
-                html += '<td style="text-align:right; color:' + teamStatsAmountColor(row.single_price) + ';">' + teamStatsFormatCurrency(row.single_price) + '</td>';
-                html += '<td style="text-align:right; color:' + teamStatsAmountColor(row.total_price) + ';">' + teamStatsFormatCurrency(row.total_price) + '</td>';
+                html += '<td style="padding:6px 8px;">' + teamStatsEscapeHtml(row.article || '') + '</td>';
+                html += '<td style="text-align:right; padding:6px 8px;">' + teamStatsEscapeHtml(row.quantity || 0) + '</td>';
+                html += '<td style="text-align:right; padding:6px 8px; color:' + teamStatsAmountColor(row.single_price) + ';">' + teamStatsFormatCurrency(row.single_price) + '</td>';
+                html += '<td style="text-align:right; padding:6px 8px; color:' + teamStatsAmountColor(row.total_price) + ';">' + teamStatsFormatCurrency(row.total_price) + '</td>';
                 html += '</tr>';
             }
 
             html += '<tr style="font-weight:bold; background:#f5faff;">';
-            html += '<td colspan="3" style="text-align:right;">Gesamtsumme</td>';
-            html += '<td style="text-align:right; color:' + teamStatsAmountColor(data.total_sum) + ';">' + teamStatsFormatCurrency(data.total_sum) + '</td>';
+            html += '<td colspan="3" style="text-align:right; padding:6px 8px;">Gesamtsumme</td>';
+            html += '<td style="text-align:right; padding:6px 8px; color:' + teamStatsAmountColor(data.total_sum) + ';">' + teamStatsFormatCurrency(data.total_sum) + '</td>';
             html += '</tr>';
             html += '</table>';
         }
