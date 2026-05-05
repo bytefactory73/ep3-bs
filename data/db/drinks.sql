@@ -86,10 +86,12 @@ CREATE TABLE IF NOT EXISTS drink_aliases (
     thekenadmin TINYINT(1) DEFAULT 0,
     is_team TINYINT(1) DEFAULT 0,
     order_email_option VARCHAR(20) DEFAULT 'order',
+    teamlead_email VARCHAR(255) DEFAULT '',
 -- To update existing databases, run:
 -- ALTER TABLE drink_aliases MODIFY order_email_option VARCHAR(20) DEFAULT 'order';
 -- UPDATE drink_aliases SET order_email_option = 'order' WHERE order_email_option IS NULL OR order_email_option = '';
 -- ALTER TABLE drink_aliases ADD COLUMN is_team TINYINT(1) DEFAULT 0;
+-- ALTER TABLE drink_aliases ADD COLUMN teamlead_email VARCHAR(255) DEFAULT '';
 -- CREATE TABLE drinks_teamevents (
 --   id INT AUTO_INCREMENT PRIMARY KEY,
 --   team_admin_user_id INT UNSIGNED NOT NULL,

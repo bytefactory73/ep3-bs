@@ -60,6 +60,14 @@ $this->setup([
                         <button type="button" id="set-alias-btn" class="mini-button">Theken ID speichern</button>
                     </span>
 
+                    <label for="deposit_teamlead_search" style="grid-column:1;">Mannschaftführer:</label>
+                    <span style="grid-column:2; display:flex; align-items:center; gap:4px; position:relative; flex-wrap:wrap;">
+                        <input type="text" id="deposit_teamlead_search" autocomplete="off" placeholder="<?= $this->t('Benutzer suchen...') ?>" style="width:200px;">
+                        <button type="button" id="clear-teamlead-btn" title="<?= $this->t('Feld leeren') ?>" style="background:none; border:none; padding:0 6px; font-size:18px; color:#888; cursor:pointer; line-height:1;">&times;</button>
+                        <div id="teamlead-search-list" style="position:absolute; top:100%; left:0; z-index:20; min-width:200px;"></div>
+                    </span>
+                    <input type="hidden" id="deposit_teamlead_uid" name="deposit_teamlead_uid">
+
                     <label for="deposit_order_email_option" style="grid-column:1;">Bestell-Emails:</label>
                     <select id="deposit_order_email_option" name="deposit_order_email_option" style="grid-column:2; max-width:235px; justify-self:start;">
                         <option value="order">Bei jeder Bestellung</option>
@@ -131,6 +139,7 @@ document.addEventListener('DOMContentLoaded', function() {
             email: "<?= $this->escapeJs($user->get('email')) ?>",
             drinks_enabled: <?= (int)$user->getExtra('drinks_enabled') ?>,
             drinks_alias: "<?= $this->escapeJs($user->getExtra('drinks_alias')) ?>",
+            teamlead_email: "<?= $this->escapeJs($user->getExtra('teamlead_email')) ?>",
             is_team: <?= (int)$user->getExtra('is_team') ?>
         },
         <?php endif; ?>
@@ -171,6 +180,10 @@ document.addEventListener('DOMContentLoaded', function() {
     var selectedTeamEventIdInContext = '';
     var aliasRow = document.getElementById('alias-row');
     var aliasInput = document.getElementById('deposit_alias');
+    var teamleadSearchInput = document.getElementById('deposit_teamlead_search');
+    var teamleadUidInput = document.getElementById('deposit_teamlead_uid');
+    var teamleadSearchList = document.getElementById('teamlead-search-list');
+    var clearTeamleadBtn = document.getElementById('clear-teamlead-btn');
     var balanceBox = document.getElementById('current-balance-box');
     var historySection = document.getElementById('user-history-section');
     // Multi-drink selection logic
@@ -749,7 +762,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     }
-    function updateDrinksFields(drinksEnabledFromApi, drinksAliasFromApi, isTeamFromApi, orderEmailOptionFromApi) {
+    function updateDrinksFields(drinksEnabledFromApi, drinksAliasFromApi, isTeamFromApi, orderEmailOptionFromApi, teamleadEmailFromApi) {
         var uid = userIdInput.value;
         var user = findUserByUid(uid);
         var drinksEnabled = typeof drinksEnabledFromApi === 'boolean'
@@ -764,6 +777,9 @@ document.addEventListener('DOMContentLoaded', function() {
         var orderEmailOption = typeof orderEmailOptionFromApi === 'string' && orderEmailOptionFromApi !== ''
             ? orderEmailOptionFromApi
             : 'order';
+        var teamleadEmail = typeof teamleadEmailFromApi === 'string'
+            ? teamleadEmailFromApi
+            : (user ? (user.teamlead_email || '') : '');
         drinksEnabledCheckbox.checked = drinksEnabled;
         drinksEnabledCheckbox.disabled = !user;
         if (orderEmailOptionSelect) {
@@ -772,6 +788,18 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         isTeamCheckbox.checked = isTeam;
         isTeamCheckbox.disabled = !user;
+        // Mannschaftführer: show matched user name/email or raw stored email
+        if (teamleadSearchInput) {
+            teamleadSearchInput.disabled = !user || !drinksEnabled;
+            if (teamleadEmail !== '') {
+                var tlu = users.find(function(u) { return u.email === teamleadEmail; });
+                teamleadSearchInput.value = tlu ? (tlu.alias + ' (' + tlu.email + ')') : teamleadEmail;
+                if (teamleadUidInput) teamleadUidInput.value = tlu ? tlu.uid : '';
+            } else {
+                teamleadSearchInput.value = '';
+                if (teamleadUidInput) teamleadUidInput.value = '';
+            }
+        }
         updateTeamSpieltagVisibility();
         if (!isTeam && teamNewSpieltagInput) {
             teamNewSpieltagInput.value = '';
@@ -807,6 +835,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         if (orderEmailOptionSelect) {
             orderEmailOptionSelect.disabled = !uid || !drinksEnabled;
+        }
+        if (teamleadSearchInput) {
+            teamleadSearchInput.disabled = !uid || !drinksEnabled;
         }
         if (uid) {
             try {
@@ -884,6 +915,79 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     var setAliasBtn = document.getElementById('set-alias-btn');
+
+    // Mannschaftführer autocomplete
+    function renderTeamleadList(filter) {
+        if (!teamleadSearchList) return;
+        teamleadSearchList.innerHTML = '';
+        if (!filter) return;
+        var matches = users.filter(function(u) {
+            return u.alias.toLowerCase().includes(filter) || u.email.toLowerCase().includes(filter);
+        });
+        if (matches.length === 0) return;
+        var list = document.createElement('div');
+        list.style.cssText = 'background:#fff; border:1px solid #ccc; width:100%; max-height:180px; overflow-y:auto;';
+        matches.forEach(function(u) {
+            var item = document.createElement('div');
+            item.textContent = u.alias + ' (' + u.email + ')';
+            item.style.cssText = 'padding:4px 8px; cursor:pointer;';
+            item.addEventListener('mouseover', function() { item.style.background = '#e3f0fa'; });
+            item.addEventListener('mouseout', function() { item.style.background = ''; });
+            item.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                teamleadSearchInput.value = u.alias + ' (' + u.email + ')';
+                teamleadUidInput.value = u.uid;
+                teamleadSearchList.innerHTML = '';
+                saveTeamleadEmail(u.email);
+            });
+            list.appendChild(item);
+        });
+        teamleadSearchList.appendChild(list);
+    }
+    async function saveTeamleadEmail(email) {
+        var uid = userIdInput.value;
+        var user = findUserByUid(uid);
+        if (!uid) return;
+        if (user) user.teamlead_email = email;
+        try {
+            const resp = await fetch('<?= $this->url('user/set-user-drinks-settings') ?>', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                credentials: 'same-origin',
+                body: new URLSearchParams({ uid: uid, teamlead_email: email })
+            });
+            const data = await resp.json();
+            if (!data.success) {
+                alert('Fehler beim Speichern: ' + (data.error || 'Unbekannter Fehler'));
+            }
+        } catch (e) {
+            alert('Netzwerkfehler beim Speichern des Mannschaftführers.');
+        }
+    }
+    if (teamleadSearchInput) {
+        teamleadSearchInput.addEventListener('input', function() {
+            teamleadUidInput.value = '';
+            renderTeamleadList(teamleadSearchInput.value.trim().toLowerCase());
+        });
+        teamleadSearchInput.addEventListener('blur', function() {
+            setTimeout(function() {
+                if (teamleadSearchList) teamleadSearchList.innerHTML = '';
+                // If field is cleared, save empty
+                if (teamleadSearchInput.value.trim() === '') {
+                    teamleadUidInput.value = '';
+                    saveTeamleadEmail('');
+                }
+            }, 150);
+        });
+    }
+    if (clearTeamleadBtn) {
+        clearTeamleadBtn.addEventListener('click', function() {
+            teamleadSearchInput.value = '';
+            teamleadUidInput.value = '';
+            if (teamleadSearchList) teamleadSearchList.innerHTML = '';
+            saveTeamleadEmail('');
+        });
+    }
     setAliasBtn.addEventListener('click', async function() {
         var uid = userIdInput.value;
         var user = findUserByUid(uid);
@@ -921,6 +1025,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     });
+
     async function updateUserInfo(scrollToEntry) {
         var uid = userIdInput.value;
         switchUserContext(uid);
@@ -938,17 +1043,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 const resp = await fetch(url, { credentials: 'same-origin' });
                 if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 const data = await resp.json();
-                if (typeof data.drinks_enabled !== 'undefined' || typeof data.drinks_alias !== 'undefined' || typeof data.is_team !== 'undefined' || typeof data.order_email_option !== 'undefined') {
+                if (typeof data.drinks_enabled !== 'undefined' || typeof data.drinks_alias !== 'undefined' || typeof data.is_team !== 'undefined' || typeof data.order_email_option !== 'undefined' || typeof data.teamlead_email !== 'undefined') {
                     updateDrinksFields(
                         data.drinks_enabled,
                         data.drinks_alias,
                         typeof data.is_team !== 'undefined' ? data.is_team : undefined,
-                        typeof data.order_email_option !== 'undefined' ? data.order_email_option : undefined
+                        typeof data.order_email_option !== 'undefined' ? data.order_email_option : undefined,
+                        typeof data.teamlead_email !== 'undefined' ? data.teamlead_email : undefined
                     );
                     var user = findUserByUid(uid);
                     if (user) {
                         if (typeof data.drinks_enabled !== 'undefined') user.drinks_enabled = data.drinks_enabled ? 1 : 0;
                         if (typeof data.drinks_alias !== 'undefined') user.drinks_alias = data.drinks_alias || '';
+                        if (typeof data.teamlead_email !== 'undefined') user.teamlead_email = data.teamlead_email || '';
                         if (typeof data.is_team !== 'undefined') user.is_team = data.is_team ? 1 : 0;
                     }
                 } else {

@@ -198,7 +198,7 @@ class AccountController extends AbstractActionController
                     $body = $isTransferDeposit
                         ? ('Eine Geldüberweisung auf Ihr Konto wurde von ' . htmlspecialchars($adminName) . ' ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>')
                         : ('Ihre Einzahlung am ' . $row['deposit_time'] . ' wurde von ' . htmlspecialchars($adminName) . ' ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>');
-                    $mailService->sendFromTheke($user, $subject, $body, ['isHtml' => true]);
+                    $this->sendFromTheke($mailService, $dbAdapter, $user, $subject, $body, ['isHtml' => true]);
                 }
                 // Send notification email to transfer counterpart (the order side)
                 if ($transferReference !== '') {
@@ -209,7 +209,7 @@ class AccountController extends AbstractActionController
                             $counterBalance = $drinkManager->calculateUserDrinkBalance($counterRow['user_id'], $serviceManager);
                             $counterSubject = 'Geldüberweisung ' . ucfirst($action);
                             $counterBody = 'Eine Geldüberweisung, die Ihr Konto betrifft, wurde von ' . htmlspecialchars($adminName) . ' ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($counterBalance, 2, ',', '.') . ' EUR</b>';
-                            $mailService->sendFromTheke($counterUser, $counterSubject, $counterBody, ['isHtml' => true]);
+                            $this->sendFromTheke($mailService, $dbAdapter, $counterUser, $counterSubject, $counterBody, ['isHtml' => true]);
                         }
                     }
                 }
@@ -292,7 +292,7 @@ class AccountController extends AbstractActionController
                         $body = $isTransferOrder
                             ? ('Ihre Geldüberweisung (' . $label . ') wurde von ' . htmlspecialchars($adminName) . ' ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>')
                             : ('Ihre Getränkebuchung (' . $label . ') am ' . $row['order_time'] . ' wurde von ' . htmlspecialchars($adminName) . ' ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>');
-                        $mailService->sendFromTheke($user, $subject, $body, ['isHtml' => true]);
+                        $this->sendFromTheke($mailService, $dbAdapter, $user, $subject, $body, ['isHtml' => true]);
                     }
                 }
                 // Send notification email to transfer counterpart (the deposit side)
@@ -307,7 +307,7 @@ class AccountController extends AbstractActionController
                             $counterBalance = $drinkManagerInner->calculateUserDrinkBalance($counterRow['user_id'], $serviceManager);
                             $counterSubject = 'Geldüberweisung ' . ucfirst($action2);
                             $counterBody = 'Eine Geldüberweisung, die Ihr Konto betrifft, wurde von ' . htmlspecialchars($adminName2) . ' ' . $action2 . '.<br><br>Kontostand nach Änderung: <b>' . number_format($counterBalance, 2, ',', '.') . ' EUR</b>';
-                            $mailService->sendFromTheke($counterUser, $counterSubject, $counterBody, ['isHtml' => true]);
+                            $this->sendFromTheke($mailService, $dbAdapter, $counterUser, $counterSubject, $counterBody, ['isHtml' => true]);
                         }
                     }
                 }
@@ -441,7 +441,7 @@ class AccountController extends AbstractActionController
                         $body .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func([$this, 't'], 'Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das Paypal-Konto "kneipe@stc-butzbach.de" oder wirf Geld in den weißen Briefkasten ein.') . '</span>';
                     }
                     $mailService = $serviceManager->get('User\Service\MailService');
-                    $mailService->sendFromTheke($user, $subject, $body, ['isHtml' => true]);
+                    $this->sendFromTheke($mailService, $dbAdapter, $user, $subject, $body, ['isHtml' => true]);
                 }
             } catch (\Exception $e) {
                 return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => $e->getMessage()]));
@@ -484,7 +484,7 @@ class AccountController extends AbstractActionController
     }
     /**
      * AJAX endpoint to update drinks_enabled and drinks_alias for a user
-        * POST: uid, drinks_enabled (bool), drinks_alias (string), order_email_option (string)
+          * POST: uid, drinks_enabled (bool), drinks_alias (string), order_email_option (string), teamlead_email (string)
      * Returns JSON: { success: true } or { error: ... }
      */
     public function setUserDrinksSettingsAction()
@@ -504,6 +504,7 @@ class AccountController extends AbstractActionController
         $drinksEnabled = $this->params()->fromPost('drinks_enabled', null);
         $drinksAlias = $this->params()->fromPost('drinks_alias', null);
         $orderEmailOption = $this->params()->fromPost('order_email_option', null);
+        $teamleadEmail = $this->params()->fromPost('teamlead_email', null);
         $isTeam = $this->params()->fromPost('is_team', null);
         if (!$uid) {
             return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'No user selected']));
@@ -521,6 +522,12 @@ class AccountController extends AbstractActionController
             $allowedOrderEmailOptions = ['order', 'summary', 'negative'];
             if (!in_array($orderEmailOption, $allowedOrderEmailOptions, true)) {
                 return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'Invalid order email option']));
+            }
+        }
+        if ($teamleadEmail !== null) {
+            $teamleadEmail = trim((string)$teamleadEmail);
+            if ($teamleadEmail !== '' && !filter_var($teamleadEmail, FILTER_VALIDATE_EMAIL)) {
+                return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'Invalid teamlead email address']));
             }
         }
         // Normalize is_team
@@ -546,6 +553,10 @@ class AccountController extends AbstractActionController
                 if ($orderEmailOption !== null) {
                     $fields[] = 'order_email_option = ?';
                     $params[] = $orderEmailOption;
+                }
+                if ($teamleadEmail !== null) {
+                    $fields[] = 'teamlead_email = ?';
+                    $params[] = $teamleadEmail;
                 }
                 if (isset($thekenadmin)) {
                     $fields[] = 'thekenadmin = ?';
@@ -576,6 +587,11 @@ class AccountController extends AbstractActionController
                         $values[] = $orderEmailOption;
                         $updates[] = 'order_email_option = VALUES(order_email_option)';
                     }
+                    if ($teamleadEmail !== null) {
+                        $columns[] = 'teamlead_email';
+                        $values[] = $teamleadEmail;
+                        $updates[] = 'teamlead_email = VALUES(teamlead_email)';
+                    }
                     if (isset($thekenadmin)) {
                         $columns[] = 'thekenadmin';
                         $values[] = $thekenadmin ? 1 : 0;
@@ -593,14 +609,15 @@ class AccountController extends AbstractActionController
                 }
             } else {
                 // Insert: require all fields
-                if ($drinksAlias === null && $drinksEnabled === null && $orderEmailOption === null && !isset($thekenadmin) && $isTeamVal === null) {
+                if ($drinksAlias === null && $drinksEnabled === null && $orderEmailOption === null && $teamleadEmail === null && !isset($thekenadmin) && $isTeamVal === null) {
                     return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'Alias, enabled, and thekenadmin required for new entry']));
                 }
                 $enabledVal = ($drinksEnabled === '1' || $drinksEnabled === 1 || $drinksEnabled === true || $drinksEnabled === 'true') ? 1 : 0;
                 $thekenadminVal = isset($thekenadmin) ? ($thekenadmin ? 1 : 0) : 0;
                 $isTeamInsert = $isTeamVal !== null ? $isTeamVal : 0;
                 $orderEmailOptionInsert = $orderEmailOption !== null ? $orderEmailOption : 'order';
-                $dbAdapter->query('INSERT INTO drink_aliases (user_id, alias, enabled, thekenadmin, is_team, order_email_option) VALUES (?, ?, ?, ?, ?, ?)', [$uid, $drinksAlias, $enabledVal, $thekenadminVal, $isTeamInsert, $orderEmailOptionInsert]);
+                $teamleadEmailInsert = $teamleadEmail !== null ? $teamleadEmail : '';
+                $dbAdapter->query('INSERT INTO drink_aliases (user_id, alias, enabled, thekenadmin, is_team, order_email_option, teamlead_email) VALUES (?, ?, ?, ?, ?, ?, ?)', [$uid, $drinksAlias, $enabledVal, $thekenadminVal, $isTeamInsert, $orderEmailOptionInsert, $teamleadEmailInsert]);
             }
         } catch (\Exception $e) {
             return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['error' => 'DB error', 'details' => $e->getMessage()]));
@@ -1648,7 +1665,7 @@ class AccountController extends AbstractActionController
                             '<li><strong>Neuer Kontostand:</strong> ' . number_format($balance, 2, ',', '.') . ' €</li>' .
                             '</ul>' .
                             '<p>Viele Grüße<br>Dein Theken-Team</p>';
-                        $mailService->sendFromTheke($empfaenger, $subject, $body, ['isHtml' => true]);
+                        $this->sendFromTheke($mailService, $dbAdapter, $empfaenger, $subject, $body, ['isHtml' => true]);
                     } catch (\Exception $e) {
                         error_log('Fehler beim Senden der Einzahlungsbenachrichtigung: ' . $e->getMessage());
                     }
@@ -1687,12 +1704,13 @@ class AccountController extends AbstractActionController
             return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['error' => 'User not found']));
         }
         // Query drinks_enabled and alias from drink_aliases
-        $drinksAliasRow = $dbAdapter->query('SELECT enabled, alias, thekenadmin, is_team, order_email_option FROM drink_aliases WHERE user_id = ?', [$uid])->current();
+        $drinksAliasRow = $dbAdapter->query('SELECT enabled, alias, thekenadmin, is_team, order_email_option, teamlead_email FROM drink_aliases WHERE user_id = ?', [$uid])->current();
 		    $drinksEnabled = $drinksAliasRow ? (bool)$drinksAliasRow['enabled'] : false;
 		    $drinksAlias = $drinksAliasRow ? $drinksAliasRow['alias'] : null;
 		    $thekenadmin = ($drinksAliasRow && isset($drinksAliasRow['thekenadmin']) && (int)$drinksAliasRow['thekenadmin'] === 1);
 		    $isTeam = ($drinksAliasRow && isset($drinksAliasRow['is_team']) && (int)$drinksAliasRow['is_team'] === 1);
             $orderEmailOption = ($drinksAliasRow && isset($drinksAliasRow['order_email_option']) && $drinksAliasRow['order_email_option'] !== '') ? $drinksAliasRow['order_email_option'] : 'order';
+            $teamleadEmail = ($drinksAliasRow && isset($drinksAliasRow['teamlead_email'])) ? trim((string)$drinksAliasRow['teamlead_email']) : '';
         $teamEvents = [];
         $teamEventLabelById = [];
         $latestTeamEventId = null;
@@ -1809,6 +1827,7 @@ class AccountController extends AbstractActionController
             'drinks_alias' => $drinksAlias,
             'is_team' => $isTeam,
             'order_email_option' => $orderEmailOption,
+            'teamlead_email' => $teamleadEmail,
             'team_events' => $teamEvents,
             'current_teamevent_id' => $currentTeamEventId,
         ]));

@@ -3,10 +3,13 @@
 namespace Drinks\Manager;
 
 use RuntimeException;
+use User\Controller\Traits\ThekeMailTrait;
 use Zend\Db\Adapter\Adapter;
 
 class DrinkManager
 {
+    use ThekeMailTrait;
+
     protected $dbAdapter;
 
     public function __construct(Adapter $dbAdapter)
@@ -115,7 +118,7 @@ class DrinkManager
                 $text .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func($tCallback, 'Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das Paypal-Konto "kneipe@stc-butzbach.de" oder wirf Geld in den weißen Briefkasten ein.') . '</span>';
             }
             $userMailService = $serviceManager->get('User\Service\MailService');
-            $userMailService->sendFromTheke($user, $subject, $text, ['isHtml' => true]);
+            $this->sendFromTheke($userMailService, $this->dbAdapter, $user, $subject, $text, ['isHtml' => true]);
 
             // If this was a transfer order, notify the counterpart (deposit side)
             if (!empty($order['transfer_reference'])) {
@@ -137,7 +140,7 @@ class DrinkManager
                                 htmlspecialchars($senderName),
                                 $counterBalance
                             );
-                            $userMailService->sendFromTheke($counterUser, $counterSubject, $counterText, ['isHtml' => true]);
+                            $this->sendFromTheke($userMailService, $this->dbAdapter, $counterUser, $counterSubject, $counterText, ['isHtml' => true]);
                         }
                     }
                 } catch (\Exception $e) {
@@ -220,7 +223,7 @@ class DrinkManager
                     $text .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func($tCallback, 'Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das Paypal-Konto "kneipe@stc-butzbach.de" oder wirf Geld in den weißen Briefkasten ein.') . '</span>';
                 }
                 $userMailService = $serviceManager->get('User\Service\MailService');
-                $userMailService->sendFromTheke($user, $subject, $text, ['isHtml' => true]);
+                $this->sendFromTheke($userMailService, $this->dbAdapter, $user, $subject, $text, ['isHtml' => true]);
             }
             return ['success' => true, 'balance' => $balance, 'error' => null];
         }
@@ -321,7 +324,7 @@ class DrinkManager
         $subject = $tCallback('Deine Getränkebestellungen (Zusammenfassung)');
 
         $mailService = $serviceManager->get('User\Service\MailService');
-        $mailService->sendFromTheke($user, $subject, $text, ['isHtml' => true]);
+        $this->sendFromTheke($mailService, $this->dbAdapter, $user, $subject, $text, ['isHtml' => true]);
         return true;
     }
 }

@@ -4,6 +4,8 @@ namespace User\Controller\Traits;
 
 trait MoneyTransferTrait
 {
+    use ThekeMailTrait;
+
     protected $moneyTransferHasReferenceColumns = null;
 
     protected function canUseTransferReferenceColumns($dbAdapter)
@@ -179,7 +181,7 @@ trait MoneyTransferTrait
                 $amount,
                 $receiverName
             );
-            $userMailService->sendFromTheke($senderUser, $senderSubject, $senderText, ['isHtml' => false]);
+            $this->sendFromTheke($userMailService, $dbAdapter, $senderUser, $senderSubject, $senderText, ['isHtml' => false]);
 
             $receiverSubject = $this->t('Geld erhalten');
             $receiverText = sprintf(
@@ -187,7 +189,7 @@ trait MoneyTransferTrait
                 $amount,
                 $senderName
             );
-            $userMailService->sendFromTheke($receiverUser, $receiverSubject, $receiverText, ['isHtml' => false]);
+            $this->sendFromTheke($userMailService, $dbAdapter, $receiverUser, $receiverSubject, $receiverText, ['isHtml' => false]);
         } catch (\Exception $e) {
             return [
                 'statusCode' => 500,
