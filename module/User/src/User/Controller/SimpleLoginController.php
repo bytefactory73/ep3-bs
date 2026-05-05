@@ -316,17 +316,11 @@ class SimpleLoginController extends AbstractActionController
         $teamEventId = (int)$this->params()->fromPost('team_event_id', 0);
         $memberUserId = (int)$this->params()->fromPost('member_user_id', 0);
         $operation = trim((string)$this->params()->fromPost('operation', ''));
-        list($success, $error, $teamEvent) = $this->processTeamEventMemberOperation($teamAdminUserId, $teamEventId, $memberUserId, $operation, $teamAdminUserId);
-        if (!$success) {
-            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => $error]));
+        $responseData = $this->buildMemberOperationJsonResponse($teamAdminUserId, $teamEventId, $memberUserId, $operation, $teamAdminUserId);
+        if (!isset($responseData['success']) || !$responseData['success']) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode($responseData));
         }
-
-        $teamEventLabel = isset($teamEvent['comment']) ? trim((string)$teamEvent['comment']) : '';
-        return $this->getResponse()->setContent(json_encode([
-            'success' => true,
-            'team_event_id' => $teamEventId,
-            'members' => $this->getTeamEventMembersWithContribution($teamAdminUserId, $teamEventId, $teamEventLabel),
-        ]));
+        return $this->getResponse()->setContent(json_encode($responseData));
     }
 
     public function spieltagAction()

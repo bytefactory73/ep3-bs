@@ -165,17 +165,11 @@ class AccountController extends AbstractActionController
             return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'Keine Berechtigung für diesen Team-Account.']));
         }
 
-        list($success, $error, $teamEvent) = $this->processTeamEventMemberOperation($teamUserId, $teamEventId, $memberUserId, $operation, (int)$sessionUser->need('uid'));
-        if (!$success) {
-            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => $error]));
+        $responseData = $this->buildMemberOperationJsonResponse($teamUserId, $teamEventId, $memberUserId, $operation, (int)$sessionUser->need('uid'));
+        if (!isset($responseData['success']) || !$responseData['success']) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode($responseData));
         }
-
-        $teamEventLabel = isset($teamEvent['comment']) ? trim((string)$teamEvent['comment']) : '';
-        return $this->getResponse()->setContent(json_encode([
-            'success' => true,
-            'team_event_id' => $teamEventId,
-            'members' => $this->getTeamEventMembersWithContribution($teamUserId, $teamEventId, $teamEventLabel),
-        ]));
+        return $this->getResponse()->setContent(json_encode($responseData));
     }
 
     /**

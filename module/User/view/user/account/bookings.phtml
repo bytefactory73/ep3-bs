@@ -204,6 +204,153 @@ if ($__partyModeEnabled) {
                 </div>
             </div>
             <script>
+            window.__bookingMoneyRecipients = <?= json_encode(isset($this->moneyRecipients) && is_array($this->moneyRecipients) ? $this->moneyRecipients : [], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) ?>;
+
+            function getBookingRecipientMatches(filter, options) {
+                var term = String(filter || '').trim().toLowerCase();
+                if (!term) {
+                    return [];
+                }
+
+                options = options || {};
+                var excludeUserIds = Array.isArray(options.excludeUserIds) ? options.excludeUserIds : [];
+                var allowUserId = parseInt(options.allowUserId || 0, 10);
+                var recipients = Array.isArray(window.__bookingMoneyRecipients) ? window.__bookingMoneyRecipients : [];
+
+                return recipients.filter(function(recipient) {
+                    var uid = parseInt(recipient.uid || 0, 10);
+                    if (!uid) {
+                        return false;
+                    }
+                    if (excludeUserIds.indexOf(uid) !== -1 && uid !== allowUserId) {
+                        return false;
+                    }
+                    var name = String(recipient.name || '').toLowerCase();
+                    var email = String(recipient.email || '').toLowerCase();
+                    return name.indexOf(term) !== -1 || email.indexOf(term) !== -1;
+                });
+            }
+
+            function setupBookingRecipientAutocomplete(config) {
+                var input = config.input;
+                var list = config.list;
+                var state = {
+                    matches: [],
+                    selectedIndex: -1
+                };
+
+                function clearList() {
+                    if (!list) return;
+                    list.innerHTML = '';
+                    state.matches = [];
+                    state.selectedIndex = -1;
+                }
+
+                function highlightSelection() {
+                    if (!list) return;
+                    var items = list.querySelectorAll('[data-index]');
+                    items.forEach(function(item, idx) {
+                        if (idx === state.selectedIndex) {
+                            item.style.background = '#e3f2fd';
+                            item.scrollIntoView({ block: 'nearest' });
+                        } else {
+                            item.style.background = 'transparent';
+                        }
+                    });
+                }
+
+                function selectMatch(index) {
+                    var idx = typeof index === 'number' ? index : 0;
+                    if (!state.matches[idx]) {
+                        return;
+                    }
+                    config.onSelect(state.matches[idx]);
+                    clearList();
+                }
+
+                function render(filter) {
+                    clearList();
+                    state.matches = config.getMatches(filter) || [];
+                    if (state.matches.length === 0 || !list) {
+                        return;
+                    }
+
+                    var wrap = document.createElement('div');
+                    wrap.style.cssText = config.listStyle || 'background:#fff; border:1px solid #ddd; max-height:150px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.12); border-radius:6px;';
+
+                    state.matches.forEach(function(recipient, idx) {
+                        var item = document.createElement('div');
+                        item.setAttribute('data-index', String(idx));
+                        item.textContent = String(recipient.name || '') + ' (' + String(recipient.email || '') + ')';
+                        item.style.cssText = config.itemStyle || 'padding:10px 12px; cursor:pointer; border-bottom:1px solid #f0f0f0; font-size:14px; min-height:40px; display:flex; align-items:center;';
+                        item.addEventListener('mousedown', function(e) {
+                            e.preventDefault();
+                            selectMatch(idx);
+                        });
+                        item.addEventListener('mouseenter', function() {
+                            state.selectedIndex = idx;
+                            highlightSelection();
+                        });
+                        item.addEventListener('mouseleave', function() {
+                            if (state.selectedIndex === idx) {
+                                state.selectedIndex = -1;
+                            }
+                            highlightSelection();
+                        });
+                        wrap.appendChild(item);
+                    });
+
+                    list.appendChild(wrap);
+                }
+
+                if (input) {
+                    input.addEventListener('input', function() {
+                        if (typeof config.onInputReset === 'function') {
+                            config.onInputReset();
+                        }
+                        render(input.value || '');
+                    });
+
+                    input.addEventListener('blur', function() {
+                        setTimeout(clearList, 150);
+                    });
+
+                    input.addEventListener('keydown', function(e) {
+                        if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            if (state.matches.length === 0) {
+                                render(input.value || '');
+                            }
+                            if (state.matches.length > 0) {
+                                state.selectedIndex = Math.min(state.selectedIndex + 1, state.matches.length - 1);
+                                highlightSelection();
+                            }
+                        } else if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            if (state.matches.length > 0) {
+                                state.selectedIndex = Math.max(state.selectedIndex - 1, -1);
+                                highlightSelection();
+                            }
+                        } else if (e.key === 'Enter') {
+                            if (state.matches.length > 0) {
+                                e.preventDefault();
+                                selectMatch(state.selectedIndex >= 0 ? state.selectedIndex : 0);
+                            } else if (typeof config.onEnterWithoutMatches === 'function') {
+                                config.onEnterWithoutMatches(e);
+                            }
+                        } else if (e.key === 'Escape') {
+                            clearList();
+                        } else if (e.key === 'Tab' && typeof config.onTab === 'function') {
+                            config.onTab(e);
+                        }
+                    });
+                }
+
+                return {
+                    clear: clearList
+                };
+            }
+
             document.addEventListener('DOMContentLoaded', function() {
                 var moneySendBtn = document.getElementById('money-send-btn');
                 var moneySendModal = document.getElementById('money-send-modal');
@@ -222,8 +369,6 @@ if ($__partyModeEnabled) {
                 var moneySendCloseBtn = document.getElementById('money-send-close-btn');
                 var moneySendError = document.getElementById('money-send-error');
                 var isSimpleOrderMode = <?= $simpleOrderMode ? 'true' : 'false' ?>;
-                var moneyRecipients = <?= json_encode(isset($this->moneyRecipients) && is_array($this->moneyRecipients) ? $this->moneyRecipients : [], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) ?>;
-                var moneyRecipientSelectedIndex = -1;
                 var modalMouseDownTarget = null;
                 var selectedRecipientId = '';
                 var selectedRecipientTeamEventId = '';
@@ -323,7 +468,6 @@ if ($__partyModeEnabled) {
                     if (moneySendRecipientInput) moneySendRecipientInput.value = displayText;
                     selectedRecipientId = String(recipient.uid || '');
                     if (moneySendRecipientList) moneySendRecipientList.innerHTML = '';
-                    moneyRecipientSelectedIndex = -1;
                     loadMoneyRecipientTeamEvents(selectedRecipientId);
                 }
 
@@ -337,68 +481,34 @@ if ($__partyModeEnabled) {
                     selectedRecipientId = '';
                     resetMoneySendTeamEvents();
                     if (moneySendRecipientList) moneySendRecipientList.innerHTML = '';
-                    moneyRecipientSelectedIndex = -1;
                 }
 
-                function renderMoneyRecipientList(filter) {
-                    if (!moneySendRecipientList) return;
-                    moneySendRecipientList.innerHTML = '';
-                    if (!filter) {
-                        moneyRecipientSelectedIndex = -1;
-                        return;
-                    }
-                    
-                    var matches = moneyRecipients.filter(r => {
-                        var name = String(r.name || '').toLowerCase();
-                        var email = String(r.email || '').toLowerCase();
-                        return name.includes(filter) || email.includes(filter);
-                    });
-                    if (matches.length === 0) {
-                        moneyRecipientSelectedIndex = -1;
-                        return;
-                    }
-                    
-                    var list = document.createElement('div');
-                    list.style.position = 'absolute';
-                    list.style.background = '#fff';
-                    list.style.border = '1px solid #ddd';
-                    list.style.width = '100%';
-                    list.style.maxHeight = '150px';
-                    list.style.overflowY = 'auto';
-                    list.style.boxShadow = '0 4px 12px rgba(0,0,0,0.12)';
-                    list.style.borderRadius = '6px';
-                    list.style.zIndex = '10';
-                    
-                    matches.forEach(function(recipient, idx) {
-                        var item = document.createElement('div');
-                        var displayText = recipient.name + ' (' + recipient.email + ')';
-                        item.textContent = displayText;
-                        item.setAttribute('data-index', idx);
-                        item.style.padding = '10px 12px';
-                        item.style.cursor = 'pointer';
-                        item.style.borderBottom = '1px solid #f0f0f0';
-                        item.style.fontSize = '14px';
-                        item.style.minHeight = '40px';
-                        item.style.display = 'flex';
-                        item.style.alignItems = 'center';
-                        item.style.touchAction = 'manipulation';
-                        item.addEventListener('mousedown', function(e) {
+                var moneyRecipientAutocomplete = setupBookingRecipientAutocomplete({
+                    input: moneySendRecipientInput,
+                    list: moneySendRecipientList,
+                    getMatches: function(filter) {
+                        return getBookingRecipientMatches(filter);
+                    },
+                    onInputReset: function() {
+                        selectedRecipientId = '';
+                        resetMoneySendTeamEvents();
+                    },
+                    onSelect: selectMoneyRecipient,
+                    onEnterWithoutMatches: function(e) {
+                        e.preventDefault();
+                        if (moneySendAmount) {
+                            moneySendAmount.focus();
+                        }
+                    },
+                    onTab: function(e) {
+                        if (!e.shiftKey && moneySendAmount) {
                             e.preventDefault();
-                            selectMoneyRecipient(recipient);
-                        });
-                        item.addEventListener('mouseenter', function() {
-                            item.style.background = '#f5f5f5';
-                        });
-                        item.addEventListener('mouseleave', function() {
-                            item.style.background = 'transparent';
-                        });
-                        list.appendChild(item);
-                    });
-                    list.setAttribute('data-count', matches.length);
-                    list.setAttribute('data-matches', JSON.stringify(matches));
-                    moneySendRecipientList.appendChild(list);
-                    moneyRecipientSelectedIndex = -1;
-                }
+                            moneySendAmount.focus();
+                        }
+                    },
+                    listStyle: 'position:absolute; background:#fff; border:1px solid #ddd; width:100%; max-height:150px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.12); border-radius:6px; z-index:10;',
+                    itemStyle: 'padding:10px 12px; cursor:pointer; border-bottom:1px solid #f0f0f0; font-size:14px; min-height:40px; display:flex; align-items:center; touch-action:manipulation;'
+                });
 
                 function openMoneySendModal() {
                     if (!moneySendModal) return;
@@ -409,100 +519,10 @@ if ($__partyModeEnabled) {
                     }
                     selectedRecipientId = '';
                     resetMoneySendTeamEvents();
-                    if (moneySendRecipientList) moneySendRecipientList.innerHTML = '';
+                    moneyRecipientAutocomplete.clear();
                     if (moneySendAmount) moneySendAmount.value = '';
                     if (moneySendPassword) moneySendPassword.value = '';
-                    moneyRecipientSelectedIndex = -1;
                     moneySendModal.style.display = 'flex';
-                }
-
-                if (moneySendRecipientInput) {
-                    moneySendRecipientInput.addEventListener('input', function() {
-                        selectedRecipientId = '';
-                        resetMoneySendTeamEvents();
-                        var filter = (moneySendRecipientInput.value || '').trim().toLowerCase();
-                        renderMoneyRecipientList(filter);
-                    });
-                    
-                    moneySendRecipientInput.addEventListener('blur', function() {
-                        setTimeout(function() {
-                            if (moneySendRecipientList) moneySendRecipientList.innerHTML = '';
-                        }, 150);
-                    });
-                    
-                    moneySendRecipientInput.addEventListener('keydown', function(e) {
-                        if (e.key === 'ArrowDown') {
-                            e.preventDefault();
-                            var listDiv = moneySendRecipientList ? moneySendRecipientList.querySelector('div') : null;
-                            if (listDiv) {
-                                var itemCount = listDiv.querySelectorAll('[data-index]').length;
-                                if (itemCount > 0) {
-                                    moneyRecipientSelectedIndex = Math.min(moneyRecipientSelectedIndex + 1, itemCount - 1);
-                                    var items = listDiv.querySelectorAll('[data-index]');
-                                    items.forEach(function(item, idx) {
-                                        if (idx === moneyRecipientSelectedIndex) {
-                                            item.style.background = '#e3f2fd';
-                                            item.scrollIntoView({ block: 'nearest' });
-                                        } else {
-                                            item.style.background = 'transparent';
-                                        }
-                                    });
-                                }
-                            }
-                        } else if (e.key === 'ArrowUp') {
-                            e.preventDefault();
-                            var listDiv = moneySendRecipientList ? moneySendRecipientList.querySelector('div') : null;
-                            if (listDiv) {
-                                var itemCount = listDiv.querySelectorAll('[data-index]').length;
-                                if (itemCount > 0) {
-                                    moneyRecipientSelectedIndex = Math.max(moneyRecipientSelectedIndex - 1, -1);
-                                    var items = listDiv.querySelectorAll('[data-index]');
-                                    items.forEach(function(item, idx) {
-                                        if (idx === moneyRecipientSelectedIndex) {
-                                            item.style.background = '#e3f2fd';
-                                            item.scrollIntoView({ block: 'nearest' });
-                                        } else {
-                                            item.style.background = 'transparent';
-                                        }
-                                    });
-                                }
-                            }
-                        } else if (e.key === 'Enter') {
-                            e.preventDefault();
-                            // Try to select from visible list
-                            var listDiv = moneySendRecipientList ? moneySendRecipientList.querySelector('div') : null;
-                            
-                            if (listDiv && listDiv.children && listDiv.children.length > 0) {
-                                var items = listDiv.querySelectorAll('[data-index]');
-                                if (items.length > 0) {
-                                    var idx = moneyRecipientSelectedIndex >= 0 ? moneyRecipientSelectedIndex : 0;
-                                    var selectedItem = items[idx];
-                                    if (selectedItem) {
-                                        // Find corresponding recipient from matches
-                                        var dataIndex = parseInt(selectedItem.getAttribute('data-index'), 10);
-                                        var currentMatches = moneyRecipients.filter(r => {
-                                            var name = String(r.name || '').toLowerCase();
-                                            var email = String(r.email || '').toLowerCase();
-                                            var filter = (moneySendRecipientInput.value || '').trim().toLowerCase();
-                                            return name.includes(filter) || email.includes(filter);
-                                        });
-                                        if (currentMatches[dataIndex]) {
-                                            var recipient = currentMatches[dataIndex];
-                                            selectMoneyRecipient(recipient);
-                                        }
-                                    }
-                                }
-                            } else if (moneySendAmount) {
-                                // No list visible, move to amount field
-                                moneySendAmount.focus();
-                            }
-                        } else if (e.key === 'Tab' && !e.shiftKey) {
-                            e.preventDefault();
-                            if (moneySendAmount) {
-                                moneySendAmount.focus();
-                            }
-                        }
-                    });
                 }
 
                 if (moneySendRecipientClear) {
@@ -514,7 +534,7 @@ if ($__partyModeEnabled) {
                         }
                         selectedRecipientId = '';
                         resetMoneySendTeamEvents();
-                        if (moneySendRecipientList) moneySendRecipientList.innerHTML = '';
+                        moneyRecipientAutocomplete.clear();
                     });
                 }
 
@@ -1252,7 +1272,6 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
     document.addEventListener('DOMContentLoaded', function() {
         var form = document.getElementById('drink-order-form');
         var submitBtn = document.querySelector('button[type="submit"][form="drink-order-form"]');
-        var moneyRecipients = <?= json_encode(isset($this->moneyRecipients) && is_array($this->moneyRecipients) ? $this->moneyRecipients : [], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) ?>;
         var spieltagCreateModal = document.getElementById('spieltag-create-modal');
         var spieltagCreateCloseBtn = document.getElementById('spieltag-create-close-btn');
         var spieltagCreateCancelBtn = document.getElementById('spieltag-create-cancel');
@@ -1388,20 +1407,6 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
 
                 var list = document.createElement('div');
                 list.style.cssText = 'position:absolute; top:100%; left:0; right:78px; z-index:20; margin-top:4px;';
-                var memberRowSelectedIndex = -1;
-                var memberRowMatches = [];
-
-                function highlightMemberRowSelection() {
-                    var items = list.querySelectorAll('[data-index]');
-                    items.forEach(function(item, idx) {
-                        if (idx === memberRowSelectedIndex) {
-                            item.style.background = '#e3f2fd';
-                            item.scrollIntoView({ block: 'nearest' });
-                        } else {
-                            item.style.background = 'transparent';
-                        }
-                    });
-                }
 
                 function setRecipient(recipient) {
                     if (!recipient || !recipient.uid) return;
@@ -1413,107 +1418,32 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
                     }
                     row.setAttribute('data-user-id', String(recipient.uid));
                     input.value = String(recipient.name || '') + ' (' + String(recipient.email || '') + ')';
-                    list.innerHTML = '';
-                    memberRowSelectedIndex = -1;
-                    memberRowMatches = [];
+                    rowAutocomplete.clear();
                     if (spieltagCreateError) spieltagCreateError.textContent = '';
                     ensureTrailingEmptySpieltagMemberRow();
                 }
 
-                function renderList(filter) {
-                    list.innerHTML = '';
-                    memberRowSelectedIndex = -1;
-                    memberRowMatches = [];
-                    var term = String(filter || '').trim().toLowerCase();
-                    if (!term) return;
-
-                    var selectedIds = getSpieltagSelectedMemberIds();
-                    var currentUid = parseInt(row.getAttribute('data-user-id') || '0', 10);
-                    var matches = moneyRecipients.filter(function(r) {
-                        var rid = parseInt(r.uid || 0, 10);
-                        if (!rid) return false;
-                        if (selectedIds.indexOf(rid) !== -1 && currentUid !== rid) return false;
-                        var name = String(r.name || '').toLowerCase();
-                        var email = String(r.email || '').toLowerCase();
-                        return name.includes(term) || email.includes(term);
-                    });
-                    if (matches.length === 0) return;
-                    memberRowMatches = matches;
-
-                    var listInner = document.createElement('div');
-                    listInner.style.cssText = 'background:#fff; border:1px solid #ddd; max-height:150px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.12); border-radius:6px;';
-                    matches.forEach(function(recipient, idx) {
-                        var item = document.createElement('div');
-                        item.setAttribute('data-index', String(idx));
-                        item.textContent = String(recipient.name || '') + ' (' + String(recipient.email || '') + ')';
-                        item.style.cssText = 'padding:10px 12px; cursor:pointer; border-bottom:1px solid #f0f0f0; font-size:14px; min-height:40px; display:flex; align-items:center;';
-                        item.addEventListener('mousedown', function(e) {
-                            e.preventDefault();
-                            setRecipient(recipient);
+                var rowAutocomplete = setupBookingRecipientAutocomplete({
+                    input: input,
+                    list: list,
+                    getMatches: function(filter) {
+                        var selectedIds = getSpieltagSelectedMemberIds();
+                        var currentUid = parseInt(row.getAttribute('data-user-id') || '0', 10);
+                        return getBookingRecipientMatches(filter, {
+                            excludeUserIds: selectedIds,
+                            allowUserId: currentUid
                         });
-                        item.addEventListener('mouseenter', function() {
-                            memberRowSelectedIndex = idx;
-                            highlightMemberRowSelection();
-                        });
-                        item.addEventListener('mouseleave', function() {
-                            if (memberRowSelectedIndex === idx) {
-                                memberRowSelectedIndex = -1;
-                            }
-                            highlightMemberRowSelection();
-                        });
-                        listInner.appendChild(item);
-                    });
-                    list.appendChild(listInner);
-                }
-
-                input.addEventListener('input', function() {
-                    row.setAttribute('data-user-id', '');
-                    renderList(input.value);
-                });
-                input.addEventListener('keydown', function(e) {
-                    if (e.key === 'ArrowDown') {
-                        e.preventDefault();
-                        if (memberRowMatches.length === 0) {
-                            renderList(input.value);
-                        }
-                        if (memberRowMatches.length > 0) {
-                            memberRowSelectedIndex = Math.min(memberRowSelectedIndex + 1, memberRowMatches.length - 1);
-                            highlightMemberRowSelection();
-                        }
-                    } else if (e.key === 'ArrowUp') {
-                        e.preventDefault();
-                        if (memberRowMatches.length > 0) {
-                            memberRowSelectedIndex = Math.max(memberRowSelectedIndex - 1, -1);
-                            highlightMemberRowSelection();
-                        }
-                    } else if (e.key === 'Enter') {
-                        if (memberRowMatches.length > 0) {
-                            e.preventDefault();
-                            var idx = memberRowSelectedIndex >= 0 ? memberRowSelectedIndex : 0;
-                            if (memberRowMatches[idx]) {
-                                setRecipient(memberRowMatches[idx]);
-                            }
-                        }
-                    } else if (e.key === 'Escape') {
-                        list.innerHTML = '';
-                        memberRowSelectedIndex = -1;
-                        memberRowMatches = [];
-                    }
-                });
-                input.addEventListener('blur', function() {
-                    setTimeout(function() {
-                        list.innerHTML = '';
-                        memberRowSelectedIndex = -1;
-                        memberRowMatches = [];
-                    }, 150);
+                    },
+                    onInputReset: function() {
+                        row.setAttribute('data-user-id', '');
+                    },
+                    onSelect: setRecipient
                 });
 
                 clearBtn.addEventListener('click', function() {
                     row.setAttribute('data-user-id', '');
                     input.value = '';
-                    list.innerHTML = '';
-                    memberRowSelectedIndex = -1;
-                    memberRowMatches = [];
+                    rowAutocomplete.clear();
                     input.focus();
                 });
 

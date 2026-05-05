@@ -365,6 +365,21 @@ trait TeamEventTrait
         return [true, null, $teamEvent];
     }
 
+    protected function buildMemberOperationJsonResponse($teamAdminUserId, $teamEventId, $memberUserId, $operation, $actorUserId = null)
+    {
+        list($success, $error, $teamEvent) = $this->processTeamEventMemberOperation($teamAdminUserId, $teamEventId, $memberUserId, $operation, $actorUserId);
+        if (!$success) {
+            return ['success' => false, 'error' => $error];
+        }
+
+        $teamEventLabel = isset($teamEvent['comment']) ? trim((string)$teamEvent['comment']) : '';
+        return [
+            'success' => true,
+            'team_event_id' => $teamEventId,
+            'members' => $this->getTeamEventMembersWithContribution($teamAdminUserId, $teamEventId, $teamEventLabel),
+        ];
+    }
+
     protected function addTeamEventMember($teamEventId, $memberUserId, $actorUserId = null)
     {
         $teamEventId = (int)$teamEventId;
