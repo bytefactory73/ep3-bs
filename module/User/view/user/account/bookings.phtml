@@ -111,10 +111,12 @@ if ($__partyModeEnabled) {
                             <span class="sr-only" style="position:absolute;left:-9999px;"> <?= $this->t('Team-Statistik') ?> </span>
                         </button>
                 <?php endif; ?>
+                <?php if (!$isTeamAccount): ?>
                         <button id="money-send-btn" type="button" class="default-button" title="<?= $this->t('Geld senden') ?>" style="font-size: 1.35em; font-weight: bold; background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; padding: 4px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 0; width: 52px; height: 44px; justify-content: center;">
                             <span aria-hidden="true">💸</span>
                             <span class="sr-only" style="position:absolute;left:-9999px;"><?= $this->t('Geld senden') ?></span>
                         </button>
+                <?php endif; ?>
                         <button type="submit" form="drink-order-form" name="drink_order_submit" value="1" class="default-button stc-main-button" style="background: #2196f3; color: #fff; border: 1px solid #2196f3; border-radius: 6px; padding: 4px 14px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 1em; height: 44px; justify-content: center; font-weight: bold;">
                             <span id="drink-order-total" style="color: #fff; background: transparent; border-radius: 3px; font-size: clamp(0.5em, 5vw, 2.0em); min-width: 8em; display: inline-block; text-align: center; transition: background 0.2s, color 0.2s;"></span>
                         </button>
@@ -141,6 +143,10 @@ if ($__partyModeEnabled) {
                                         <button type="button" id="money-send-recipient-clear" title="<?= $this->t('Feld leeren') ?>" style="background:none; border:none; padding:6px; font-size:20px; color:#aaa; cursor:pointer; line-height:1; min-height:36px; display:flex; align-items:center; justify-content:center; min-width:36px;">&times;</button>
                                         <div id="money-send-recipient-list" style="position:absolute; top:100%; left:0; right:58px; z-index:10; margin-top:4px;"></div>
                                     </div>
+                                </div>
+                                <div id="money-send-team-event-wrap" style="display:none;">
+                                    <label for="money-send-team-event" style="display:block; margin-bottom:8px; font-weight:600; color:#1769aa; font-size:14px;"><?= $this->t('SPIELTAG') ?></label>
+                                    <select id="money-send-team-event" style="width:100%; padding:8px 12px; border:1px solid #ccc; border-radius:12px; font-size:15px; min-height:36px; background:#fff;"></select>
                                 </div>
                                 <!-- Betrag -->
                                 <div>
@@ -181,6 +187,8 @@ if ($__partyModeEnabled) {
                 var moneySendRecipientClear = document.getElementById('money-send-recipient-clear');
                 var moneySendAmount = document.getElementById('money-send-amount');
                 var moneySendAmountClear = document.getElementById('money-send-amount-clear');
+                var moneySendTeamEventWrap = document.getElementById('money-send-team-event-wrap');
+                var moneySendTeamEventSelect = document.getElementById('money-send-team-event');
                 var moneySendPassword = document.getElementById('money-send-password');
                 var moneySendPasswordToggle = document.getElementById('money-send-password-toggle');
                 var moneySendPasswordClear = document.getElementById('money-send-password-clear');
@@ -193,6 +201,8 @@ if ($__partyModeEnabled) {
                 var moneyRecipientSelectedIndex = -1;
                 var modalMouseDownTarget = null;
                 var selectedRecipientId = '';
+                var selectedRecipientTeamEventId = '';
+                var moneyRecipientTeamEventRequestId = 0;
 
                 function normalizeMoneyAmount(rawValue) {
                     var value = String(rawValue || '').trim().replace(/\s+/g, '');
@@ -214,6 +224,76 @@ if ($__partyModeEnabled) {
                     return value;
                 }
 
+                function formatMoneySendCurrency(amount) {
+                    return Number(amount || 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+                }
+
+                function resetMoneySendTeamEvents() {
+                    selectedRecipientTeamEventId = '';
+                    if (moneySendTeamEventSelect) {
+                        moneySendTeamEventSelect.innerHTML = '';
+                    }
+                    if (moneySendTeamEventWrap) {
+                        moneySendTeamEventWrap.style.display = 'none';
+                    }
+                }
+
+                async function loadMoneyRecipientTeamEvents(recipientId) {
+                    resetMoneySendTeamEvents();
+                    if (!recipientId) {
+                        return;
+                    }
+
+                    var requestId = ++moneyRecipientTeamEventRequestId;
+                    try {
+                        var resp = await fetch('<?= $this->url('user/money-recipient-team-events') ?>?receiver_user_id=' + encodeURIComponent(recipientId), {
+                            credentials: 'same-origin',
+                            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                        });
+                        var data = await resp.json();
+                        if (requestId !== moneyRecipientTeamEventRequestId) {
+                            return;
+                        }
+                        if (!resp.ok || !data || !data.success || !data.is_team) {
+                            return;
+                        }
+                        if (!Array.isArray(data.team_events) || data.team_events.length === 0) {
+                            if (moneySendError) moneySendError.textContent = '<?= $this->t('Für dieses Team-Konto sind keine Spieltage vorhanden.') ?>';
+                            return;
+                        }
+
+                        data.team_events.forEach(function(teamEvent, idx) {
+                            if (!moneySendTeamEventSelect) return;
+                            var option = document.createElement('option');
+                            option.value = String(teamEvent.id || '');
+                            option.textContent = String(teamEvent.label || '') + ' (' + formatMoneySendCurrency(teamEvent.balance || 0) + ')';
+                            if (idx === 0) {
+                                option.selected = true;
+                                selectedRecipientTeamEventId = option.value;
+                            }
+                            moneySendTeamEventSelect.appendChild(option);
+                        });
+                        if (moneySendTeamEventWrap) {
+                            moneySendTeamEventWrap.style.display = '';
+                        }
+                    } catch (e) {
+                        if (requestId !== moneyRecipientTeamEventRequestId) {
+                            return;
+                        }
+                        if (moneySendError) moneySendError.textContent = '<?= $this->t('Spieltage konnten nicht geladen werden.') ?>';
+                    }
+                }
+
+                function selectMoneyRecipient(recipient) {
+                    if (!recipient) return;
+                    var displayText = recipient.name + ' (' + recipient.email + ')';
+                    if (moneySendRecipientInput) moneySendRecipientInput.value = displayText;
+                    selectedRecipientId = String(recipient.uid || '');
+                    if (moneySendRecipientList) moneySendRecipientList.innerHTML = '';
+                    moneyRecipientSelectedIndex = -1;
+                    loadMoneyRecipientTeamEvents(selectedRecipientId);
+                }
+
                 function closeMoneySendModal() {
                     if (!moneySendModal) return;
                     moneySendModal.style.display = 'none';
@@ -222,6 +302,7 @@ if ($__partyModeEnabled) {
                     if (moneySendPassword) moneySendPassword.value = '';
                     if (moneySendRecipientInput) moneySendRecipientInput.value = '';
                     selectedRecipientId = '';
+                    resetMoneySendTeamEvents();
                     if (moneySendRecipientList) moneySendRecipientList.innerHTML = '';
                     moneyRecipientSelectedIndex = -1;
                 }
@@ -270,10 +351,7 @@ if ($__partyModeEnabled) {
                         item.style.touchAction = 'manipulation';
                         item.addEventListener('mousedown', function(e) {
                             e.preventDefault();
-                            if (moneySendRecipientInput) moneySendRecipientInput.value = displayText;
-                            selectedRecipientId = String(recipient.uid || '');
-                            if (moneySendRecipientList) moneySendRecipientList.innerHTML = '';
-                            moneyRecipientSelectedIndex = -1;
+                            selectMoneyRecipient(recipient);
                         });
                         item.addEventListener('mouseenter', function() {
                             item.style.background = '#f5f5f5';
@@ -297,6 +375,7 @@ if ($__partyModeEnabled) {
                         setTimeout(function() { moneySendRecipientInput.focus(); }, 100);
                     }
                     selectedRecipientId = '';
+                    resetMoneySendTeamEvents();
                     if (moneySendRecipientList) moneySendRecipientList.innerHTML = '';
                     if (moneySendAmount) moneySendAmount.value = '';
                     if (moneySendPassword) moneySendPassword.value = '';
@@ -307,6 +386,7 @@ if ($__partyModeEnabled) {
                 if (moneySendRecipientInput) {
                     moneySendRecipientInput.addEventListener('input', function() {
                         selectedRecipientId = '';
+                        resetMoneySendTeamEvents();
                         var filter = (moneySendRecipientInput.value || '').trim().toLowerCase();
                         renderMoneyRecipientList(filter);
                     });
@@ -375,11 +455,7 @@ if ($__partyModeEnabled) {
                                         });
                                         if (currentMatches[dataIndex]) {
                                             var recipient = currentMatches[dataIndex];
-                                            var displayText = recipient.name + ' (' + recipient.email + ')';
-                                            if (moneySendRecipientInput) moneySendRecipientInput.value = displayText;
-                                            selectedRecipientId = String(recipient.uid || '');
-                                            if (moneySendRecipientList) moneySendRecipientList.innerHTML = '';
-                                            moneyRecipientSelectedIndex = -1;
+                                            selectMoneyRecipient(recipient);
                                         }
                                     }
                                 }
@@ -404,7 +480,14 @@ if ($__partyModeEnabled) {
                             moneySendRecipientInput.focus();
                         }
                         selectedRecipientId = '';
+                        resetMoneySendTeamEvents();
                         if (moneySendRecipientList) moneySendRecipientList.innerHTML = '';
+                    });
+                }
+
+                if (moneySendTeamEventSelect) {
+                    moneySendTeamEventSelect.addEventListener('change', function() {
+                        selectedRecipientTeamEventId = moneySendTeamEventSelect.value || '';
                     });
                 }
 
@@ -501,6 +584,10 @@ if ($__partyModeEnabled) {
                             if (moneySendError) moneySendError.textContent = '<?= $this->t('Bitte Empfänger auswählen.') ?>';
                             return;
                         }
+                        if (moneySendTeamEventWrap && moneySendTeamEventWrap.style.display !== 'none' && !selectedRecipientTeamEventId) {
+                            if (moneySendError) moneySendError.textContent = '<?= $this->t('Bitte Spieltag auswählen.') ?>';
+                            return;
+                        }
                         if (!amount || amount <= 0) {
                             if (moneySendError) moneySendError.textContent = '<?= $this->t('Betrag muss positiv sein.') ?>';
                             return;
@@ -522,6 +609,7 @@ if ($__partyModeEnabled) {
                             credentials: 'same-origin',
                             body: 'receiver_user_id=' + encodeURIComponent(receiverUserId)
                                 + '&amount=' + encodeURIComponent(amountRaw)
+                                + '&team_event_id=' + encodeURIComponent(selectedRecipientTeamEventId || '')
                                 + (isSimpleOrderMode ? ('&password=' + encodeURIComponent(passwordRaw)) : '')
                         })
                         .then(function(resp) {

@@ -186,6 +186,16 @@ return array(
                             ),
                         ),
                     ),
+                    'money-recipient-team-events' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/money-recipient-team-events',
+                            'defaults' => array(
+                                'controller' => 'User\Controller\Account',
+                                'action' => 'moneyRecipientTeamEvents',
+                            ),
+                        ),
+                    ),
                     'manage-drinks' => array(
                         'type' => 'Literal',
                         'options' => array(

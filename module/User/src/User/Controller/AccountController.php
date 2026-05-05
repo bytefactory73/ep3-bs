@@ -1096,6 +1096,45 @@ class AccountController extends AbstractActionController
         );
     }
 
+    public function moneyRecipientTeamEventsAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $sessionUser = $userSessionManager->getSessionUser();
+
+        if (!$sessionUser) {
+            $sessionManager = $serviceManager->get('Zend\Session\SessionManager');
+            $sessionManager->start();
+            $simpleSession = new \Zend\Session\Container('SimpleLogin');
+            if (empty($simpleSession->user_id)) {
+                return $this->getResponse()->setStatusCode(401)->setContent(json_encode(['success' => false, 'error' => 'Not authenticated.']));
+            }
+        }
+
+        $receiverUserId = (int)$this->params()->fromQuery('receiver_user_id', $this->params()->fromPost('receiver_user_id', 0));
+        if ($receiverUserId <= 0) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Empfänger fehlt.']));
+        }
+
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+        $aliasRow = $dbAdapter->query('SELECT is_team FROM drink_aliases WHERE user_id = ?', [$receiverUserId])->current();
+        $isTeam = ($aliasRow && !empty($aliasRow['is_team'])) ? true : false;
+        if (!$isTeam) {
+            return $this->getResponse()->setContent(json_encode([
+                'success' => true,
+                'is_team' => false,
+                'team_events' => [],
+            ]));
+        }
+
+        return $this->getResponse()->setContent(json_encode([
+            'success' => true,
+            'is_team' => true,
+            'team_events' => $this->getTeamEventsWithBalances($receiverUserId),
+        ]));
+    }
+
     public function billsAction()
     {
         $bid = $this->params()->fromRoute('bid');
@@ -1497,11 +1536,12 @@ class AccountController extends AbstractActionController
 
         $senderUserId = (int)$sessionUser->need('uid');
         $receiverUserId = (int)$this->params()->fromPost('receiver_user_id', 0);
+        $receiverTeamEventId = (int)$this->params()->fromPost('team_event_id', 0);
         $amountRaw = trim((string)$this->params()->fromPost('amount', ''));
         $amountRaw = str_replace(',', '.', $amountRaw);
         $amount = round((float)$amountRaw, 2);
 
-        $transferResult = $this->executeMoneyTransfer($senderUserId, $receiverUserId, $amount);
+        $transferResult = $this->executeMoneyTransfer($senderUserId, $receiverUserId, $amount, $receiverTeamEventId);
         return $this->getResponse()
             ->setStatusCode($transferResult['statusCode'])
             ->setContent(json_encode($transferResult['payload']));

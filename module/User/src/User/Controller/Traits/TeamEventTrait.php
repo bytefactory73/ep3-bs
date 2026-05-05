@@ -132,4 +132,68 @@ trait TeamEventTrait
 
         return null;
     }
+
+    protected function calculateTeamEventBalance($teamAdminUserId, $teamEventId, $teamEventLabel)
+    {
+        $teamAdminUserId = (int)$teamAdminUserId;
+        $teamEventId = (int)$teamEventId;
+        $teamEventLabel = $this->normalizeTeamEventLabel($teamEventLabel);
+        if ($teamAdminUserId <= 0 || $teamEventId <= 0 || $teamEventLabel === '') {
+            return 0.0;
+        }
+
+        $dbAdapter = $this->getTeamEventDbAdapter();
+        $depositRow = $dbAdapter->query(
+            'SELECT COALESCE(SUM(amount), 0) AS total
+             FROM drink_deposits
+             WHERE user_id = ?
+               AND (deleted IS NULL OR deleted = 0)
+               AND (
+                    teamevent_id = ?
+                    OR (teamevent_id IS NULL AND TRIM(COALESCE(comment, "")) = ?)
+               )',
+            [$teamAdminUserId, $teamEventId, $teamEventLabel]
+        )->current();
+
+        $orderRow = $dbAdapter->query(
+            'SELECT COALESCE(SUM(quantity * price), 0) AS total
+             FROM drink_orders
+             WHERE user_id = ?
+               AND (deleted IS NULL OR deleted = 0)
+               AND (
+                    teamevent_id = ?
+                    OR (teamevent_id IS NULL AND TRIM(COALESCE(comment, "")) = ?)
+               )',
+            [$teamAdminUserId, $teamEventId, $teamEventLabel]
+        )->current();
+
+        $depositTotal = $depositRow && isset($depositRow['total']) ? (float)$depositRow['total'] : 0.0;
+        $orderTotal = $orderRow && isset($orderRow['total']) ? (float)$orderRow['total'] : 0.0;
+        return $depositTotal - $orderTotal;
+    }
+
+    protected function getTeamEventsWithBalances($teamAdminUserId)
+    {
+        $rows = $this->getTeamEventDbAdapter()->query(
+            'SELECT id, comment FROM drinks_teamevents WHERE team_admin_user_id = ? ORDER BY created_at DESC, id DESC',
+            [$teamAdminUserId]
+        )->toArray();
+
+        $result = [];
+        foreach ($rows as $row) {
+            $teamEventId = isset($row['id']) ? (int)$row['id'] : 0;
+            $teamEventLabel = isset($row['comment']) ? trim((string)$row['comment']) : '';
+            if ($teamEventId <= 0 || $teamEventLabel === '') {
+                continue;
+            }
+
+            $result[] = [
+                'id' => $teamEventId,
+                'label' => $teamEventLabel,
+                'balance' => $this->calculateTeamEventBalance($teamAdminUserId, $teamEventId, $teamEventLabel),
+            ];
+        }
+
+        return $result;
+    }
 }

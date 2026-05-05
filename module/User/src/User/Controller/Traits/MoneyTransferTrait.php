@@ -61,11 +61,12 @@ trait MoneyTransferTrait
         return 0;
     }
 
-    protected function executeMoneyTransfer($senderUserId, $receiverUserId, $amount)
+    protected function executeMoneyTransfer($senderUserId, $receiverUserId, $amount, $receiverTeamEventId = 0)
     {
         $senderUserId = (int)$senderUserId;
         $receiverUserId = (int)$receiverUserId;
         $amount = round((float)$amount, 2);
+        $receiverTeamEventId = (int)$receiverTeamEventId;
 
         if ($senderUserId <= 0) {
             return [
@@ -111,6 +112,31 @@ trait MoneyTransferTrait
         $drinkOrderManager = $serviceManager->get('Drinks\\Manager\\DrinkOrderManager');
         $drinkManager = $serviceManager->get('Drinks\\Manager\\DrinkManager');
         $dbAdapter = $serviceManager->get('Zend\\Db\\Adapter\\Adapter');
+        $receiverAliasRow = $dbAdapter->query('SELECT is_team FROM drink_aliases WHERE user_id = ?', [$receiverUserId])->current();
+        $receiverIsTeam = ($receiverAliasRow && !empty($receiverAliasRow['is_team'])) ? true : false;
+        $receiverResolvedTeamEventId = null;
+        if ($receiverIsTeam) {
+            if ($receiverTeamEventId <= 0) {
+                return [
+                    'statusCode' => 400,
+                    'payload' => ['success' => false, 'error' => 'Bitte Spieltag auswählen.'],
+                ];
+            }
+            if (!method_exists($this, 'resolveTeamEventForSelection')) {
+                return [
+                    'statusCode' => 500,
+                    'payload' => ['success' => false, 'error' => 'Spieltag konnte nicht geprüft werden.'],
+                ];
+            }
+            $receiverTeamEvent = $this->resolveTeamEventForSelection($receiverUserId, $receiverTeamEventId, '');
+            if (!$receiverTeamEvent || empty($receiverTeamEvent['id'])) {
+                return [
+                    'statusCode' => 400,
+                    'payload' => ['success' => false, 'error' => 'Bitte gültigen Spieltag auswählen.'],
+                ];
+            }
+            $receiverResolvedTeamEventId = (int)$receiverTeamEvent['id'];
+        }
         $transferReference = $this->createMoneyTransferReference();
         $canUseTransferReference = $this->canUseTransferReferenceColumns($dbAdapter);
 
@@ -138,7 +164,7 @@ trait MoneyTransferTrait
                 'Geld empfangen von ' . $senderName,
                 $senderUserId,
                 null,
-                null
+                $receiverResolvedTeamEventId
             );
             $depositId = $this->getInsertIdFromResult($depositInsertResult);
             if ($canUseTransferReference && $depositId > 0) {

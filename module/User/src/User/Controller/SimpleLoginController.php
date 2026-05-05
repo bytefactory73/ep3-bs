@@ -451,11 +451,12 @@ class SimpleLoginController extends AbstractActionController
         }
 
         $receiverUserId = (int)$this->params()->fromPost('receiver_user_id', 0);
+        $receiverTeamEventId = (int)$this->params()->fromPost('team_event_id', 0);
         $amountRaw = trim((string)$this->params()->fromPost('amount', ''));
         $amountRaw = str_replace(',', '.', $amountRaw);
         $amount = round((float)$amountRaw, 2);
 
-        $transferResult = $this->executeMoneyTransfer($senderUserId, $receiverUserId, $amount);
+        $transferResult = $this->executeMoneyTransfer($senderUserId, $receiverUserId, $amount, $receiverTeamEventId);
         return $this->getResponse()
             ->setStatusCode($transferResult['statusCode'])
             ->setContent(json_encode($transferResult['payload']));
