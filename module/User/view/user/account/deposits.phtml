@@ -60,12 +60,12 @@ $this->setup([
                         <button type="button" id="set-alias-btn" class="mini-button">Theken ID speichern</button>
                     </span>
 
-                    <label for="deposit_teamlead_search" style="grid-column:1;">Mannschaftführer:</label>
-                    <span style="grid-column:2; display:flex; align-items:center; gap:4px; position:relative; flex-wrap:wrap;">
-                        <input type="text" id="deposit_teamlead_search" autocomplete="off" placeholder="<?= $this->t('Benutzer suchen...') ?>" style="width:200px;">
-                        <button type="button" id="clear-teamlead-btn" title="<?= $this->t('Feld leeren') ?>" style="background:none; border:none; padding:0 6px; font-size:18px; color:#888; cursor:pointer; line-height:1;">&times;</button>
-                        <div id="teamlead-search-list" style="position:absolute; top:100%; left:0; z-index:20; min-width:200px;"></div>
-                    </span>
+                        <label for="deposit_teamlead_search" id="teamlead-label" style="grid-column:1; display:none;">Mannschaftführer:</label>
+                        <span id="teamlead-row" style="grid-column:2; display:none; align-items:center; gap:4px; position:relative; flex-wrap:wrap;">
+                            <input type="text" id="deposit_teamlead_search" autocomplete="off" placeholder="<?= $this->t('Benutzer suchen...') ?>" style="width:200px;">
+                            <button type="button" id="clear-teamlead-btn" title="<?= $this->t('Feld leeren') ?>" style="background:none; border:none; padding:0 6px; font-size:18px; color:#888; cursor:pointer; line-height:1;">&times;</button>
+                            <div id="teamlead-search-list" style="position:absolute; top:100%; left:0; z-index:20; min-width:200px;"></div>
+                        </span>
                     <input type="hidden" id="deposit_teamlead_uid" name="deposit_teamlead_uid">
 
                     <label for="deposit_order_email_option" style="grid-column:1;">Bestell-Emails:</label>
@@ -184,6 +184,8 @@ document.addEventListener('DOMContentLoaded', function() {
     var teamleadUidInput = document.getElementById('deposit_teamlead_uid');
     var teamleadSearchList = document.getElementById('teamlead-search-list');
     var clearTeamleadBtn = document.getElementById('clear-teamlead-btn');
+    var teamleadRow = document.getElementById('teamlead-row');
+    var teamleadLabel = document.getElementById('teamlead-label');
     var balanceBox = document.getElementById('current-balance-box');
     var historySection = document.getElementById('user-history-section');
     // Multi-drink selection logic
@@ -202,6 +204,7 @@ document.addEventListener('DOMContentLoaded', function() {
         einzahlung: document.getElementById('tab-panel-einzahlung'),
         buchungen: document.getElementById('tab-panel-buchungen')
     };
+    var depositTabStorageKey = 'deposits_active_tab';
     var activeDepositTab = 'einzahlung';
 
     function updateTeamSpieltagVisibility() {
@@ -217,6 +220,9 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         activeDepositTab = tabName;
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(depositTabStorageKey, tabName);
+        }
 
         ['einzahlung', 'buchungen', 'options'].forEach(function(name) {
             var panel = tabPanels[name];
@@ -247,7 +253,14 @@ document.addEventListener('DOMContentLoaded', function() {
     if (tabButtons.buchungen) {
         tabButtons.buchungen.addEventListener('click', function() { setActiveDepositTab('buchungen'); });
     }
-    setActiveDepositTab('einzahlung');
+    var initialDepositTab = 'einzahlung';
+    if (typeof localStorage !== 'undefined') {
+        var storedDepositTab = localStorage.getItem(depositTabStorageKey);
+        if (storedDepositTab && tabPanels[storedDepositTab] && tabButtons[storedDepositTab]) {
+            initialDepositTab = storedDepositTab;
+        }
+    }
+    setActiveDepositTab(initialDepositTab);
 
     function clearActiveTeamEventContext() {
         pendingNewSpieltagName = '';
@@ -788,9 +801,15 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         isTeamCheckbox.checked = isTeam;
         isTeamCheckbox.disabled = !user;
+        if (teamleadRow) {
+            teamleadRow.style.display = isTeam ? 'flex' : 'none';
+        }
+        if (teamleadLabel) {
+            teamleadLabel.style.display = isTeam ? '' : 'none';
+        }
         // Mannschaftführer: show matched user name/email or raw stored email
         if (teamleadSearchInput) {
-            teamleadSearchInput.disabled = !user || !drinksEnabled;
+            teamleadSearchInput.disabled = !user || !drinksEnabled || !isTeam;
             if (teamleadEmail !== '') {
                 var tlu = users.find(function(u) { return u.email === teamleadEmail; });
                 teamleadSearchInput.value = tlu ? (tlu.alias + ' (' + tlu.email + ')') : teamleadEmail;
@@ -837,7 +856,7 @@ document.addEventListener('DOMContentLoaded', function() {
             orderEmailOptionSelect.disabled = !uid || !drinksEnabled;
         }
         if (teamleadSearchInput) {
-            teamleadSearchInput.disabled = !uid || !drinksEnabled;
+            teamleadSearchInput.disabled = !uid || !drinksEnabled || !isTeamCheckbox.checked;
         }
         if (uid) {
             try {
@@ -891,6 +910,15 @@ document.addEventListener('DOMContentLoaded', function() {
         var isTeam = isTeamCheckbox.checked;
         if (user) {
             user.is_team = isTeam ? 1 : 0;
+        }
+        if (teamleadRow) {
+            teamleadRow.style.display = isTeam ? 'flex' : 'none';
+        }
+        if (teamleadLabel) {
+            teamleadLabel.style.display = isTeam ? '' : 'none';
+        }
+        if (teamleadSearchInput) {
+            teamleadSearchInput.disabled = !uid || !drinksEnabledCheckbox.checked || !isTeam;
         }
         if (uid) {
             try {
