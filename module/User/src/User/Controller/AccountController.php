@@ -61,6 +61,154 @@ class AccountController extends AbstractActionController
         ]));
     }
 
+    public function teamleadTeamStatsAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $sessionUser = $userSessionManager->getSessionUser();
+        if (!$sessionUser) {
+            return $this->getResponse()->setStatusCode(401)->setContent(json_encode(['success' => false, 'error' => 'Not authenticated.']));
+        }
+
+        $teamUserId = (int)$this->params()->fromQuery('team_uid', 0);
+        if ($teamUserId <= 0) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungueltiger Team-Account.']));
+        }
+
+        $sessionEmail = trim((string)$sessionUser->get('email'));
+        if ($sessionEmail === '') {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'Keine Teamzuordnung gefunden.']));
+        }
+
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+        $teamAliasRow = $dbAdapter->query(
+            'SELECT user_id, alias FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND LOWER(TRIM(COALESCE(teamlead_email, ""))) = LOWER(TRIM(?))',
+            [$teamUserId, $sessionEmail]
+        )->current();
+        if (!$teamAliasRow) {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'Keine Berechtigung fuer diesen Team-Account.']));
+        }
+
+        $requestedTeamEventLabel = $this->normalizeTeamEventLabel($this->params()->fromQuery('spieltag', ''));
+        $eventsRows = $dbAdapter->query(
+            'SELECT id, comment FROM drinks_teamevents WHERE team_admin_user_id = ? ORDER BY created_at DESC, id DESC',
+            [$teamUserId]
+        )->toArray();
+
+        $spieltage = [];
+        foreach ($eventsRows as $eventRow) {
+            $label = isset($eventRow['comment']) ? trim((string)$eventRow['comment']) : '';
+            if ($label !== '') {
+                $spieltage[] = $label;
+            }
+        }
+        $spieltage = array_values(array_unique($spieltage));
+
+        if ($requestedTeamEventLabel === '' && count($spieltage) > 0) {
+            $requestedTeamEventLabel = $spieltage[0];
+        }
+
+        if ($requestedTeamEventLabel === '') {
+            return $this->getResponse()->setContent(json_encode([
+                'success' => true,
+                'spieltag' => '',
+                'spieltage' => [],
+                'rows' => [],
+                'total_sum' => 0,
+                'account_balance' => 0,
+            ]));
+        }
+
+        $sqlOrders = '
+            SELECT
+                COALESCE(c.name, "") AS category_name,
+                COALESCE(c.sort_priority, 0) AS category_sort,
+                d.name AS article,
+                SUM(o.quantity) AS quantity,
+                (0 - o.price) AS single_price,
+                (0 - SUM(o.quantity * o.price)) AS total_price
+            FROM drink_orders o
+            JOIN drinks d ON d.id = o.drink_id
+            LEFT JOIN drink_categories c ON c.id = d.category
+            WHERE o.user_id = ?
+              AND o.deleted = 0
+              AND (
+                  o.teamevent_id IN (
+                      SELECT e.id
+                      FROM drinks_teamevents e
+                      WHERE e.team_admin_user_id = ?
+                        AND TRIM(COALESCE(e.comment, "")) = ?
+                  )
+                  OR (o.teamevent_id IS NULL AND TRIM(COALESCE(o.comment, "")) = ?)
+              )
+            GROUP BY o.drink_id, d.name, o.price, c.name, c.sort_priority
+            ORDER BY category_sort ASC, category_name ASC, d.name ASC, o.price ASC
+        ';
+        $orderRows = $dbAdapter->query($sqlOrders, [$teamUserId, $teamUserId, $requestedTeamEventLabel, $requestedTeamEventLabel])->toArray();
+
+        $rows = [];
+        foreach ($orderRows as $orderRow) {
+            $rows[] = [
+                'category' => $orderRow['category_name'],
+                'article'  => $orderRow['article'],
+                'quantity' => (int)$orderRow['quantity'],
+                'single_price' => (float)$orderRow['single_price'],
+                'total_price'  => (float)$orderRow['total_price'],
+            ];
+        }
+
+        $sqlDeposits = '
+            SELECT
+                amount,
+                COALESCE(comment, "") AS comment
+            FROM drink_deposits
+            WHERE user_id = ?
+              AND deleted = 0
+              AND (
+                  teamevent_id IN (
+                      SELECT e.id
+                      FROM drinks_teamevents e
+                      WHERE e.team_admin_user_id = ?
+                        AND TRIM(COALESCE(e.comment, "")) = ?
+                  )
+                  OR (teamevent_id IS NULL AND TRIM(COALESCE(comment, "")) = ?)
+              )
+            ORDER BY amount ASC
+        ';
+        $depositRows = $dbAdapter->query($sqlDeposits, [$teamUserId, $teamUserId, $requestedTeamEventLabel, $requestedTeamEventLabel])->toArray();
+        foreach ($depositRows as $depositRow) {
+            $comment = trim((string)$depositRow['comment']);
+            $article = $comment !== '' ? 'Einzahlung (' . $comment . ')' : 'Einzahlung';
+            $rows[] = [
+                'category'    => 'Einzahlungen',
+                'article'     => $article,
+                'quantity'    => 1,
+                'single_price' => (float)$depositRow['amount'],
+                'total_price'  => (float)$depositRow['amount'],
+            ];
+        }
+
+        $totalSum = 0.0;
+        foreach ($rows as $row) {
+            $totalSum += (float)$row['total_price'];
+        }
+
+        $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
+        $accountBalance = (float)$drinkManager->calculateUserDrinkBalance($teamUserId, $serviceManager);
+
+        return $this->getResponse()->setContent(json_encode([
+            'success' => true,
+            'team_uid' => $teamUserId,
+            'team_alias' => isset($teamAliasRow['alias']) ? trim((string)$teamAliasRow['alias']) : '',
+            'spieltag' => $requestedTeamEventLabel,
+            'spieltage' => $spieltage,
+            'rows' => $rows,
+            'total_sum' => $totalSum,
+            'account_balance' => $accountBalance,
+        ]));
+    }
+
     /**
      * Admin: Übersicht aller Nutzer mit Buchungen oder Einzahlungen, sortiert nach Kontostand
      */

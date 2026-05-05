@@ -17,6 +17,28 @@ class IndexController extends AbstractActionController
         $dateNow = $calendarViewModel->getVariable('dateNow');
         $squaresFilter = $calendarViewModel->getVariable('squaresFilter');
         $user = $calendarViewModel->getVariable('user');
+        $teamLeadTeamUserId = 0;
+        $teamLeadTeamAlias = '';
+
+        if ($user) {
+            $email = trim((string)$user->get('email'));
+            if ($email !== '') {
+                try {
+                    $dbAdapter = $this->getServiceLocator()->get('Zend\\Db\\Adapter\\Adapter');
+                    $teamLeadRow = $dbAdapter->query(
+                        'SELECT da.user_id, da.alias FROM drink_aliases da WHERE da.is_team = 1 AND LOWER(TRIM(COALESCE(da.teamlead_email, ""))) = LOWER(TRIM(?)) ORDER BY da.user_id ASC LIMIT 1',
+                        [$email]
+                    )->current();
+                    if ($teamLeadRow && !empty($teamLeadRow['user_id'])) {
+                        $teamLeadTeamUserId = (int)$teamLeadRow['user_id'];
+                        $teamLeadTeamAlias = isset($teamLeadRow['alias']) ? trim((string)$teamLeadRow['alias']) : '';
+                    }
+                } catch (\Exception $e) {
+                    $teamLeadTeamUserId = 0;
+                    $teamLeadTeamAlias = '';
+                }
+            }
+        }
 
         $this->redirectBack()->setOrigin('frontend');
 
@@ -25,6 +47,8 @@ class IndexController extends AbstractActionController
             'dateNow' => $dateNow,
             'squaresFilter' => $squaresFilter,
             'user' => $user,
+            'teamLeadTeamUserId' => $teamLeadTeamUserId,
+            'teamLeadTeamAlias' => $teamLeadTeamAlias,
         ));
 
         $viewModel->addChild($calendarViewModel);

@@ -196,6 +196,16 @@ return array(
                             ),
                         ),
                     ),
+                    'teamlead-team-stats' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/teamlead-team-stats',
+                            'defaults' => array(
+                                'controller' => 'User\Controller\Account',
+                                'action' => 'teamleadTeamStats',
+                            ),
+                        ),
+                    ),
                     'manage-drinks' => array(
                         'type' => 'Literal',
                         'options' => array(

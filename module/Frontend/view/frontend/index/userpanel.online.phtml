@@ -1,3 +1,8 @@
+<?php
+$teamLeadTeamUserId = isset($this->teamLeadTeamUserId) ? (int)$this->teamLeadTeamUserId : 0;
+$teamLeadTeamAlias = isset($this->teamLeadTeamAlias) ? (string)$this->teamLeadTeamAlias : '';
+?>
+
 <table style="height: 100%;">
     <tr>
         <td class="responsive-pass-4" style="padding-right: 12px; border-right: solid 1px #CCC;">
@@ -20,6 +25,18 @@
 
         <?php endif; ?>
 
+        <?php if ($teamLeadTeamUserId > 0): ?>
+        <td>
+            <button
+                type="button"
+                class="default-button"
+                onclick="openFrontendTeamStatsModal(<?= $teamLeadTeamUserId ?>);"
+            >
+                <span class="symbolic symbolic-stats"><?= $this->t('MF-Theke') ?></span>
+            </button>
+        </td>
+        <?php endif; ?>
+
         <td>
             <a href="<?= $this->url('user/bookings') ?>" class="default-button" data-tooltip="<?= $this->userLastBookings($this->user) ?>"><span class="symbolic symbolic-booking"><?= $this->t('My bookings') ?></span></a>
         </td>
@@ -37,3 +54,184 @@
         </td>
     </tr>
 </table>
+
+<?php if ($teamLeadTeamUserId > 0): ?>
+<div id="frontendTeamStatsModal" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.6);z-index:99999;align-items:center;justify-content:center;">
+    <div style="position:relative;width:min(980px,96vw);max-height:92vh;background:#fff;border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,0.25);overflow:auto;padding:18px 16px 16px 16px;">
+        <button onclick="closeFrontendTeamStatsModal()" style="position:absolute;top:10px;right:12px;z-index:10;background:#eee;border:none;border-radius:50%;width:34px;height:34px;font-size:20px;cursor:pointer;">&times;</button>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin:2px 42px 12px 4px; flex-wrap:wrap;">
+            <h2 id="frontend-team-stats-title" style="margin:0; color:#1769aa;"><?= $this->t('Kostenübersicht') ?></h2>
+            <div id="frontend-team-stats-account-balance-header" style="font-weight:bold; text-align:right; color:#333;">Gesamtsaldo Konto: -</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; margin:0 4px 12px 4px; flex-wrap:wrap;">
+            <label for="frontend-team-stats-spieltag-select" style="color:#1769aa; font-weight:bold;"><?= $this->t('Spieltag:') ?></label>
+            <select id="frontend-team-stats-spieltag-select" style="font-size:1em; max-width:100%; min-width:220px; padding:4px 6px; border:1px solid #2196f3; border-radius:6px; color:#1769aa;"></select>
+        </div>
+        <div id="frontendTeamStatsContent" style="padding:2px 4px 8px 4px;"></div>
+    </div>
+</div>
+<script>
+function frontendTeamStatsEscapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function frontendTeamStatsFormatCurrency(value) {
+    return Number(value || 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+}
+
+function frontendTeamStatsAmountColor(value) {
+    var amount = Number(value || 0);
+    if (amount > 0) return '#2e7d32';
+    if (amount < 0) return '#c62828';
+    return '#333';
+}
+
+window.__frontendTeamStatsTeamAlias = <?= json_encode($teamLeadTeamAlias, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+
+function setFrontendTeamStatsTitle(teamAlias) {
+    var titleEl = document.getElementById('frontend-team-stats-title');
+    if (!titleEl) return;
+    var alias = String(teamAlias || '').trim();
+    if (alias) {
+        titleEl.textContent = 'Kostenübersicht - ' + alias;
+    } else {
+        titleEl.textContent = 'Kostenübersicht';
+    }
+}
+
+window.__frontendTeamStatsTeamUid = 0;
+
+async function openFrontendTeamStatsModal(teamUid) {
+    var uid = parseInt(teamUid || 0, 10);
+    if (!uid) return;
+    window.__frontendTeamStatsTeamUid = uid;
+
+    var modal = document.getElementById('frontendTeamStatsModal');
+    var content = document.getElementById('frontendTeamStatsContent');
+    var balanceHeader = document.getElementById('frontend-team-stats-account-balance-header');
+    if (!modal || !content) return;
+
+    modal.style.display = 'flex';
+    setFrontendTeamStatsTitle(window.__frontendTeamStatsTeamAlias);
+    if (balanceHeader) {
+        balanceHeader.innerHTML = 'Gesamtsaldo Konto: -';
+    }
+    await loadFrontendTeamStatsForSpieltag('');
+}
+
+async function loadFrontendTeamStatsForSpieltag(spieltag) {
+    var teamUid = parseInt(window.__frontendTeamStatsTeamUid || 0, 10);
+    var content = document.getElementById('frontendTeamStatsContent');
+    var balanceHeader = document.getElementById('frontend-team-stats-account-balance-header');
+    var select = document.getElementById('frontend-team-stats-spieltag-select');
+    if (!teamUid || !content) return;
+
+    content.innerHTML = '<div style="color:#1769aa;">Lade Daten...</div>';
+
+    try {
+        var url = '<?= $this->url('user/teamlead-team-stats') ?>?team_uid=' + encodeURIComponent(String(teamUid));
+        if (spieltag) {
+            url += '&spieltag=' + encodeURIComponent(spieltag);
+        }
+        var resp = await fetch(url, {
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+        var data = await resp.json();
+        if (!resp.ok || !data || !data.success) {
+            throw new Error((data && data.error) ? data.error : 'Fehler beim Laden der Statistik.');
+        }
+
+        if (data.team_alias) {
+            window.__frontendTeamStatsTeamAlias = String(data.team_alias);
+        }
+        setFrontendTeamStatsTitle(window.__frontendTeamStatsTeamAlias);
+
+        var spieltage = Array.isArray(data.spieltage) ? data.spieltage : [];
+        var selectedSpieltag = data.spieltag || '';
+        if (select) {
+            while (select.firstChild) {
+                select.removeChild(select.firstChild);
+            }
+            for (var i = 0; i < spieltage.length; i++) {
+                var name = String(spieltage[i] || '').trim();
+                if (!name) continue;
+                var opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                if (name === selectedSpieltag) opt.selected = true;
+                select.appendChild(opt);
+            }
+            select.disabled = spieltage.length === 0;
+        }
+
+        var accountBalance = Number(data.account_balance || 0);
+        if (balanceHeader) {
+            balanceHeader.innerHTML = 'Gesamtsaldo Konto: <span style="color:' + frontendTeamStatsAmountColor(accountBalance) + ';">' + frontendTeamStatsFormatCurrency(accountBalance) + '</span>';
+        }
+
+        var rows = Array.isArray(data.rows) ? data.rows : [];
+        var html = '';
+        if (rows.length === 0) {
+            html += '<div style="color:#555;">Keine Eintraege fuer diesen Spieltag.</div>';
+        } else {
+            html += '<table class="default-table" style="width:100%; margin:0;">';
+            html += '<tr style="background:#e3f0fa;">';
+            html += '<th style="text-align:left; padding:6px 8px;">Artikel</th>';
+            html += '<th style="text-align:right; padding:6px 8px;">Menge</th>';
+            html += '<th style="text-align:right; padding:6px 8px;">Einzelpreis</th>';
+            html += '<th style="text-align:right; padding:6px 8px;">Gesamtpreis</th>';
+            html += '</tr>';
+
+            var lastCategory = null;
+            for (var j = 0; j < rows.length; j++) {
+                var row = rows[j] || {};
+                var cat = row.category || '';
+                if (cat !== lastCategory) {
+                    lastCategory = cat;
+                    if (cat !== '') {
+                        html += '<tr style="background:#f0f4fa;">';
+                        html += '<td colspan="4" style="font-weight:bold; color:#1769aa; padding:6px 8px 4px 8px;">' + frontendTeamStatsEscapeHtml(cat) + '</td>';
+                        html += '</tr>';
+                    }
+                }
+                html += '<tr>';
+                html += '<td style="padding:6px 8px;">' + frontendTeamStatsEscapeHtml(row.article || '') + '</td>';
+                html += '<td style="text-align:right; padding:6px 8px;">' + frontendTeamStatsEscapeHtml(row.quantity || 0) + '</td>';
+                html += '<td style="text-align:right; padding:6px 8px; color:' + frontendTeamStatsAmountColor(row.single_price) + ';">' + frontendTeamStatsFormatCurrency(row.single_price) + '</td>';
+                html += '<td style="text-align:right; padding:6px 8px; color:' + frontendTeamStatsAmountColor(row.total_price) + ';">' + frontendTeamStatsFormatCurrency(row.total_price) + '</td>';
+                html += '</tr>';
+            }
+
+            html += '<tr style="font-weight:bold; background:#f5faff;">';
+            html += '<td colspan="3" style="text-align:right; padding:6px 8px;">Gesamtsumme</td>';
+            html += '<td style="text-align:right; padding:6px 8px; color:' + frontendTeamStatsAmountColor(data.total_sum) + ';">' + frontendTeamStatsFormatCurrency(data.total_sum) + '</td>';
+            html += '</tr>';
+            html += '</table>';
+        }
+
+        content.innerHTML = html;
+    } catch (err) {
+        content.innerHTML = '<div style="color:#d32f2f;">' + frontendTeamStatsEscapeHtml(err && err.message ? err.message : 'Fehler beim Laden der Statistik.') + '</div>';
+    }
+}
+
+function closeFrontendTeamStatsModal() {
+    var modal = document.getElementById('frontendTeamStatsModal');
+    if (modal) modal.style.display = 'none';
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    var select = document.getElementById('frontend-team-stats-spieltag-select');
+    if (!select) return;
+    select.addEventListener('change', function() {
+        loadFrontendTeamStatsForSpieltag(select.value || '');
+    });
+});
+</script>
+<?php endif; ?>
