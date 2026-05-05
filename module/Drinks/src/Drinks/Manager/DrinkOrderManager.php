@@ -23,8 +23,8 @@ class DrinkOrderManager
 
     public function addOrder($userId, $drinkId, $quantity, $addedByUserId = null, $isAutoOrder = 0, $comment = null, $customPrice = null, $teamEventId = null)
     {
-        if ($drinkId == 1) {
-            // For "Sonstiges" (custom entry), use the provided price, allow 0 as valid
+        if ((int)$drinkId === 1 || (int)$drinkId === -1) {
+            // For "Sonstiges" (1) and money transfer (-1), use provided custom price.
             $price = ($customPrice !== null) ? (float)$customPrice : 0.0;
         } else {
             $sql = 'SELECT price FROM drinks WHERE id = ?';
