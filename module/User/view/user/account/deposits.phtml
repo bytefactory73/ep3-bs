@@ -59,6 +59,13 @@ $this->setup([
                         <input type="text" id="deposit_alias" name="deposit_alias" maxlength="50" style="width:200px;">
                         <button type="button" id="set-alias-btn" class="mini-button">Theken ID speichern</button>
                     </span>
+
+                    <label for="deposit_order_email_option" style="grid-column:1;">Bestell-Emails:</label>
+                    <select id="deposit_order_email_option" name="deposit_order_email_option" style="grid-column:2; max-width:235px; justify-self:start;">
+                        <option value="order">Bei jeder Bestellung</option>
+                        <option value="summary">Zusammenfassung (Nachts)</option>
+                        <option value="negative">Nur wenn negativ</option>
+                    </select>
                 </div>
             </div>
         </div>
@@ -154,6 +161,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var userIdInput = document.getElementById('deposit_user_id');
     var userSearchList = document.getElementById('user-search-list');
     var drinksEnabledCheckbox = document.getElementById('deposit_drinks_enabled');
+    var orderEmailOptionSelect = document.getElementById('deposit_order_email_option');
     var isTeamCheckbox = document.getElementById('deposit_is_team');
     var teamSpieltagRow = document.getElementById('team-spieltag-row');
     var teamSpieltagSelect = document.getElementById('deposit_teamevent_id');
@@ -741,7 +749,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     }
-    function updateDrinksFields(drinksEnabledFromApi, drinksAliasFromApi, isTeamFromApi) {
+    function updateDrinksFields(drinksEnabledFromApi, drinksAliasFromApi, isTeamFromApi, orderEmailOptionFromApi) {
         var uid = userIdInput.value;
         var user = findUserByUid(uid);
         var drinksEnabled = typeof drinksEnabledFromApi === 'boolean'
@@ -753,8 +761,15 @@ document.addEventListener('DOMContentLoaded', function() {
         var isTeam = typeof isTeamFromApi === 'boolean'
             ? isTeamFromApi
             : (user ? user.is_team === 1 : false);
+        var orderEmailOption = typeof orderEmailOptionFromApi === 'string' && orderEmailOptionFromApi !== ''
+            ? orderEmailOptionFromApi
+            : 'order';
         drinksEnabledCheckbox.checked = drinksEnabled;
         drinksEnabledCheckbox.disabled = !user;
+        if (orderEmailOptionSelect) {
+            orderEmailOptionSelect.value = orderEmailOption;
+            orderEmailOptionSelect.disabled = !user || !drinksEnabled;
+        }
         isTeamCheckbox.checked = isTeam;
         isTeamCheckbox.disabled = !user;
         updateTeamSpieltagVisibility();
@@ -790,6 +805,9 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             aliasRow.style.display = 'none';
         }
+        if (orderEmailOptionSelect) {
+            orderEmailOptionSelect.disabled = !uid || !drinksEnabled;
+        }
         if (uid) {
             try {
                 const resp = await fetch('<?= $this->url('user/set-user-drinks-settings') ?>', {
@@ -810,6 +828,32 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     });
+    if (orderEmailOptionSelect) {
+        orderEmailOptionSelect.addEventListener('change', async function() {
+            var uid = userIdInput.value;
+            var orderEmailOption = orderEmailOptionSelect.value || 'order';
+            if (!uid) {
+                return;
+            }
+            try {
+                const resp = await fetch('<?= $this->url('user/set-user-drinks-settings') ?>', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    credentials: 'same-origin',
+                    body: new URLSearchParams({
+                        uid: uid,
+                        order_email_option: orderEmailOption
+                    })
+                });
+                const data = await resp.json();
+                if (!data.success) {
+                    alert('Fehler beim Speichern: ' + (data.error || 'Unbekannter Fehler'));
+                }
+            } catch (e) {
+                alert('Netzwerkfehler beim Speichern der Bestell-Emails-Einstellung.');
+            }
+        });
+    }
     isTeamCheckbox.addEventListener('change', async function() {
         var uid = userIdInput.value;
         var user = findUserByUid(uid);
@@ -894,8 +938,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 const resp = await fetch(url, { credentials: 'same-origin' });
                 if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 const data = await resp.json();
-                if (typeof data.drinks_enabled !== 'undefined' || typeof data.drinks_alias !== 'undefined' || typeof data.is_team !== 'undefined') {
-                    updateDrinksFields(data.drinks_enabled, data.drinks_alias, typeof data.is_team !== 'undefined' ? data.is_team : undefined);
+                if (typeof data.drinks_enabled !== 'undefined' || typeof data.drinks_alias !== 'undefined' || typeof data.is_team !== 'undefined' || typeof data.order_email_option !== 'undefined') {
+                    updateDrinksFields(
+                        data.drinks_enabled,
+                        data.drinks_alias,
+                        typeof data.is_team !== 'undefined' ? data.is_team : undefined,
+                        typeof data.order_email_option !== 'undefined' ? data.order_email_option : undefined
+                    );
                     var user = findUserByUid(uid);
                     if (user) {
                         if (typeof data.drinks_enabled !== 'undefined') user.drinks_enabled = data.drinks_enabled ? 1 : 0;

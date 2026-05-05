@@ -478,7 +478,7 @@ class AccountController extends AbstractActionController
     }
     /**
      * AJAX endpoint to update drinks_enabled and drinks_alias for a user
-     * POST: uid, drinks_enabled (bool), drinks_alias (string)
+        * POST: uid, drinks_enabled (bool), drinks_alias (string), order_email_option (string)
      * Returns JSON: { success: true } or { error: ... }
      */
     public function setUserDrinksSettingsAction()
@@ -497,6 +497,7 @@ class AccountController extends AbstractActionController
         $uid = (int)$this->params()->fromPost('uid');
         $drinksEnabled = $this->params()->fromPost('drinks_enabled', null);
         $drinksAlias = $this->params()->fromPost('drinks_alias', null);
+        $orderEmailOption = $this->params()->fromPost('order_email_option', null);
         $isTeam = $this->params()->fromPost('is_team', null);
         if (!$uid) {
             return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'No user selected']));
@@ -507,6 +508,13 @@ class AccountController extends AbstractActionController
             $drinksAlias = trim($drinksAlias);
             if ($drinksAlias !== '' && !preg_match('/^[\w\-\s]{1,50}$/u', $drinksAlias)) {
                 return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'Invalid alias']));
+            }
+        }
+        if ($orderEmailOption !== null) {
+            $orderEmailOption = trim((string)$orderEmailOption);
+            $allowedOrderEmailOptions = ['order', 'summary', 'negative'];
+            if (!in_array($orderEmailOption, $allowedOrderEmailOptions, true)) {
+                return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'Invalid order email option']));
             }
         }
         // Normalize is_team
@@ -528,6 +536,10 @@ class AccountController extends AbstractActionController
                 if ($drinksAlias !== null) {
                     $fields[] = 'alias = ?';
                     $params[] = $drinksAlias;
+                }
+                if ($orderEmailOption !== null) {
+                    $fields[] = 'order_email_option = ?';
+                    $params[] = $orderEmailOption;
                 }
                 if (isset($thekenadmin)) {
                     $fields[] = 'thekenadmin = ?';
@@ -553,6 +565,11 @@ class AccountController extends AbstractActionController
                         $values[] = $drinksAlias;
                         $updates[] = 'alias = VALUES(alias)';
                     }
+                    if ($orderEmailOption !== null) {
+                        $columns[] = 'order_email_option';
+                        $values[] = $orderEmailOption;
+                        $updates[] = 'order_email_option = VALUES(order_email_option)';
+                    }
                     if (isset($thekenadmin)) {
                         $columns[] = 'thekenadmin';
                         $values[] = $thekenadmin ? 1 : 0;
@@ -570,13 +587,14 @@ class AccountController extends AbstractActionController
                 }
             } else {
                 // Insert: require all fields
-                if ($drinksAlias === null && $drinksEnabled === null && !isset($thekenadmin) && $isTeamVal === null) {
+                if ($drinksAlias === null && $drinksEnabled === null && $orderEmailOption === null && !isset($thekenadmin) && $isTeamVal === null) {
                     return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'Alias, enabled, and thekenadmin required for new entry']));
                 }
                 $enabledVal = ($drinksEnabled === '1' || $drinksEnabled === 1 || $drinksEnabled === true || $drinksEnabled === 'true') ? 1 : 0;
                 $thekenadminVal = isset($thekenadmin) ? ($thekenadmin ? 1 : 0) : 0;
                 $isTeamInsert = $isTeamVal !== null ? $isTeamVal : 0;
-                $dbAdapter->query('INSERT INTO drink_aliases (user_id, alias, enabled, thekenadmin, is_team) VALUES (?, ?, ?, ?, ?)', [$uid, $drinksAlias, $enabledVal, $thekenadminVal, $isTeamInsert]);
+                $orderEmailOptionInsert = $orderEmailOption !== null ? $orderEmailOption : 'order';
+                $dbAdapter->query('INSERT INTO drink_aliases (user_id, alias, enabled, thekenadmin, is_team, order_email_option) VALUES (?, ?, ?, ?, ?, ?)', [$uid, $drinksAlias, $enabledVal, $thekenadminVal, $isTeamInsert, $orderEmailOptionInsert]);
             }
         } catch (\Exception $e) {
             return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['error' => 'DB error', 'details' => $e->getMessage()]));
@@ -1623,11 +1641,12 @@ class AccountController extends AbstractActionController
             return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['error' => 'User not found']));
         }
         // Query drinks_enabled and alias from drink_aliases
-        $drinksAliasRow = $dbAdapter->query('SELECT enabled, alias, thekenadmin, is_team FROM drink_aliases WHERE user_id = ?', [$uid])->current();
+        $drinksAliasRow = $dbAdapter->query('SELECT enabled, alias, thekenadmin, is_team, order_email_option FROM drink_aliases WHERE user_id = ?', [$uid])->current();
 		    $drinksEnabled = $drinksAliasRow ? (bool)$drinksAliasRow['enabled'] : false;
 		    $drinksAlias = $drinksAliasRow ? $drinksAliasRow['alias'] : null;
 		    $thekenadmin = ($drinksAliasRow && isset($drinksAliasRow['thekenadmin']) && (int)$drinksAliasRow['thekenadmin'] === 1);
 		    $isTeam = ($drinksAliasRow && isset($drinksAliasRow['is_team']) && (int)$drinksAliasRow['is_team'] === 1);
+            $orderEmailOption = ($drinksAliasRow && isset($drinksAliasRow['order_email_option']) && $drinksAliasRow['order_email_option'] !== '') ? $drinksAliasRow['order_email_option'] : 'order';
         $teamEvents = [];
         $teamEventLabelById = [];
         $latestTeamEventId = null;
@@ -1743,6 +1762,7 @@ class AccountController extends AbstractActionController
             'drinks_enabled' => $drinksEnabled,
             'drinks_alias' => $drinksAlias,
             'is_team' => $isTeam,
+            'order_email_option' => $orderEmailOption,
             'team_events' => $teamEvents,
             'current_teamevent_id' => $currentTeamEventId,
         ]));
