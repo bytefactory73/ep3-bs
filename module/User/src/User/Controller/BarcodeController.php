@@ -13,21 +13,15 @@ class BarcodeController extends AbstractActionController
     public function lookupAction()
     {
         $barcode = $this->params()->fromQuery('barcode');
-        error_log('DEBUG: Received barcode param: [' . $barcode . ']');
         if (!$barcode) {
-            error_log('DEBUG: No barcode provided');
             return new JsonModel(['error' => 'No barcode provided']);
         }
         $adapter = $this->adapter;
         $sql = 'SELECT drink_id FROM drink_barcodes WHERE barcode = ?';
-        error_log('DEBUG: SQL: ' . $sql . ' PARAM: [' . $barcode . ']');
         $result = $adapter->query($sql, [$barcode])->toArray();
-        error_log('DEBUG: Query result: ' . print_r($result, true));
         if ($result && isset($result[0]['drink_id'])) {
-            error_log('DEBUG: Found drink_id: ' . $result[0]['drink_id']);
             return new JsonModel(['drink_id' => (int)$result[0]['drink_id']]);
         }
-        error_log('DEBUG: Barcode not found in DB');
         return new JsonModel(['drink_id' => null]);
     }
 
