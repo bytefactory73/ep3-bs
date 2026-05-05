@@ -193,8 +193,11 @@ class AccountController extends AbstractActionController
                 $user = $userManager->get($row['user_id']);
                 if ($user) {
                     $balance = $drinkManager->calculateUserDrinkBalance($row['user_id'], $serviceManager);
-                    $subject = 'Einzahlung ' . ucfirst($action);
-                    $body = 'Ihre Einzahlung am ' . $row['deposit_time'] . ' wurde von ' . htmlspecialchars($adminName) . ' ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>';
+                    $isTransferDeposit = ($transferReference !== '');
+                    $subject = $isTransferDeposit ? ('Geldüberweisung ' . ucfirst($action)) : ('Einzahlung ' . ucfirst($action));
+                    $body = $isTransferDeposit
+                        ? ('Eine Geldüberweisung auf Ihr Konto wurde von ' . htmlspecialchars($adminName) . ' ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>')
+                        : ('Ihre Einzahlung am ' . $row['deposit_time'] . ' wurde von ' . htmlspecialchars($adminName) . ' ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>');
                     $mailService->sendFromTheke($user, $subject, $body, ['isHtml' => true]);
                 }
                 // Send notification email to transfer counterpart (the order side)
@@ -245,9 +248,10 @@ class AccountController extends AbstractActionController
                     }
                     if ($shouldSend) {
                         $action = $newDeleted ? 'storniert' : 'wiederhergestellt';
-                        $subject = 'Buchung ' . ucfirst($action) . ' (Admin)';
+                        $isTransferOrder = ($transferReference !== '') || ((int)$row['drink_id'] === -1);
+                        $subject = $isTransferOrder ? ('Geldüberweisung ' . ucfirst($action)) : ('Buchung ' . ucfirst($action) . ' (Admin)');
                         $label = '';
-                        if ((int)$row['drink_id'] === 1) {
+                        if ((int)$row['drink_id'] === 1 || (int)$row['drink_id'] === -1) {
                             // Fetch drink name for fallback
                             $drinkName = '';
                             if (isset($row['drink_id'])) {
@@ -285,7 +289,9 @@ class AccountController extends AbstractActionController
                         if (!$adminName) {
                             $adminName = 'Administrator';
                         }
-                        $body = 'Ihre Getränkebuchung (' . $label . ') am ' . $row['order_time'] . ' wurde von ' . htmlspecialchars($adminName) . ' ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>';
+                        $body = $isTransferOrder
+                            ? ('Ihre Geldüberweisung (' . $label . ') wurde von ' . htmlspecialchars($adminName) . ' ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>')
+                            : ('Ihre Getränkebuchung (' . $label . ') am ' . $row['order_time'] . ' wurde von ' . htmlspecialchars($adminName) . ' ' . $action . '.<br><br>Kontostand nach Änderung: <b>' . number_format($balance, 2, ',', '.') . ' EUR</b>');
                         $mailService->sendFromTheke($user, $subject, $body, ['isHtml' => true]);
                     }
                 }
@@ -374,7 +380,7 @@ class AccountController extends AbstractActionController
                     $count = isset($order['count']) ? (int)$order['count'] : 1;
                     $comment = isset($order['comment']) ? $order['comment'] : null;
                     if ($drinkId && $count > 0) {
-                        if ($drinkId === 1 && isset($order['price'])) {
+                        if (($drinkId === 1 || $drinkId === -1) && isset($order['price'])) {
                             $customPrice = (float)$order['price'];
                             $drinkOrderManager->addOrder($uid, $drinkId, $count, $admin ? $admin->get('uid') : null, 0, $comment, $customPrice, $teamEventId);
                         } else {
@@ -388,7 +394,7 @@ class AccountController extends AbstractActionController
                 foreach ($orders as $order) {
                     $drink = $drinkManager->get($order['drink_id']);
                     if ($drink) {
-                        if ((int)$order['drink_id'] === 1) {
+                        if ((int)$order['drink_id'] === 1 || (int)$order['drink_id'] === -1) {
                             // Fallback to drink name if comment is empty
                             $drinkName = $drink ? $drink['name'] : $order['drink_id'];
                             $label = '';
@@ -397,8 +403,8 @@ class AccountController extends AbstractActionController
                             }
                             $comment = isset($order['comment']) ? trim((string)$order['comment']) : '';
                             $label .= ($comment !== '') ? $comment : $drinkName;
-                            // Use custom price from order for id==1
-                            $customPrice = isset($order['price']) ? (float)$order['price'] : (float)$drink['price'];
+                            // Use custom price from order for special custom-priced entries (1, -1)
+                            $customPrice = isset($order['price']) ? (float)$order['price'] : 0.0;
                             $line = sprintf('%s = %.2f EUR', $label, $order['count'] * $customPrice);
                             $total += $order['count'] * $customPrice;
                         } else {
@@ -979,8 +985,8 @@ class AccountController extends AbstractActionController
             $quantity = isset($order['quantity']) ? (int)$order['quantity'] : 1;
             $comment = isset($order['comment']) ? trim((string)$order['comment']) : '';
             $drinkName = $order['name'];
-            // Always ensure for id==1 (custom drink): if comment is empty, use drink name as fallback
-            if ($drinkId === 1 && $comment === '') {
+            // For special comment-based entries (1, -1), use drink name as fallback when comment is empty
+            if (($drinkId === 1 || $drinkId === -1) && $comment === '') {
                 $comment = $drinkName;
             }
             $drinkHistory[] = [
@@ -1712,8 +1718,8 @@ class AccountController extends AbstractActionController
             $comment = isset($o['comment']) ? trim((string)$o['comment']) : '';
             $drinkName = isset($o['name']) ? $o['name'] : '';
             $desc = $o['quantity'] . ' x ' . $drinkName;
-            // For id==1, if comment is empty, use drink name as fallback for desc and comment
-            if ($drinkId === 1 && $comment === '') {
+            // For special comment-based entries (1, -1), use drink name as fallback for desc and comment
+            if (($drinkId === 1 || $drinkId === -1) && $comment === '') {
                 $desc = $drinkName;
                 $comment = $drinkName;
             }

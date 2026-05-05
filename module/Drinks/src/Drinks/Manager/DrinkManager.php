@@ -83,7 +83,10 @@ class DrinkManager
             // Recalculate balance after cancellation
             $balance = $this->calculateUserDrinkBalance($user->need('uid'), $serviceManager);
             // Send cancellation email
-            $subject = call_user_func($tCallback, 'Stornierung Deiner Getränkebestellung');
+            $isTransferOrder = !empty($order['transfer_reference']) || (int)$order['drink_id'] === -1;
+            $subject = $isTransferOrder
+                ? call_user_func($tCallback, 'Stornierung Deiner Geldüberweisung')
+                : call_user_func($tCallback, 'Stornierung Deiner Getränkebestellung');
             $lines = [];
             if ((int)$order['drink_id'] === 1 || (int)$order['drink_id'] === -1) {
                 // Special case for Sonstiges (1) and money transfers (-1): only show comment
@@ -103,7 +106,10 @@ class DrinkManager
             $lines[] = sprintf(call_user_func($tCallback, 'Storniert am:') . ' %s', date('d.m.Y H:i'));
             $lines[] = '';
             $lines[] = sprintf(call_user_func($tCallback, 'Kontostand nach Stornierung:') . '<b> %.2f EUR </b>', $balance);
-            $text = call_user_func($tCallback, 'Deine Getränkebestellung wurde erfolgreich storniert.') . "<br><br>" . implode("<br>", $lines);
+            $text = ($isTransferOrder
+                ? call_user_func($tCallback, 'Deine Geldüberweisung wurde erfolgreich storniert.')
+                : call_user_func($tCallback, 'Deine Getränkebestellung wurde erfolgreich storniert.'))
+                . "<br><br>" . implode("<br>", $lines);
             if ($balance < 0) {
                 $text .= "<br><br>";
                 $text .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func($tCallback, 'Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das Paypal-Konto "kneipe@stc-butzbach.de" oder wirf Geld in den weißen Briefkasten ein.') . '</span>';

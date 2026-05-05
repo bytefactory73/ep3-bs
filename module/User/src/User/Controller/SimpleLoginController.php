@@ -143,8 +143,8 @@ class SimpleLoginController extends AbstractActionController
             $drinkId = isset($order['drink_id']) ? (int)$order['drink_id'] : null;
             $comment = isset($order['comment']) ? trim((string)$order['comment']) : '';
             $drinkName = $order['name'];
-            // Always ensure for id==1 (custom drink): if comment is empty, use drink name as fallback
-            if ($drinkId === 1 && $comment === '') {
+            // For special comment-based entries (1, -1), use drink name as fallback when comment is empty
+            if (($drinkId === 1 || $drinkId === -1) && $comment === '') {
                 $comment = $drinkName;
             }
             $drinkHistory[] = [
