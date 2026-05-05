@@ -287,64 +287,75 @@ class SimpleLoginController extends AbstractActionController
 
         $sqlOrders = '
             SELECT
+                COALESCE(c.name, "") AS category_name,
+                COALESCE(c.sort_priority, 0) AS category_sort,
                 d.name AS article,
                 SUM(o.quantity) AS quantity,
                 (0 - o.price) AS single_price,
                 (0 - SUM(o.quantity * o.price)) AS total_price
             FROM drink_orders o
             JOIN drinks d ON d.id = o.drink_id
+            LEFT JOIN drink_categories c ON c.id = d.category
             WHERE o.user_id = ?
               AND o.deleted = 0
-                            AND (
-                                        o.teamevent_id IN (
-                                                SELECT e.id
-                                                FROM drinks_teamevents e
-                                                WHERE e.team_admin_user_id = ?
-                                                    AND TRIM(COALESCE(e.comment, "")) = ?
-                                        )
-                                        OR (o.teamevent_id IS NULL AND TRIM(COALESCE(o.comment, "")) = ?)
-                                    )
-            GROUP BY o.drink_id, d.name, o.price
-            ORDER BY d.name ASC, o.price ASC
+              AND (
+                  o.teamevent_id IN (
+                      SELECT e.id
+                      FROM drinks_teamevents e
+                      WHERE e.team_admin_user_id = ?
+                        AND TRIM(COALESCE(e.comment, "")) = ?
+                  )
+                  OR (o.teamevent_id IS NULL AND TRIM(COALESCE(o.comment, "")) = ?)
+              )
+            GROUP BY o.drink_id, d.name, o.price, c.name, c.sort_priority
+            ORDER BY category_sort ASC, category_name ASC, d.name ASC, o.price ASC
         ';
 
-                $rows = $db->query($sqlOrders, [$userId, $teamAdminUserId, $requestedTeamEventLabel, $requestedTeamEventLabel])->toArray();
+        $orderRows = $db->query($sqlOrders, [$userId, $teamAdminUserId, $requestedTeamEventLabel, $requestedTeamEventLabel])->toArray();
+        $rows = [];
+        foreach ($orderRows as $orderRow) {
+            $rows[] = [
+                'category' => $orderRow['category_name'],
+                'article'  => $orderRow['article'],
+                'quantity' => (int)$orderRow['quantity'],
+                'single_price' => (float)$orderRow['single_price'],
+                'total_price'  => (float)$orderRow['total_price'],
+            ];
+        }
 
         $sqlDeposits = '
             SELECT
-                amount AS single_price,
-                COUNT(*) AS quantity,
-                SUM(amount) AS total_price
+                amount,
+                COALESCE(comment, "") AS comment
             FROM drink_deposits
             WHERE user_id = ?
               AND deleted = 0
-                            AND (
-                                        teamevent_id IN (
-                                                SELECT e.id
-                                                FROM drinks_teamevents e
-                                                WHERE e.team_admin_user_id = ?
-                                                    AND TRIM(COALESCE(e.comment, "")) = ?
-                                        )
-                                        OR (teamevent_id IS NULL AND TRIM(COALESCE(comment, "")) = ?)
-                                    )
-            GROUP BY amount
+              AND (
+                  teamevent_id IN (
+                      SELECT e.id
+                      FROM drinks_teamevents e
+                      WHERE e.team_admin_user_id = ?
+                        AND TRIM(COALESCE(e.comment, "")) = ?
+                  )
+                  OR (teamevent_id IS NULL AND TRIM(COALESCE(comment, "")) = ?)
+              )
             ORDER BY amount ASC
         ';
-                $depositRows = $db->query($sqlDeposits, [$userId, $teamAdminUserId, $requestedTeamEventLabel, $requestedTeamEventLabel])->toArray();
+        $depositRows = $db->query($sqlDeposits, [$userId, $teamAdminUserId, $requestedTeamEventLabel, $requestedTeamEventLabel])->toArray();
         foreach ($depositRows as $depositRow) {
+            $comment = trim((string)$depositRow['comment']);
+            $article = $comment !== '' ? 'Einzahlung (' . $comment . ')' : 'Einzahlung';
             $rows[] = [
-                'article' => 'Einzahlung',
-                'quantity' => (int)$depositRow['quantity'],
-                'single_price' => (float)$depositRow['single_price'],
-                'total_price' => (float)$depositRow['total_price'],
+                'category'    => 'Einzahlungen',
+                'article'     => $article,
+                'quantity'    => 1,
+                'single_price' => (float)$depositRow['amount'],
+                'total_price'  => (float)$depositRow['amount'],
             ];
         }
 
         $totalSum = 0.0;
         foreach ($rows as &$row) {
-            $row['quantity'] = (int)$row['quantity'];
-            $row['single_price'] = (float)$row['single_price'];
-            $row['total_price'] = (float)$row['total_price'];
             $totalSum += $row['total_price'];
         }
         unset($row);
