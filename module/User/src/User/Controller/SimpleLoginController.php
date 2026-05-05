@@ -285,87 +285,47 @@ class SimpleLoginController extends AbstractActionController
             return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Kein Spieltag ausgewählt.']));
         }
 
-        $sqlOrders = '
-            SELECT
-                COALESCE(c.name, "") AS category_name,
-                COALESCE(c.sort_priority, 0) AS category_sort,
-                d.name AS article,
-                SUM(o.quantity) AS quantity,
-                (0 - o.price) AS single_price,
-                (0 - SUM(o.quantity * o.price)) AS total_price
-            FROM drink_orders o
-            JOIN drinks d ON d.id = o.drink_id
-            LEFT JOIN drink_categories c ON c.id = d.category
-            WHERE o.user_id = ?
-              AND o.deleted = 0
-              AND (
-                  o.teamevent_id IN (
-                      SELECT e.id
-                      FROM drinks_teamevents e
-                      WHERE e.team_admin_user_id = ?
-                        AND TRIM(COALESCE(e.comment, "")) = ?
-                  )
-                  OR (o.teamevent_id IS NULL AND TRIM(COALESCE(o.comment, "")) = ?)
-              )
-            GROUP BY o.drink_id, d.name, o.price, c.name, c.sort_priority
-            ORDER BY category_sort ASC, category_name ASC, d.name ASC, o.price ASC
-        ';
+        return $this->getResponse()->setContent(json_encode(array_merge([
+            'success' => true,
+            'account_balance' => $accountBalance,
+        ], $this->buildTeamStatsPayload($teamAdminUserId, $requestedTeamEventLabel))));
+    }
 
-        $orderRows = $db->query($sqlOrders, [$userId, $teamAdminUserId, $requestedTeamEventLabel, $requestedTeamEventLabel])->toArray();
-        $rows = [];
-        foreach ($orderRows as $orderRow) {
-            $rows[] = [
-                'category' => $orderRow['category_name'],
-                'article'  => $orderRow['article'],
-                'quantity' => (int)$orderRow['quantity'],
-                'single_price' => (float)$orderRow['single_price'],
-                'total_price'  => (float)$orderRow['total_price'],
-            ];
+    public function teamMembersAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $request = $this->getRequest();
+        if (!$request->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required.']));
         }
 
-        $sqlDeposits = '
-            SELECT
-                amount,
-                COALESCE(comment, "") AS comment
-            FROM drink_deposits
-            WHERE user_id = ?
-              AND deleted = 0
-              AND (
-                  teamevent_id IN (
-                      SELECT e.id
-                      FROM drinks_teamevents e
-                      WHERE e.team_admin_user_id = ?
-                        AND TRIM(COALESCE(e.comment, "")) = ?
-                  )
-                  OR (teamevent_id IS NULL AND TRIM(COALESCE(comment, "")) = ?)
-              )
-            ORDER BY amount ASC
-        ';
-        $depositRows = $db->query($sqlDeposits, [$userId, $teamAdminUserId, $requestedTeamEventLabel, $requestedTeamEventLabel])->toArray();
-        foreach ($depositRows as $depositRow) {
-            $comment = trim((string)$depositRow['comment']);
-            $article = $comment !== '' ? 'Einzahlung (' . $comment . ')' : 'Einzahlung';
-            $rows[] = [
-                'category'    => 'Einzahlungen',
-                'article'     => $article,
-                'quantity'    => 1,
-                'single_price' => (float)$depositRow['amount'],
-                'total_price'  => (float)$depositRow['amount'],
-            ];
+        $sessionManager = $this->getServiceLocator()->get('Zend\Session\SessionManager');
+        $sessionManager->start();
+        $session = new \Zend\Session\Container('SimpleLogin');
+        if (empty($session->user_id)) {
+            return $this->getResponse()->setStatusCode(401)->setContent(json_encode(['success' => false, 'error' => 'Not authenticated.']));
         }
 
-        $totalSum = 0.0;
-        foreach ($rows as &$row) {
-            $totalSum += $row['total_price'];
+        $teamAdminUserId = (int)$session->user_id;
+        $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
+        $aliasRow = $db->query('SELECT is_team FROM drink_aliases WHERE user_id = ?', [$teamAdminUserId])->current();
+        if (!$aliasRow || empty($aliasRow['is_team'])) {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'Kein Team-Account.']));
         }
-        unset($row);
 
+        $teamEventId = (int)$this->params()->fromPost('team_event_id', 0);
+        $memberUserId = (int)$this->params()->fromPost('member_user_id', 0);
+        $operation = trim((string)$this->params()->fromPost('operation', ''));
+        list($success, $error, $teamEvent) = $this->processTeamEventMemberOperation($teamAdminUserId, $teamEventId, $memberUserId, $operation, $teamAdminUserId);
+        if (!$success) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => $error]));
+        }
+
+        $teamEventLabel = isset($teamEvent['comment']) ? trim((string)$teamEvent['comment']) : '';
         return $this->getResponse()->setContent(json_encode([
             'success' => true,
-            'spieltag' => $requestedTeamEventLabel,
-            'rows' => $rows,
-            'total_sum' => $totalSum,
-            'account_balance' => $accountBalance,
+            'team_event_id' => $teamEventId,
+            'members' => $this->getTeamEventMembersWithContribution($teamAdminUserId, $teamEventId, $teamEventLabel),
         ]));
     }
 
@@ -387,8 +347,10 @@ class SimpleLoginController extends AbstractActionController
             return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'Kein Team-Account.']));
         }
         if ($this->getRequest()->isPost()) {
-            $selected = $this->normalizeTeamEventLabel($this->params()->fromPost('spieltag', ''));
-            if ($selected === self::TEAM_SPIELTAG_NEW_OPTION || $selected === '') {
+            $selectedRaw = $this->normalizeTeamEventLabel($this->params()->fromPost('spieltag', ''));
+            $isNewTeamEventRequest = ($selectedRaw === self::TEAM_SPIELTAG_NEW_OPTION || $selectedRaw === '');
+            $selected = $selectedRaw;
+            if ($isNewTeamEventRequest) {
                 $selected = $this->normalizeTeamEventLabel($this->params()->fromPost('new_spieltag', ''));
             }
             if ($selected === '') {
@@ -398,6 +360,13 @@ class SimpleLoginController extends AbstractActionController
             if (!$event) {
                 return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Spieltag konnte nicht gespeichert werden.']));
             }
+
+            if ($isNewTeamEventRequest) {
+                $memberIdsRaw = $this->params()->fromPost('member_user_ids', '');
+                $memberUserIds = $this->parseTeamEventMemberIds($memberIdsRaw);
+                $this->saveTeamEventMembers($teamAdminUserId, (int)$event['id'], $memberUserIds);
+            }
+
             $session->current_spieltag = $selected;
             $session->current_teamevent_id = (int)$event['id'];
         }

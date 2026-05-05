@@ -206,6 +206,16 @@ return array(
                             ),
                         ),
                     ),
+                    'teamlead-team-members' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/teamlead-team-members',
+                            'defaults' => array(
+                                'controller' => 'User\Controller\Account',
+                                'action' => 'teamleadTeamMembers',
+                            ),
+                        ),
+                    ),
                     'manage-drinks' => array(
                         'type' => 'Literal',
                         'options' => array(
@@ -314,6 +324,16 @@ return array(
                                     'defaults' => array(
                                         'controller' => 'User\\Controller\\SimpleLogin',
                                         'action' => 'sendMoney',
+                                    ),
+                                ),
+                            ),
+                            'team-members' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/team-members',
+                                    'defaults' => array(
+                                        'controller' => 'User\Controller\SimpleLogin',
+                                        'action' => 'teamMembers',
                                     ),
                                 ),
                             ),

@@ -22,6 +22,36 @@ CREATE TABLE IF NOT EXISTS drinks_teamevents (
     INDEX idx_drinks_teamevents_comment (comment)
 );
 
+-- Team event members (participants assigned to a Spieltag)
+CREATE TABLE IF NOT EXISTS drinks_teamevent_members (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    team_event_id INT NOT NULL,
+    user_id INT UNSIGNED NOT NULL,
+    added_by_user_id INT UNSIGNED DEFAULT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_drinks_teamevent_members (team_event_id, user_id),
+    INDEX idx_drinks_teamevent_members_event (team_event_id),
+    INDEX idx_drinks_teamevent_members_user (user_id),
+    FOREIGN KEY (team_event_id) REFERENCES drinks_teamevents(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES bs_users(uid),
+    FOREIGN KEY (added_by_user_id) REFERENCES bs_users(uid)
+);
+
+-- To update existing databases, run:
+-- CREATE TABLE drinks_teamevent_members (
+--     id INT AUTO_INCREMENT PRIMARY KEY,
+--     team_event_id INT NOT NULL,
+--     user_id INT UNSIGNED NOT NULL,
+--     added_by_user_id INT UNSIGNED DEFAULT NULL,
+--     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+--     UNIQUE KEY uniq_drinks_teamevent_members (team_event_id, user_id),
+--     INDEX idx_drinks_teamevent_members_event (team_event_id),
+--     INDEX idx_drinks_teamevent_members_user (user_id),
+--     FOREIGN KEY (team_event_id) REFERENCES drinks_teamevents(id) ON DELETE CASCADE,
+--     FOREIGN KEY (user_id) REFERENCES bs_users(uid),
+--     FOREIGN KEY (added_by_user_id) REFERENCES bs_users(uid)
+-- );
+
 -- Table for drink orders per user
 CREATE TABLE IF NOT EXISTS drink_orders (
     id INT AUTO_INCREMENT PRIMARY KEY,

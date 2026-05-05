@@ -71,7 +71,7 @@ if ($partyModeEnabled) {
 
 <!-- Team Stats Modal Overlay -->
 <div id="teamStatsModal" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.6);z-index:99999;align-items:center;justify-content:center;">
-    <div style="position:relative;width:min(980px,96vw);max-height:92vh;background:#fff;border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,0.25);overflow:auto;padding:18px 16px 16px 16px;">
+    <div style="position:relative;width:min(980px,96vw);height:90vh;max-height:90vh;background:#fff;border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,0.25);overflow:auto;padding:18px 16px 16px 16px;">
         <button onclick="closeTeamStatsModal()" style="position:absolute;top:10px;right:12px;z-index:10;background:#eee;border:none;border-radius:50%;width:34px;height:34px;font-size:20px;cursor:pointer;">&times;</button>
         <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin:2px 42px 12px 4px; flex-wrap:wrap;">
             <h2 style="margin:0; color:#1769aa;">Kostenübersicht</h2>
@@ -84,6 +84,7 @@ if ($partyModeEnabled) {
         <div id="teamStatsContent" style="padding:2px 4px 8px 4px;"></div>
     </div>
 </div>
+<script src="<?= $this->basePath('js/team-stats-modal.js') ?>"></script>
 <script>
 function getTeamStatsSpieltagOptions() {
     var bookingSelect = document.getElementById('spieltag-select');
@@ -154,127 +155,52 @@ window.teamSpieltagUpdateFromApi = function(data) {
     syncTeamStatsSpieltagSelect(selected);
 };
 
-function teamStatsFormatCurrency(value) {
-    return Number(value || 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
-}
-
-function teamStatsAmountColor(value) {
-    var amount = Number(value || 0);
-    if (amount > 0) return '#2e7d32';
-    if (amount < 0) return '#c62828';
-    return '#333';
-}
-
-function teamStatsEscapeHtml(value) {
-    return String(value == null ? '' : value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-
-async function openTeamStatsModal() {
-    var modal = document.getElementById('teamStatsModal');
-    var content = document.getElementById('teamStatsContent');
-    var balanceHeader = document.getElementById('team-stats-account-balance-header');
-    if (!modal || !content) return;
-
-    modal.style.display = 'flex';
-    if (balanceHeader) {
-        balanceHeader.innerHTML = 'Gesamtsaldo Konto: -';
-    }
-    var bookingSelect = document.getElementById('spieltag-select');
-    var preferredSpieltag = bookingSelect ? (bookingSelect.value || '') : '';
-    var selectedSpieltag = syncTeamStatsSpieltagSelect(preferredSpieltag);
-    await loadTeamStatsForSpieltag(selectedSpieltag);
-}
-
-async function loadTeamStatsForSpieltag(selectedSpieltag) {
-    var content = document.getElementById('teamStatsContent');
-    var balanceHeader = document.getElementById('team-stats-account-balance-header');
-    if (!content) return;
-
-    content.innerHTML = '<div style="color:#1769aa;">Lade Daten...</div>';
-
-    try {
+var teamStatsModalController = createTeamStatsModal({
+    modalId: 'teamStatsModal',
+    contentId: 'teamStatsContent',
+    balanceHeaderId: 'team-stats-account-balance-header',
+    selectId: 'team-stats-spieltag-select',
+    memberInputId: 'team-stats-member-search',
+    memberListId: 'team-stats-member-list',
+    memberAddBtnId: 'team-stats-member-add',
+    memberClearBtnId: 'team-stats-member-clear',
+    rowClass: 'team-stats-member-row',
+    removeButtonClass: 'team-stats-member-remove',
+    addDirectButtonClass: 'team-stats-member-add-direct',
+    buildStatsUrl: function(selectedSpieltag) {
         if (!selectedSpieltag || selectedSpieltag === '__new__') {
             throw new Error('Bitte zuerst einen Spieltag auswählen.');
         }
-
-        var resp = await fetch('simple-order/team-stats?spieltag=' + encodeURIComponent(selectedSpieltag), {
-            credentials: 'same-origin',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        });
-        var data = await resp.json();
-        if (!resp.ok || !data || !data.success) {
-            throw new Error((data && data.error) ? data.error : 'Fehler beim Laden der Statistik.');
-        }
-
-        var rows = Array.isArray(data.rows) ? data.rows : [];
-        var spieltagLabel = data.spieltag || selectedSpieltag;
-        var accountBalance = Number(data.account_balance || 0);
-        if (balanceHeader) {
-            balanceHeader.innerHTML = 'Gesamtsaldo Konto: <span style="color:' + teamStatsAmountColor(accountBalance) + ';">' + teamStatsFormatCurrency(accountBalance) + '</span>';
-        }
-        var html = '';
-        if (rows.length === 0) {
-            html += '<div style="color:#555;">Keine Eintraege fuer diesen Spieltag.</div>';
-        } else {
-            html += '<table class="default-table" style="width:100%; margin:0;">';
-            html += '<tr style="background:#e3f0fa;">';
-            html += '<th style="text-align:left; padding:6px 8px;">Artikel</th>';
-            html += '<th style="text-align:right; padding:6px 8px;">Menge</th>';
-            html += '<th style="text-align:right; padding:6px 8px;">Einzelpreis</th>';
-            html += '<th style="text-align:right; padding:6px 8px;">Gesamtpreis</th>';
-            html += '</tr>';
-
-            var lastCategory = null;
-            for (var i = 0; i < rows.length; i++) {
-                var row = rows[i] || {};
-                var cat = row.category || '';
-                if (cat !== lastCategory) {
-                    lastCategory = cat;
-                    if (cat !== '') {
-                        html += '<tr style="background:#f0f4fa;">';
-                        html += '<td colspan="4" style="font-weight:bold; color:#1769aa; padding:6px 8px 4px 8px;">' + teamStatsEscapeHtml(cat) + '</td>';
-                        html += '</tr>';
-                    }
-                }
-                html += '<tr>';
-                html += '<td style="padding:6px 8px;">' + teamStatsEscapeHtml(row.article || '') + '</td>';
-                html += '<td style="text-align:right; padding:6px 8px;">' + teamStatsEscapeHtml(row.quantity || 0) + '</td>';
-                html += '<td style="text-align:right; padding:6px 8px; color:' + teamStatsAmountColor(row.single_price) + ';">' + teamStatsFormatCurrency(row.single_price) + '</td>';
-                html += '<td style="text-align:right; padding:6px 8px; color:' + teamStatsAmountColor(row.total_price) + ';">' + teamStatsFormatCurrency(row.total_price) + '</td>';
-                html += '</tr>';
-            }
-
-            html += '<tr style="font-weight:bold; background:#f5faff;">';
-            html += '<td colspan="3" style="text-align:right; padding:6px 8px;">Gesamtsumme</td>';
-            html += '<td style="text-align:right; padding:6px 8px; color:' + teamStatsAmountColor(data.total_sum) + ';">' + teamStatsFormatCurrency(data.total_sum) + '</td>';
-            html += '</tr>';
-            html += '</table>';
-        }
-        content.innerHTML = html;
-    } catch (err) {
-        content.innerHTML = '<div style="color:#d32f2f;">' + teamStatsEscapeHtml(err && err.message ? err.message : 'Fehler beim Laden der Statistik.') + '</div>';
+        return 'simple-order/team-stats?spieltag=' + encodeURIComponent(selectedSpieltag);
+    },
+    buildMemberUpdateRequest: function(operation, memberUserId, state) {
+        return {
+            url: 'simple-order/team-members',
+            body: new URLSearchParams({
+                operation: operation,
+                team_event_id: String(state.currentEventId),
+                member_user_id: String(memberUserId)
+            })
+        };
+    },
+    getInitialSpieltag: function() {
+        var bookingSelect = document.getElementById('spieltag-select');
+        var preferredSpieltag = bookingSelect ? (bookingSelect.value || '') : '';
+        return syncTeamStatsSpieltagSelect(preferredSpieltag);
     }
+});
+
+function openTeamStatsModal() {
+    return teamStatsModalController.open();
+}
+
+function loadTeamStatsForSpieltag(selectedSpieltag) {
+    return teamStatsModalController.load(selectedSpieltag);
 }
 
 function closeTeamStatsModal() {
-    var modal = document.getElementById('teamStatsModal');
-    if (modal) modal.style.display = 'none';
+    teamStatsModalController.close();
 }
-
-document.addEventListener('DOMContentLoaded', function() {
-    var modalSelect = document.getElementById('team-stats-spieltag-select');
-    if (!modalSelect) return;
-
-    modalSelect.addEventListener('change', function() {
-        var selected = modalSelect.value || '';
-        loadTeamStatsForSpieltag(selected);
-    });
-});
 
 function openDrinksSummaryModal() {
     var now = new Date();

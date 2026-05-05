@@ -177,6 +177,31 @@ if ($__partyModeEnabled) {
                         </div>
                     </div>
                 </div>
+                <div id="spieltag-create-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.5); z-index:2100; align-items:center; justify-content:center; padding:16px;">
+                    <div style="background:#fff; border:none; border-radius:12px; padding:0; max-width:560px; width:100%; margin:auto; box-shadow:0 12px 48px rgba(0,0,0,0.25); display:flex; flex-direction:column; max-height:90vh; overflow:hidden;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:18px 20px; border-bottom:1px solid #e8e8e8; background:#f8fbff;">
+                            <h3 style="margin:0; color:#1769aa; font-size:18px; font-weight:600;"><?= $this->t('Neuen Spieltag anlegen') ?></h3>
+                            <button type="button" id="spieltag-create-close-btn" title="<?= $this->t('Schließen') ?>" style="background:none; border:none; font-size:24px; color:#999; cursor:pointer; padding:0 4px; line-height:1;">&times;</button>
+                        </div>
+                        <div style="flex:1; overflow-y:auto; padding:24px;">
+                            <div style="display:grid; grid-template-columns:1fr; gap:18px;">
+                                <div>
+                                    <label for="spieltag-new-name" style="display:block; margin-bottom:8px; font-weight:600; color:#1769aa; font-size:14px;"><?= $this->t('SPIELTAG-NAME') ?></label>
+                                    <input type="text" id="spieltag-new-name" maxlength="100" style="width:100%; padding:8px 12px; border:1px solid #ccc; border-radius:12px; font-size:15px; min-height:36px;" />
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom:8px; font-weight:600; color:#1769aa; font-size:14px;"><?= $this->t('TEILNEHMER') ?></label>
+                                    <div id="spieltag-members-rows" style="display:flex; flex-direction:column; gap:8px;"></div>
+                                </div>
+                                <div id="spieltag-create-error" style="color:#d32f2f; font-size:13px; min-height:18px; padding:6px 0;"></div>
+                            </div>
+                        </div>
+                        <div style="display:flex; justify-content:flex-end; gap:8px; padding:16px 20px; border-top:1px solid #e8e8e8; background:#f8fbff;">
+                            <button type="button" id="spieltag-create-cancel" class="mini-button" style="padding:10px 20px; border:1px solid #ccc; background:#fff; color:#333; border-radius:6px; font-size:14px; font-weight:500; cursor:pointer; min-height:40px;"><?= $this->t('Abbrechen') ?></button>
+                            <button type="button" id="spieltag-create-confirm" class="default-button mini-button" style="padding:10px 24px; border:none; background:#2196f3; color:#fff; border-radius:6px; font-size:14px; font-weight:600; cursor:pointer; min-height:40px;"><?= $this->t('Anlegen') ?></button>
+                        </div>
+                    </div>
+                </div>
             </div>
             <script>
             document.addEventListener('DOMContentLoaded', function() {
@@ -203,6 +228,14 @@ if ($__partyModeEnabled) {
                 var selectedRecipientId = '';
                 var selectedRecipientTeamEventId = '';
                 var moneyRecipientTeamEventRequestId = 0;
+                var spieltagCreateModal = document.getElementById('spieltag-create-modal');
+                var spieltagCreateCloseBtn = document.getElementById('spieltag-create-close-btn');
+                var spieltagCreateCancelBtn = document.getElementById('spieltag-create-cancel');
+                var spieltagCreateConfirmBtn = document.getElementById('spieltag-create-confirm');
+                var spieltagNewNameInput = document.getElementById('spieltag-new-name');
+                var spieltagMembersRows = document.getElementById('spieltag-members-rows');
+                var spieltagCreateError = document.getElementById('spieltag-create-error');
+                var spieltagLastRealValue = '';
 
                 function normalizeMoneyAmount(rawValue) {
                     var value = String(rawValue || '').trim().replace(/\s+/g, '');
@@ -1219,6 +1252,14 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
     document.addEventListener('DOMContentLoaded', function() {
         var form = document.getElementById('drink-order-form');
         var submitBtn = document.querySelector('button[type="submit"][form="drink-order-form"]');
+        var moneyRecipients = <?= json_encode(isset($this->moneyRecipients) && is_array($this->moneyRecipients) ? $this->moneyRecipients : [], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) ?>;
+        var spieltagCreateModal = document.getElementById('spieltag-create-modal');
+        var spieltagCreateCloseBtn = document.getElementById('spieltag-create-close-btn');
+        var spieltagCreateCancelBtn = document.getElementById('spieltag-create-cancel');
+        var spieltagCreateConfirmBtn = document.getElementById('spieltag-create-confirm');
+        var spieltagNewNameInput = document.getElementById('spieltag-new-name');
+        var spieltagMembersRows = document.getElementById('spieltag-members-rows');
+        var spieltagCreateError = document.getElementById('spieltag-create-error');
         if (form && submitBtn) {
             form.addEventListener('submit', function(e) {
                 e.preventDefault();
@@ -1285,19 +1326,271 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
         }
         var spieltagSelect = document.getElementById('spieltag-select');
         if (spieltagSelect) {
-            spieltagSelect.addEventListener('change', function() {
-                var selected = spieltagSelect.value || '';
-                if (selected === '__new__') {
-                    var today = new Date();
-                    var year = today.getFullYear();
-                    var month = String(today.getMonth() + 1).padStart(2, '0');
-                    var day = String(today.getDate()).padStart(2, '0');
-                    var defaultSpieltagName = 'Spieltag ' + year + '-' + month + '-' + day;
-                    var newName = window.prompt('<?= $this->t('Neuen Spieltag eingeben:') ?>', defaultSpieltagName);
-                    if (!newName) {
+            function getDefaultSpieltagName() {
+                var today = new Date();
+                var year = today.getFullYear();
+                var month = String(today.getMonth() + 1).padStart(2, '0');
+                var day = String(today.getDate()).padStart(2, '0');
+                return 'Spieltag ' + year + '-' + month + '-' + day;
+            }
+
+            function getSpieltagSelectedMemberIds() {
+                if (!spieltagMembersRows) return [];
+                var rows = spieltagMembersRows.querySelectorAll('.spieltag-member-row');
+                var result = [];
+                rows.forEach(function(row) {
+                    var uid = parseInt(row.getAttribute('data-user-id') || '0', 10);
+                    if (uid > 0 && result.indexOf(uid) === -1) {
+                        result.push(uid);
+                    }
+                });
+                return result;
+            }
+
+            function ensureTrailingEmptySpieltagMemberRow() {
+                if (!spieltagMembersRows) return;
+                var rows = spieltagMembersRows.querySelectorAll('.spieltag-member-row');
+                var hasEmpty = false;
+                rows.forEach(function(row) {
+                    var uid = parseInt(row.getAttribute('data-user-id') || '0', 10);
+                    if (!uid) hasEmpty = true;
+                });
+                if (!hasEmpty) {
+                    createSpieltagMemberRow(null);
+                }
+            }
+
+            function createSpieltagMemberRow(initialRecipient) {
+                if (!spieltagMembersRows) return;
+
+                var row = document.createElement('div');
+                row.className = 'spieltag-member-row';
+                row.setAttribute('data-user-id', initialRecipient && initialRecipient.uid ? String(initialRecipient.uid) : '');
+                row.style.cssText = 'display:flex; align-items:center; gap:6px; position:relative;';
+
+                var input = document.createElement('input');
+                input.type = 'text';
+                input.autocomplete = 'off';
+                input.placeholder = '<?= $this->t('Teilnehmer suchen...') ?>';
+                input.style.cssText = 'flex:1; min-width:0; padding:8px 12px; border:1px solid #ccc; border-radius:12px; font-size:14px; min-height:36px;';
+
+                var clearBtn = document.createElement('button');
+                clearBtn.type = 'button';
+                clearBtn.title = '<?= $this->t('Feld leeren') ?>';
+                clearBtn.textContent = '×';
+                clearBtn.style.cssText = 'background:none; border:none; padding:6px; font-size:20px; color:#aaa; cursor:pointer; line-height:1; min-height:36px; display:flex; align-items:center; justify-content:center; min-width:36px;';
+
+                var removeBtn = document.createElement('button');
+                removeBtn.type = 'button';
+                removeBtn.title = '<?= $this->t('Zeile entfernen') ?>';
+                removeBtn.textContent = '−';
+                removeBtn.style.cssText = 'background:none; border:none; padding:6px; font-size:22px; color:#666; cursor:pointer; line-height:1; min-height:36px; display:flex; align-items:center; justify-content:center; min-width:36px;';
+
+                var list = document.createElement('div');
+                list.style.cssText = 'position:absolute; top:100%; left:0; right:78px; z-index:20; margin-top:4px;';
+                var memberRowSelectedIndex = -1;
+                var memberRowMatches = [];
+
+                function highlightMemberRowSelection() {
+                    var items = list.querySelectorAll('[data-index]');
+                    items.forEach(function(item, idx) {
+                        if (idx === memberRowSelectedIndex) {
+                            item.style.background = '#e3f2fd';
+                            item.scrollIntoView({ block: 'nearest' });
+                        } else {
+                            item.style.background = 'transparent';
+                        }
+                    });
+                }
+
+                function setRecipient(recipient) {
+                    if (!recipient || !recipient.uid) return;
+                    var selectedIds = getSpieltagSelectedMemberIds();
+                    var currentUid = parseInt(row.getAttribute('data-user-id') || '0', 10);
+                    if (selectedIds.indexOf(recipient.uid) !== -1 && currentUid !== recipient.uid) {
+                        if (spieltagCreateError) spieltagCreateError.textContent = '<?= $this->t('Dieser Teilnehmer wurde bereits hinzugefügt.') ?>';
                         return;
                     }
-                    var paramsNew = 'spieltag=' + encodeURIComponent('__new__') + '&new_spieltag=' + encodeURIComponent(newName);
+                    row.setAttribute('data-user-id', String(recipient.uid));
+                    input.value = String(recipient.name || '') + ' (' + String(recipient.email || '') + ')';
+                    list.innerHTML = '';
+                    memberRowSelectedIndex = -1;
+                    memberRowMatches = [];
+                    if (spieltagCreateError) spieltagCreateError.textContent = '';
+                    ensureTrailingEmptySpieltagMemberRow();
+                }
+
+                function renderList(filter) {
+                    list.innerHTML = '';
+                    memberRowSelectedIndex = -1;
+                    memberRowMatches = [];
+                    var term = String(filter || '').trim().toLowerCase();
+                    if (!term) return;
+
+                    var selectedIds = getSpieltagSelectedMemberIds();
+                    var currentUid = parseInt(row.getAttribute('data-user-id') || '0', 10);
+                    var matches = moneyRecipients.filter(function(r) {
+                        var rid = parseInt(r.uid || 0, 10);
+                        if (!rid) return false;
+                        if (selectedIds.indexOf(rid) !== -1 && currentUid !== rid) return false;
+                        var name = String(r.name || '').toLowerCase();
+                        var email = String(r.email || '').toLowerCase();
+                        return name.includes(term) || email.includes(term);
+                    });
+                    if (matches.length === 0) return;
+                    memberRowMatches = matches;
+
+                    var listInner = document.createElement('div');
+                    listInner.style.cssText = 'background:#fff; border:1px solid #ddd; max-height:150px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.12); border-radius:6px;';
+                    matches.forEach(function(recipient, idx) {
+                        var item = document.createElement('div');
+                        item.setAttribute('data-index', String(idx));
+                        item.textContent = String(recipient.name || '') + ' (' + String(recipient.email || '') + ')';
+                        item.style.cssText = 'padding:10px 12px; cursor:pointer; border-bottom:1px solid #f0f0f0; font-size:14px; min-height:40px; display:flex; align-items:center;';
+                        item.addEventListener('mousedown', function(e) {
+                            e.preventDefault();
+                            setRecipient(recipient);
+                        });
+                        item.addEventListener('mouseenter', function() {
+                            memberRowSelectedIndex = idx;
+                            highlightMemberRowSelection();
+                        });
+                        item.addEventListener('mouseleave', function() {
+                            if (memberRowSelectedIndex === idx) {
+                                memberRowSelectedIndex = -1;
+                            }
+                            highlightMemberRowSelection();
+                        });
+                        listInner.appendChild(item);
+                    });
+                    list.appendChild(listInner);
+                }
+
+                input.addEventListener('input', function() {
+                    row.setAttribute('data-user-id', '');
+                    renderList(input.value);
+                });
+                input.addEventListener('keydown', function(e) {
+                    if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        if (memberRowMatches.length === 0) {
+                            renderList(input.value);
+                        }
+                        if (memberRowMatches.length > 0) {
+                            memberRowSelectedIndex = Math.min(memberRowSelectedIndex + 1, memberRowMatches.length - 1);
+                            highlightMemberRowSelection();
+                        }
+                    } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        if (memberRowMatches.length > 0) {
+                            memberRowSelectedIndex = Math.max(memberRowSelectedIndex - 1, -1);
+                            highlightMemberRowSelection();
+                        }
+                    } else if (e.key === 'Enter') {
+                        if (memberRowMatches.length > 0) {
+                            e.preventDefault();
+                            var idx = memberRowSelectedIndex >= 0 ? memberRowSelectedIndex : 0;
+                            if (memberRowMatches[idx]) {
+                                setRecipient(memberRowMatches[idx]);
+                            }
+                        }
+                    } else if (e.key === 'Escape') {
+                        list.innerHTML = '';
+                        memberRowSelectedIndex = -1;
+                        memberRowMatches = [];
+                    }
+                });
+                input.addEventListener('blur', function() {
+                    setTimeout(function() {
+                        list.innerHTML = '';
+                        memberRowSelectedIndex = -1;
+                        memberRowMatches = [];
+                    }, 150);
+                });
+
+                clearBtn.addEventListener('click', function() {
+                    row.setAttribute('data-user-id', '');
+                    input.value = '';
+                    list.innerHTML = '';
+                    memberRowSelectedIndex = -1;
+                    memberRowMatches = [];
+                    input.focus();
+                });
+
+                removeBtn.addEventListener('click', function() {
+                    row.remove();
+                    ensureTrailingEmptySpieltagMemberRow();
+                });
+
+                row.appendChild(input);
+                row.appendChild(clearBtn);
+                row.appendChild(removeBtn);
+                row.appendChild(list);
+                spieltagMembersRows.appendChild(row);
+
+                if (initialRecipient && initialRecipient.uid) {
+                    setRecipient(initialRecipient);
+                }
+            }
+
+            function resetSpieltagCreateModal() {
+                if (spieltagNewNameInput) {
+                    spieltagNewNameInput.value = getDefaultSpieltagName();
+                }
+                if (spieltagCreateError) {
+                    spieltagCreateError.textContent = '';
+                }
+                if (spieltagMembersRows) {
+                    spieltagMembersRows.innerHTML = '';
+                    createSpieltagMemberRow(null);
+                }
+            }
+
+            function closeSpieltagCreateModal() {
+                if (spieltagCreateModal) {
+                    spieltagCreateModal.style.display = 'none';
+                }
+            }
+
+            function openSpieltagCreateModal() {
+                if (!spieltagCreateModal) return;
+                resetSpieltagCreateModal();
+                spieltagCreateModal.style.display = 'flex';
+                if (spieltagNewNameInput) {
+                    spieltagNewNameInput.focus();
+                    spieltagNewNameInput.select();
+                }
+            }
+
+            if (spieltagCreateCloseBtn) {
+                spieltagCreateCloseBtn.addEventListener('click', closeSpieltagCreateModal);
+            }
+            if (spieltagCreateCancelBtn) {
+                spieltagCreateCancelBtn.addEventListener('click', closeSpieltagCreateModal);
+            }
+            if (spieltagCreateModal) {
+                spieltagCreateModal.addEventListener('mousedown', function(e) {
+                    if (e.target === spieltagCreateModal) {
+                        closeSpieltagCreateModal();
+                    }
+                });
+            }
+            if (spieltagCreateConfirmBtn) {
+                spieltagCreateConfirmBtn.addEventListener('click', function() {
+                    var newName = spieltagNewNameInput ? String(spieltagNewNameInput.value || '').trim() : '';
+                    if (!newName) {
+                        if (spieltagCreateError) spieltagCreateError.textContent = '<?= $this->t('Bitte Spieltag-Namen eingeben.') ?>';
+                        return;
+                    }
+
+                    var memberIds = getSpieltagSelectedMemberIds();
+                    var paramsNew = 'spieltag=' + encodeURIComponent('__new__')
+                        + '&new_spieltag=' + encodeURIComponent(newName)
+                        + '&member_user_ids=' + encodeURIComponent(memberIds.join(','));
+
+                    if (spieltagCreateError) spieltagCreateError.textContent = '';
+                    spieltagCreateConfirmBtn.disabled = true;
+
                     fetch('simple-order/spieltag', {
                         method: 'POST',
                         credentials: 'same-origin',
@@ -1308,18 +1601,37 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
                         body: paramsNew
                     }).then(function(resp) { return resp.json(); }).then(function(data) {
                         if (!data || !data.success) {
-                            alert((data && data.error) ? data.error : '<?= $this->t('Fehler beim Speichern des Spieltags.') ?>');
+                            if (spieltagCreateError) {
+                                spieltagCreateError.textContent = (data && data.error) ? data.error : '<?= $this->t('Fehler beim Speichern des Spieltags.') ?>';
+                            }
                             return;
                         }
                         if (typeof window.teamSpieltagUpdateFromApi === 'function') {
                             window.teamSpieltagUpdateFromApi(data);
                         }
+                        closeSpieltagCreateModal();
                         window.location.reload();
                     }).catch(function() {
-                        alert('<?= $this->t('Netzwerkfehler beim Speichern des Spieltags.') ?>');
+                        if (spieltagCreateError) {
+                            spieltagCreateError.textContent = '<?= $this->t('Netzwerkfehler beim Speichern des Spieltags.') ?>';
+                        }
+                    }).finally(function() {
+                        spieltagCreateConfirmBtn.disabled = false;
                     });
+                });
+            }
+
+            spieltagSelect.addEventListener('change', function() {
+                var selected = spieltagSelect.value || '';
+                if (selected === '__new__') {
+                    if (spieltagLastRealValue) {
+                        spieltagSelect.value = spieltagLastRealValue;
+                    }
+                    openSpieltagCreateModal();
                     return;
                 }
+
+                spieltagLastRealValue = selected;
 
                 var params = 'spieltag=' + encodeURIComponent(selected);
                 fetch('simple-order/spieltag', {
@@ -1352,7 +1664,14 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
                 if (typeof window.teamSpieltagUpdateFromApi === 'function') {
                     window.teamSpieltagUpdateFromApi(data);
                 }
+                if (spieltagSelect && spieltagSelect.value && spieltagSelect.value !== '__new__') {
+                    spieltagLastRealValue = spieltagSelect.value;
+                }
             }).catch(function() {});
+
+            if (spieltagSelect.value && spieltagSelect.value !== '__new__') {
+                spieltagLastRealValue = spieltagSelect.value;
+            }
         }
         var minusBtns = document.querySelectorAll('.drink-minus');
         for (var i = 0; i < minusBtns.length; i++) {

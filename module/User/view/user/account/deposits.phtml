@@ -30,8 +30,7 @@ $this->setup([
         <div style="grid-column:1 / span 2; border-top:1px solid #d9e7f7; margin:2px 0 10px 0;"></div>
 
         <div id="deposit-tabs" style="grid-column:1 / span 2; display:flex; gap:8px; margin:6px 0 10px 0; flex-wrap:wrap;">
-            <button type="button" id="deposit-tab-einzahlung" class="mini-button" data-tab="einzahlung" style="border:1px solid #1769aa; background:#1769aa; color:#fff; font-size:1rem; padding:8px 16px; min-height:40px; border-radius:8px;">Einzahlung</button>
-            <button type="button" id="deposit-tab-buchungen" class="mini-button" data-tab="buchungen" style="border:1px solid #1769aa; background:#fff; color:#1769aa; font-size:1rem; padding:8px 16px; min-height:40px; border-radius:8px;">Buchungen</button>
+            <button type="button" id="deposit-tab-buchungen" class="mini-button" data-tab="buchungen" style="border:1px solid #1769aa; background:#1769aa; color:#fff; font-size:1rem; padding:8px 16px; min-height:40px; border-radius:8px;">Buchungen</button>
             <button type="button" id="deposit-tab-options" class="mini-button" data-tab="options" style="border:1px solid #1769aa; background:#fff; color:#1769aa; font-size:1rem; padding:8px 16px; min-height:40px; border-radius:8px;">Optionen</button>
         </div>
 
@@ -78,17 +77,7 @@ $this->setup([
             </div>
         </div>
 
-        <div id="tab-panel-einzahlung" style="grid-column:1 / span 2; display:none; grid-template-columns:160px 1fr; gap:10px 18px; align-items:center;">
-            <label for="deposit_amount" style="grid-column:1;">Guthaben aufladen:</label>
-            <input type="number" name="deposit_amount" id="deposit_amount" min="0.01" step="0.01" placeholder="<?= $this->t('Betrag') ?>" required style="grid-column:2;" />
 
-            <label for="deposit_comment" style="grid-column:1;">Bemerkung:</label>
-            <input type="text" name="deposit_comment" id="deposit_comment" maxlength="255" placeholder="<?= $this->t('Kommentar (optional)') ?>" style="grid-column:2;" />
-
-            <button type="submit" name="add_deposit" class="default-button mini-button" style="grid-column:1 / span 2; justify-self: start;">
-                <?= $this->t('Einzahlung hinzufügen') ?>
-            </button>
-        </div>
 
         <div id="tab-panel-buchungen" style="grid-column:1 / span 2; display:none;">
             <div id="multi-drink-section" style="display:flex; flex-direction:column; gap:8px;">
@@ -206,16 +195,14 @@ document.addEventListener('DOMContentLoaded', function() {
     };
     var depositTabStorageKey = 'deposits_active_tab';
     var activeDepositTab = 'einzahlung';
-
-    function updateTeamSpieltagVisibility() {
-        var isTeam = !!(isTeamCheckbox && isTeamCheckbox.checked);
-        var tabNeedsSpieltag = activeDepositTab === 'einzahlung' || activeDepositTab === 'buchungen';
-        if (teamSpieltagRow) {
-            teamSpieltagRow.style.display = (isTeam && tabNeedsSpieltag) ? '' : 'none';
-        }
-    }
-
-    function setActiveDepositTab(tabName) {
+buchungen: document.getElementById('deposit-tab-buchungen')
+    };
+    var tabPanels = {
+        options: document.getElementById('tab-panel-o
+        buchungen: document.getElementById('tab-panel-buchungen')
+    };
+    var depositTabStorageKey = 'deposits_active_tab';
+    var activeDepositTab = 'buchungenme) {
         if (!tabPanels[tabName] || !tabButtons[tabName]) {
             return;
         }
@@ -226,7 +213,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         ['einzahlung', 'buchungen', 'options'].forEach(function(name) {
             var panel = tabPanels[name];
-            var button = tabButtons[name];
+           tabButtons[name];
             if (panel) {
                 panel.style.display = (name === tabName) ? (name === 'buchungen' ? 'block' : 'grid') : 'none';
             }
@@ -247,13 +234,10 @@ document.addEventListener('DOMContentLoaded', function() {
     if (tabButtons.options) {
         tabButtons.options.addEventListener('click', function() { setActiveDepositTab('options'); });
     }
-    if (tabButtons.einzahlung) {
-        tabButtons.einzahlung.addEventListener('click', function() { setActiveDepositTab('einzahlung'); });
-    }
     if (tabButtons.buchungen) {
         tabButtons.buchungen.addEventListener('click', function() { setActiveDepositTab('buchungen'); });
     }
-    var initialDepositTab = 'einzahlung';
+    var initialDepositTab = 'buchungen';
     if (typeof localStorage !== 'undefined') {
         var storedDepositTab = localStorage.getItem(depositTabStorageKey);
         if (storedDepositTab && tabPanels[storedDepositTab] && tabButtons[storedDepositTab]) {
@@ -1201,11 +1185,14 @@ document.addEventListener('DOMContentLoaded', function() {
                         for (var i = 0; i < day.entries.length; i++) {
                             var entry = day.entries[i];
                             if (entry.type !== 'Einzahlung') continue;
+                        // Only show unassigned deposits (balance > 0 after all transactions)
+                        for (var i = 0; i < day.entries.length; i++) {
+                            var entry = day.entries[i];
+                            if (entry.type !== 'Einzahlung') continue;
                             // Show deleted deposits if showStorno is enabled
                             if (entry.deleted && !showStorno) continue;
-                            var isDeleted = entry.deleted;
-                            var style = 'color:#388e3c;';
-                            if (isDeleted) style += ' text-decoration:line-through;color:#b0b0b0;';
+                            // Only show deposits with positive balance (not yet fully used)
+                            if (entry.displayBalance <= 0ecoration:line-through;color:#b0b0b0;';
                             style += ' padding-top:1px; padding-bottom:1px; line-height:1; text-align:left;';
                             var timeStr = '';
                             if (entry.datetime) {
