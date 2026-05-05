@@ -85,8 +85,8 @@ class DrinkManager
             // Send cancellation email
             $subject = call_user_func($tCallback, 'Stornierung Deiner Getränkebestellung');
             $lines = [];
-            if ((int)$order['drink_id'] === 1) {
-                // Special: only show comment, skip drink name and quantity if quantity==1
+            if ((int)$order['drink_id'] === 1 || (int)$order['drink_id'] === -1) {
+                // Special case for Sonstiges (1) and money transfers (-1): only show comment
                 // Fallback to drink name if comment is empty
                 $drinkName = isset($order['drink_name']) ? $order['drink_name'] : ('ID ' . $order['drink_id']);
                 $label = '';
@@ -264,7 +264,8 @@ class DrinkManager
             $drinkSums = [];
             $commentSums = [];
             foreach ($ordersForDay as $order) {
-                if ((int)$order['drink_id'] === 1) {
+                if ((int)$order['drink_id'] === 1 || (int)$order['drink_id'] === -1) {
+                    // Special handling for Sonstiges (1) and money transfers (-1): group by comment
                     $key = $order['comment'];
                     if (!isset($drinkSums[$key])) {
                         $drinkSums[$key] = ['quantity' => 0, 'total' => 0.0, 'comment' => $order['comment']];

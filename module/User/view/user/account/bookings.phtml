@@ -1642,8 +1642,8 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
                         $comment = isset($entry['comment']) ? trim($entry['comment']) : '';
                         $drinkName = isset($entry['name']) ? $entry['name'] : '';
                         $rowLabel = '';
-                        if ($drinkId === 1) {
-                            // Only show comment, skip drink name and quantity if quantity==1
+                        if ($drinkId === 1 || $drinkId === -1) {
+                            // Special case for Sonstiges (1) and money transfers (-1): only show comment
                             if ($quantity > 1) {
                                 $rowLabel = $quantity . 'x ';
                             }

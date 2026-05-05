@@ -130,11 +130,15 @@ document.addEventListener('DOMContentLoaded', function() {
         <?php endforeach; ?>
     ];
 
-    // Build drinks list from PHP for JS
+    // Build drinks list from PHP for JS (exclude money transfer category -1)
     var drinks = <?php
         if (isset($this->drinks) && is_array($this->drinks)) {
             $drinksArr = [];
             foreach ($this->drinks as $drink) {
+                // Skip the money transfer pseudo-drink (id = -1)
+                if ((int)$drink['id'] === -1) {
+                    continue;
+                }
                 $drinksArr[] = [
                     'id' => (int)$drink['id'],
                     'name' => $drink['name'] ?? '',
@@ -1058,10 +1062,10 @@ document.addEventListener('DOMContentLoaded', function() {
                             } else {
                                 xBtn = '<button class="entry-cancel-btn" data-entry-id="' + orderId + '" data-entry-type="order" title="<?= $this->t('Stornieren') ?>" style="margin-right:6px; color:#d32f2f; background:none; border:none; font-size:15px; font-weight:bold; cursor:pointer; line-height:1;">&times;</button>';
                             }
-                            // For drinkId==1, show only the comment, skip drink name and '1x'
+                            // For Sonstiges (1) and money transfers (-1), show only the comment
                             var descWithComment = '';
-                            if (entry.drink_id == 1) {
-                                // Only show comment, no drink name, no '1x'
+                            if (entry.drink_id == 1 || entry.drink_id == -1) {
+                                // Only show comment for special items, no drink name, no qty
                                 if (entry.comment && entry.comment.trim() !== '') {
                                     descWithComment = '<span style="color:#888;">' + entry.comment.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span>';
                                 } else {

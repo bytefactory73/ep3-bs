@@ -118,7 +118,7 @@ trait MoneyTransferTrait
             // Sender side: transfer out as an expense order (positive price).
             $orderInsertResult = $drinkOrderManager->addOrder(
                 $senderUserId,
-                1,
+                -1,
                 1,
                 $senderUserId,
                 0,

@@ -182,7 +182,7 @@ $this->setup([
 
 <!-- ZXing barcode scanner (if not already included globally) -->
 <script src="<?= $this->basePath('js/jquery/jquery.min.js') ?>"></script>
-<script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
+<script src="<?= $this->basePath('js/zxing-barcode.min.js') ?>"></script>
 <script>
 $(function() {
     function showBarcodeScanner(drinkId) {

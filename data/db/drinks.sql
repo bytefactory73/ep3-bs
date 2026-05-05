@@ -8,6 +8,9 @@ CREATE TABLE IF NOT EXISTS drinks (
     FOREIGN KEY (category) REFERENCES drink_categories(id)
 );
 
+-- Insert money transfer category (negative ID to exclude from normal ordering)
+INSERT IGNORE INTO drinks (id, name, price, image, category) VALUES (-1, 'Geld senden', 1.00, NULL, 0);
+
 -- Team events for team-mode accounting/statistics
 CREATE TABLE IF NOT EXISTS drinks_teamevents (
     id INT AUTO_INCREMENT PRIMARY KEY,
