@@ -1385,8 +1385,12 @@ class AccountController extends AbstractActionController
                 return $this->redirect()->toRoute('user/settings');
             }
         } else {
-            $editEmailForm->get('eef-email1')->setValue($user->get('email'));
-            $editEmailForm->get('eef-email2')->setValue($user->get('email'));
+            $prefillEmail = trim((string)$this->params()->fromQuery('email', $user->get('email')));
+            if ($prefillEmail === '' || !filter_var($prefillEmail, FILTER_VALIDATE_EMAIL)) {
+                $prefillEmail = (string)$user->get('email');
+            }
+            $editEmailForm->get('eef-email1')->setValue($prefillEmail);
+            $editEmailForm->get('eef-email2')->setValue($prefillEmail);
         }
 
         /* Notifications form */

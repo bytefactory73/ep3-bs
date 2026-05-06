@@ -30,6 +30,7 @@ $this->setup([
         <div style="grid-column:1 / span 2; border-top:1px solid #d9e7f7; margin:2px 0 10px 0;"></div>
 
         <div id="deposit-tabs" style="grid-column:1 / span 2; display:flex; gap:8px; margin:6px 0 10px 0; flex-wrap:wrap;">
+            <button type="button" id="deposit-tab-einzahlung" class="mini-button" data-tab="einzahlung" style="border:1px solid #1769aa; background:#fff; color:#1769aa; font-size:1rem; padding:8px 16px; min-height:40px; border-radius:8px;">Einzahlung</button>
             <button type="button" id="deposit-tab-buchungen" class="mini-button" data-tab="buchungen" style="border:1px solid #1769aa; background:#1769aa; color:#fff; font-size:1rem; padding:8px 16px; min-height:40px; border-radius:8px;">Buchungen</button>
             <button type="button" id="deposit-tab-options" class="mini-button" data-tab="options" style="border:1px solid #1769aa; background:#fff; color:#1769aa; font-size:1rem; padding:8px 16px; min-height:40px; border-radius:8px;">Optionen</button>
         </div>
@@ -74,6 +75,20 @@ $this->setup([
                         <option value="negative">Nur wenn negativ</option>
                     </select>
                 </div>
+            </div>
+        </div>
+
+        <div id="tab-panel-einzahlung" style="grid-column:1 / span 2; display:none; grid-template-columns:160px 1fr; gap:10px 18px; align-items:center;">
+            <label for="deposit_amount" style="grid-column:1;">Einzahlungsbetrag:</label>
+            <input type="number" step="0.01" min="0.01" id="deposit_amount" name="deposit_amount" placeholder="0,00" style="grid-column:2; max-width:220px;" />
+
+            <label for="deposit_comment" style="grid-column:1;">Bemerkung:</label>
+            <input type="text" id="deposit_comment" name="deposit_comment" maxlength="255" placeholder="<?= $this->t('Kommentar (optional)') ?>" style="grid-column:2;" />
+
+            <div style="grid-column:1 / span 2; display:flex; justify-content:flex-start;">
+                <button type="submit" name="add_deposit" value="1" class="default-button mini-button" style="min-height:40px;">
+                    <?= $this->t('Einzahlung speichern') ?>
+                </button>
             </div>
         </div>
 
@@ -194,15 +209,21 @@ document.addEventListener('DOMContentLoaded', function() {
         buchungen: document.getElementById('tab-panel-buchungen')
     };
     var depositTabStorageKey = 'deposits_active_tab';
-    var activeDepositTab = 'einzahlung';
-buchungen: document.getElementById('deposit-tab-buchungen')
-    };
-    var tabPanels = {
-        options: document.getElementById('tab-panel-o
-        buchungen: document.getElementById('tab-panel-buchungen')
-    };
-    var depositTabStorageKey = 'deposits_active_tab';
-    var activeDepositTab = 'buchungenme) {
+    var activeDepositTab = 'buchungen';
+
+    function updateTeamSpieltagVisibility() {
+        if (!teamSpieltagRow) return;
+        var hasUser = !!(userIdInput && String(userIdInput.value || '').trim() !== '');
+        var isTeam = !!(isTeamCheckbox && isTeamCheckbox.checked);
+        var show = hasUser && isTeam && (activeDepositTab === 'buchungen' || activeDepositTab === 'einzahlung');
+        teamSpieltagRow.style.display = show ? '' : 'none';
+
+        if (!show && teamNewSpieltagInput) {
+            teamNewSpieltagInput.value = '';
+        }
+    }
+
+    function setActiveDepositTab(tabName) {
         if (!tabPanels[tabName] || !tabButtons[tabName]) {
             return;
         }
@@ -213,7 +234,7 @@ buchungen: document.getElementById('deposit-tab-buchungen')
 
         ['einzahlung', 'buchungen', 'options'].forEach(function(name) {
             var panel = tabPanels[name];
-           tabButtons[name];
+            var button = tabButtons[name];
             if (panel) {
                 panel.style.display = (name === tabName) ? (name === 'buchungen' ? 'block' : 'grid') : 'none';
             }
@@ -234,10 +255,13 @@ buchungen: document.getElementById('deposit-tab-buchungen')
     if (tabButtons.options) {
         tabButtons.options.addEventListener('click', function() { setActiveDepositTab('options'); });
     }
+    if (tabButtons.einzahlung) {
+        tabButtons.einzahlung.addEventListener('click', function() { setActiveDepositTab('einzahlung'); });
+    }
     if (tabButtons.buchungen) {
         tabButtons.buchungen.addEventListener('click', function() { setActiveDepositTab('buchungen'); });
     }
-    var initialDepositTab = 'buchungen';
+    var initialDepositTab = 'einzahlung';
     if (typeof localStorage !== 'undefined') {
         var storedDepositTab = localStorage.getItem(depositTabStorageKey);
         if (storedDepositTab && tabPanels[storedDepositTab] && tabButtons[storedDepositTab]) {
@@ -673,13 +697,43 @@ buchungen: document.getElementById('deposit-tab-buchungen')
         return users.find(u => (u.alias + ' (' + u.email + ')').toLowerCase() === str);
     }
     // Autocomplete logic
+    var userSearchMatches = [];
+    var userSearchSelectedIndex = -1;
+
+    function highlightUserSearchSelection() {
+        var items = userSearchList ? userSearchList.querySelectorAll('[data-user-index]') : [];
+        items.forEach(function(item, idx) {
+            if (idx === userSearchSelectedIndex) {
+                item.style.background = '#e3f0fa';
+                item.scrollIntoView({ block: 'nearest' });
+            } else {
+                item.style.background = '';
+            }
+        });
+    }
+
+    function selectUserSearchMatch(match) {
+        if (!match) return;
+        userSearch.value = match.alias + ' (' + match.email + ')';
+        userIdInput.value = match.uid;
+        switchUserContext(match.uid);
+        userSearchList.innerHTML = '';
+        userSearchMatches = [];
+        userSearchSelectedIndex = -1;
+        updateDrinksFields();
+        updateUserInfo();
+    }
+
     function renderUserList(filter) {
         userSearchList.innerHTML = '';
+        userSearchMatches = [];
+        userSearchSelectedIndex = -1;
         if (!filter) return;
         var matches = users.filter(u =>
             u.alias.toLowerCase().includes(filter) ||
             u.email.toLowerCase().includes(filter)
         );
+        userSearchMatches = matches;
         if (matches.length === 0) return;
         var list = document.createElement('div');
         list.style.position = 'absolute';
@@ -688,19 +742,19 @@ buchungen: document.getElementById('deposit-tab-buchungen')
         list.style.width = '100%';
         list.style.maxHeight = '180px';
         list.style.overflowY = 'auto';
-        matches.forEach(function(u) {
+        matches.forEach(function(u, idx) {
             var item = document.createElement('div');
+            item.setAttribute('data-user-index', String(idx));
             item.textContent = u.alias + ' (' + u.email + ')';
             item.style.padding = '4px 8px';
             item.style.cursor = 'pointer';
             item.addEventListener('mousedown', function(e) {
                 e.preventDefault();
-                userSearch.value = u.alias + ' (' + u.email + ')';
-                userIdInput.value = u.uid;
-                switchUserContext(u.uid);
-                userSearchList.innerHTML = '';
-                updateDrinksFields();
-                updateUserInfo();
+                selectUserSearchMatch(u);
+            });
+            item.addEventListener('mouseenter', function() {
+                userSearchSelectedIndex = idx;
+                highlightUserSearchSelection();
             });
             list.appendChild(item);
         });
@@ -723,6 +777,28 @@ buchungen: document.getElementById('deposit-tab-buchungen')
     });
     userSearch.addEventListener('blur', function() {
         setTimeout(function() { userSearchList.innerHTML = ''; }, 150);
+    });
+    userSearch.addEventListener('keydown', function(e) {
+        if (e.key === 'ArrowDown') {
+            if (userSearchMatches.length === 0) return;
+            e.preventDefault();
+            userSearchSelectedIndex = Math.min(userSearchSelectedIndex + 1, userSearchMatches.length - 1);
+            highlightUserSearchSelection();
+        } else if (e.key === 'ArrowUp') {
+            if (userSearchMatches.length === 0) return;
+            e.preventDefault();
+            userSearchSelectedIndex = Math.max(userSearchSelectedIndex - 1, -1);
+            highlightUserSearchSelection();
+        } else if (e.key === 'Enter') {
+            if (userSearchMatches.length === 0) return;
+            e.preventDefault();
+            var idx = userSearchSelectedIndex >= 0 ? userSearchSelectedIndex : 0;
+            selectUserSearchMatch(userSearchMatches[idx]);
+        } else if (e.key === 'Escape') {
+            userSearchList.innerHTML = '';
+            userSearchMatches = [];
+            userSearchSelectedIndex = -1;
+        }
     });
     // Check for uid in URL, else restore last selected user from localStorage
     function getUidFromUrl() {
@@ -929,28 +1005,58 @@ buchungen: document.getElementById('deposit-tab-buchungen')
     var setAliasBtn = document.getElementById('set-alias-btn');
 
     // Mannschaftführer autocomplete
+    var teamleadMatches = [];
+    var teamleadSelectedIndex = -1;
+
+    function highlightTeamleadSelection() {
+        var items = teamleadSearchList ? teamleadSearchList.querySelectorAll('[data-teamlead-index]') : [];
+        items.forEach(function(item, idx) {
+            if (idx === teamleadSelectedIndex) {
+                item.style.background = '#e3f0fa';
+                item.scrollIntoView({ block: 'nearest' });
+            } else {
+                item.style.background = '';
+            }
+        });
+    }
+
+    function selectTeamleadMatch(u) {
+        if (!u) return;
+        teamleadSearchInput.value = u.alias + ' (' + u.email + ')';
+        teamleadUidInput.value = u.uid;
+        teamleadSearchList.innerHTML = '';
+        teamleadMatches = [];
+        teamleadSelectedIndex = -1;
+        saveTeamleadEmail(u.email);
+    }
+
     function renderTeamleadList(filter) {
         if (!teamleadSearchList) return;
         teamleadSearchList.innerHTML = '';
+        teamleadMatches = [];
+        teamleadSelectedIndex = -1;
         if (!filter) return;
         var matches = users.filter(function(u) {
             return u.alias.toLowerCase().includes(filter) || u.email.toLowerCase().includes(filter);
         });
+        teamleadMatches = matches;
         if (matches.length === 0) return;
         var list = document.createElement('div');
         list.style.cssText = 'background:#fff; border:1px solid #ccc; width:100%; max-height:180px; overflow-y:auto;';
-        matches.forEach(function(u) {
+        matches.forEach(function(u, idx) {
             var item = document.createElement('div');
+            item.setAttribute('data-teamlead-index', String(idx));
             item.textContent = u.alias + ' (' + u.email + ')';
             item.style.cssText = 'padding:4px 8px; cursor:pointer;';
             item.addEventListener('mouseover', function() { item.style.background = '#e3f0fa'; });
             item.addEventListener('mouseout', function() { item.style.background = ''; });
             item.addEventListener('mousedown', function(e) {
                 e.preventDefault();
-                teamleadSearchInput.value = u.alias + ' (' + u.email + ')';
-                teamleadUidInput.value = u.uid;
-                teamleadSearchList.innerHTML = '';
-                saveTeamleadEmail(u.email);
+                selectTeamleadMatch(u);
+            });
+            item.addEventListener('mouseenter', function() {
+                teamleadSelectedIndex = idx;
+                highlightTeamleadSelection();
             });
             list.appendChild(item);
         });
@@ -980,6 +1086,28 @@ buchungen: document.getElementById('deposit-tab-buchungen')
         teamleadSearchInput.addEventListener('input', function() {
             teamleadUidInput.value = '';
             renderTeamleadList(teamleadSearchInput.value.trim().toLowerCase());
+        });
+        teamleadSearchInput.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowDown') {
+                if (teamleadMatches.length === 0) return;
+                e.preventDefault();
+                teamleadSelectedIndex = Math.min(teamleadSelectedIndex + 1, teamleadMatches.length - 1);
+                highlightTeamleadSelection();
+            } else if (e.key === 'ArrowUp') {
+                if (teamleadMatches.length === 0) return;
+                e.preventDefault();
+                teamleadSelectedIndex = Math.max(teamleadSelectedIndex - 1, -1);
+                highlightTeamleadSelection();
+            } else if (e.key === 'Enter') {
+                if (teamleadMatches.length === 0) return;
+                e.preventDefault();
+                var idx = teamleadSelectedIndex >= 0 ? teamleadSelectedIndex : 0;
+                selectTeamleadMatch(teamleadMatches[idx]);
+            } else if (e.key === 'Escape') {
+                if (teamleadSearchList) teamleadSearchList.innerHTML = '';
+                teamleadMatches = [];
+                teamleadSelectedIndex = -1;
+            }
         });
         teamleadSearchInput.addEventListener('blur', function() {
             setTimeout(function() {
@@ -1185,26 +1313,29 @@ buchungen: document.getElementById('deposit-tab-buchungen')
                         for (var i = 0; i < day.entries.length; i++) {
                             var entry = day.entries[i];
                             if (entry.type !== 'Einzahlung') continue;
-                        // Only show unassigned deposits (balance > 0 after all transactions)
-                        for (var i = 0; i < day.entries.length; i++) {
-                            var entry = day.entries[i];
-                            if (entry.type !== 'Einzahlung') continue;
-                            // Show deleted deposits if showStorno is enabled
+                            // Show deleted deposits only when explicitly requested.
                             if (entry.deleted && !showStorno) continue;
-                            // Only show deposits with positive balance (not yet fully used)
-                            if (entry.displayBalance <= 0ecoration:line-through;color:#b0b0b0;';
+                            // Keep old behavior: hide already consumed deposits unless they are deleted rows.
+                            if (!entry.deleted && entry.displayBalance <= 0) continue;
+
+                            var isDeleted = entry.deleted;
+                            var style = 'color:#1769aa;';
+                            if (isDeleted) style += ' text-decoration:line-through;color:#b0b0b0;';
                             style += ' padding-top:1px; padding-bottom:1px; line-height:1; text-align:left;';
+
                             var timeStr = '';
                             if (entry.datetime) {
                                 var match = entry.datetime.match(/\b(\d{2}:\d{2})/);
                                 if (match) timeStr = match[1];
                             }
+
                             var xBtn = '';
                             if (isDeleted) {
                                 xBtn = '<button class="entry-cancel-btn" data-entry-id="' + entry.id + '" data-entry-type="deposit" data-reactivate="1" title="<?= $this->t('Reaktivieren') ?>" style="margin-right:6px; color:#388e3c; background:none; border:none; font-size:15px; font-weight:bold; cursor:pointer; line-height:1;">&times;</button>';
                             } else {
                                 xBtn = '<button class="entry-cancel-btn" data-entry-id="' + entry.id + '" data-entry-type="deposit" title="<?= $this->t('Stornieren') ?>" style="margin-right:6px; color:#d32f2f; background:none; border:none; font-size:15px; font-weight:bold; cursor:pointer; line-height:1;">&times;</button>';
                             }
+
                             html += '<tr style="' + style + '">';
                             html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + xBtn + entry.type + '</td>';
                             html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + formatCurrency(entry.amount) + '</td>';
@@ -1364,5 +1495,4 @@ function attachEntryCancelHandlers() {
     });
 }
 });
-// ...existing code...
 </script>

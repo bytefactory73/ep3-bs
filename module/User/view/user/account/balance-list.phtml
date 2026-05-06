@@ -136,7 +136,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <td style="font-weight:bold; color:#888; text-align:right;"> <?= $rownum++ ?>. </td>
             <td>
                 <?php if (!empty($user['uid'])): ?>
-                    <a href="<?= $this->url('user/deposits') . '?uid=' . urlencode($user['uid']) ?>"
+                    <a href="<?= $this->url('user/deposits') . '?uid=' . urlencode($user['uid']) . '&email=' . urlencode((string)$user['email']) ?>"
                        title="<?= $this->t('Zur Einzahlung für diesen Nutzer') ?>"
                        style="color:#1976d2; text-decoration:underline; font-weight:bold;">
                         <span style="white-space:nowrap;">
