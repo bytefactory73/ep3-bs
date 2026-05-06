@@ -153,3 +153,8 @@ CREATE TABLE IF NOT EXISTS drink_checks (
     INDEX idx_drink_checks_time (check_time),
     INDEX idx_drink_checks_user_time (user_id, check_time)
 );
+
+-- Keep logged in feature for simple login (4-hour sessions)
+-- To update existing databases, run:
+-- ALTER TABLE drink_aliases ADD COLUMN keep_logged_in TINYINT(1) DEFAULT 0 AFTER teamlead_email;
+-- ALTER TABLE drink_aliases ADD COLUMN keep_logged_in_expires DATETIME NULL AFTER keep_logged_in;

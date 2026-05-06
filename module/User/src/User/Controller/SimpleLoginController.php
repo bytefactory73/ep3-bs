@@ -50,13 +50,39 @@ class SimpleLoginController extends AbstractActionController
             if ($eTs && $now > $eTs) $activeWithin = false;
             $partyModeEnabled = $partyModeEnabledBase && $activeWithin;
         } catch (\Exception $e) {}
+        
+        // Load users with active "keep logged in" sessions
+        $quickLoginUsers = [];
+        try {
+            $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
+            $now = new \DateTime();
+            $quickLoginUsers = $db->query(
+                'SELECT da.user_id, da.alias AS theken_id, u.alias AS display_name, da.is_team
+                 FROM drink_aliases da
+                 LEFT JOIN bs_users u ON da.user_id = u.uid
+                 WHERE da.keep_logged_in = 1 AND da.keep_logged_in_expires > ?
+                 ORDER BY da.is_team DESC, u.alias ASC',
+                [$now->format('Y-m-d H:i:s')]
+            )->toArray();
+        } catch (\Exception $e) {}
+        
         if ($request->isPost()) {
             $alias = trim($request->getPost('alias'));
+            $keepLoggedIn = (bool)$request->getPost('keep_logged_in', false);
             if ($alias) {
                 $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
                 $row = $db->query('SELECT user_id, enabled FROM drink_aliases WHERE alias = ?', [$alias])->current();
                 if ($row && $row['user_id']) {
                     if ((int)$row['enabled'] === 1) {
+                        // Handle "keep logged in" option
+                        if ($keepLoggedIn) {
+                            $expiresAt = (new \DateTime('+4 hours'))->format('Y-m-d H:i:s');
+                            $db->query(
+                                'UPDATE drink_aliases SET keep_logged_in = 1, keep_logged_in_expires = ? WHERE user_id = ?',
+                                [$expiresAt, $row['user_id']]
+                            );
+                        }
+                        
                         $session = new \Zend\Session\Container('SimpleLogin');
                         $session->user_id = $row['user_id'];
                         return $this->redirect()->toRoute('user/simple-order');
@@ -76,6 +102,7 @@ class SimpleLoginController extends AbstractActionController
             'recentOrdersCutoffHours' => self::RECENT_ORDERS_CUTOFF_HOURS,
             'partyModeEnabled' => $partyModeEnabled,
             'partyModeMessage' => $partyModeMessage,
+            'quickLoginUsers' => $quickLoginUsers,
         ]);
         $viewModel->setTerminal(true);
         return $viewModel;
@@ -108,9 +135,27 @@ class SimpleLoginController extends AbstractActionController
         $currentBalance = $drinkManager->calculateUserDrinkBalance($userId, $this->getServiceLocator());
         // Fetch flags from drink_aliases
         $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
-        $row = $db->query('SELECT thekenadmin, is_team FROM drink_aliases WHERE user_id = ?', [$userId])->current();
+        $row = $db->query('SELECT thekenadmin, is_team, keep_logged_in, keep_logged_in_expires FROM drink_aliases WHERE user_id = ?', [$userId])->current();
         $thekenadmin = ($row && !empty($row['thekenadmin'])) ? true : false;
         $isTeamAccount = ($row && !empty($row['is_team'])) ? true : false;
+        $keepLoggedInActive = false;
+        if ($row && !empty($row['keep_logged_in']) && !empty($row['keep_logged_in_expires'])) {
+            $expiresAt = new \DateTime($row['keep_logged_in_expires']);
+            $now = new \DateTime();
+            if ($now < $expiresAt) {
+                $keepLoggedInActive = true;
+            } else {
+                // Session has expired - reset the flag in DB
+                try {
+                    $db->query(
+                        'UPDATE drink_aliases SET keep_logged_in = 0, keep_logged_in_expires = NULL WHERE user_id = ?',
+                        [$userId]
+                    );
+                } catch (\Exception $e) {
+                    // Silently fail
+                }
+            }
+        }
         $teamAdminUserId = $userId;
         $currentTeamEventLabel = '';
         $availableTeamEventLabels = [];
@@ -235,6 +280,7 @@ class SimpleLoginController extends AbstractActionController
             'partyModeEnabled' => $partyModeEnabled,
             'partyModeMessage' => $partyModeMessage,
             'moneyRecipients' => $moneyRecipients,
+            'keepLoggedInActive' => $keepLoggedInActive,
         ]);
     }
 
@@ -510,11 +556,45 @@ class SimpleLoginController extends AbstractActionController
         if (empty($session->user_id)) {
             return $this->getResponse()->setStatusCode(401)->setContent(json_encode(['success' => false, 'error' => 'Not authenticated.']));
         }
+        
+        // Handle keep_logged_in checkbox
+        $keepLoggedIn = (bool)$this->params()->fromPost('keep_logged_in', false);
+        if ($keepLoggedIn) {
+            $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
+            $expiresAt = (new \DateTime('+4 hours'))->format('Y-m-d H:i:s');
+            try {
+                $db->query(
+                    'UPDATE drink_aliases SET keep_logged_in = 1, keep_logged_in_expires = ? WHERE user_id = ?',
+                    [$expiresAt, $session->user_id]
+                );
+            } catch (\Exception $e) {
+                // Silently fail - don't block order submission
+            }
+        } else {
+            // If checkbox is unchecked, disable keep_logged_in mode
+            $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
+            try {
+                $db->query(
+                    'UPDATE drink_aliases SET keep_logged_in = 0, keep_logged_in_expires = NULL WHERE user_id = ?',
+                    [$session->user_id]
+                );
+            } catch (\Exception $e) {
+                // Silently fail
+            }
+        }
+        
         $userManager = $this->getServiceLocator()->get('User\Manager\UserManager');
         $user = $userManager->get($session->user_id);
         $drinkManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkManager');
         $drinkCounts = $this->params()->fromPost('drink_counts', []);
         $isAutoOrder = (int)$this->params()->fromPost('is_auto_order', 0);
+        
+        // If no drinks are ordered, just return success (e.g., when only updating keep_logged_in)
+        if (empty($drinkCounts)) {
+            $currentBalance = $drinkManager->calculateUserDrinkBalance($session->user_id, $this->getServiceLocator());
+            return $this->getResponse()->setContent(json_encode(['success' => true, 'balance' => $currentBalance]))->setStatusCode(200);
+        }
+        
         $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
         $row = $db->query('SELECT is_team FROM drink_aliases WHERE user_id = ?', [$session->user_id])->current();
         $isTeamAccount = ($row && !empty($row['is_team'])) ? true : false;

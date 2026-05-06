@@ -152,11 +152,57 @@ if ($partyModeEnabled) {
     })();
     </script>
 </div>
+
+<?php
+// Render "Schnell Login" section if there are quick login users available
+if (!empty($this->quickLoginUsers) && is_array($this->quickLoginUsers) && count($this->quickLoginUsers) > 0):
+?>
+<div class="simple-order-history-frame" style="margin-top:8px;">
+    <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px;">
+        <?php foreach ($this->quickLoginUsers as $user):
+            $isTeam = !empty($user['is_team']);
+            $bgColor = $isTeam ? '#1769aa' : '#4CAF50';
+            $hoverColor = $isTeam ? '#0d47a1' : '#45a049';
+        ?>
+        <form method="post" autocomplete="off">
+            <input type="hidden" name="alias" value="<?= $this->escapeHtml($user['theken_id']) ?>">
+            <input type="hidden" name="keep_logged_in" value="1">
+            <button type="submit" style="
+                width: 100px;
+                height: 100px;
+                background: <?= $bgColor ?>;
+                color: white;
+                border: none;
+                border-radius: 10px;
+                font-size: 0.9em;
+                font-weight: bold;
+                cursor: pointer;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+                transition: background 0.18s;
+                word-break: normal;
+                overflow-wrap: anywhere;
+                padding: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                text-align: center;
+            "
+            onmouseover="this.style.background='<?= $hoverColor ?>'"
+            onmouseout="this.style.background='<?= $bgColor ?>'">
+                <?= $this->escapeHtml(!empty($user['display_name']) ? $user['display_name'] : $user['theken_id']) ?>
+            </button>
+        </form>
+        <?php endforeach; ?>
+    </div>
+</div>
+<?php endif; ?>
+
 <div class="simple-login-info" style="">
     Logge dich mit deiner <b>"Theken-ID"</b> ein. Diese kannst du in deinem Benutzer Profil des Buchungssystem selbst wählen.
     <br>
     <a href="#" id="bedienungsanleitung-link" style="color:#2196f3; font-weight:bold; text-decoration:underline; font-size:1.08em;">Bedienungsanleitung</a>
 </div>
+
 <!-- Overlay for Bedienungsanleitung -->
 <div id="bedienungsanleitung-overlay" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(33,150,243,0.12); z-index:9999; align-items:center; justify-content:center;">
     <div style="position:relative; width:90vw; height:90vh; max-width:900px; max-height:900px; background:#fff; border-radius:14px; box-shadow:0 4px 32px rgba(33,150,243,0.18); overflow:hidden; display:flex; flex-direction:column;">

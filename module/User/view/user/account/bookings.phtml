@@ -67,7 +67,13 @@ if ($__partyModeEnabled) {
                 </div>
             <?php endif; ?>
             <?php if ($simpleOrderMode): ?>
-                <span id="logout-timer" style="display:inline-flex; align-items:center; margin-left:16px; font-size:0.85em; color:#d32f2f; background:#fff3f3; border:1px solid #d32f2f; border-radius:6px; padding:2px 10px; display:none; white-space:nowrap;"></span>
+                <div style="display: inline-flex; align-items: center; margin-left: 16px; gap: 8px;">
+                    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85em; color: #333; margin: 0; cursor: pointer; white-space: nowrap;">
+                        <input type="checkbox" id="keep-logged-in-header" <?= (!empty($this->keepLoggedInActive) ? 'checked' : '') ?> style="width: 16px; height: 16px; cursor: pointer;">
+                        <span>Eingeloggt bleiben</span>
+                    </label>
+                    <span id="logout-timer" style="display:inline-flex; align-items:center; margin-left:8px; font-size:0.85em; color:#d32f2f; background:#fff3f3; border:1px solid #d32f2f; border-radius:6px; padding:2px 10px; display:none; white-space:nowrap;"></span>
+                </div>
             <?php endif; ?>
         </div>
         <?php if (isset($drinks) && $drinksEnabled): ?>
@@ -1310,6 +1316,13 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
                         params.push(encodeURIComponent(key) + '=' + encodeURIComponent(data[key]));
                     }
                 }
+                // Add keep_logged_in parameter
+                if (window.SIMPLE_ORDER_MODE) {
+                    var keepLoggedInCheckbox = document.getElementById('keep-logged-in-header');
+                    if (keepLoggedInCheckbox) {
+                        params.push('keep_logged_in=' + (keepLoggedInCheckbox.checked ? '1' : '0'));
+                    }
+                }
                 var xhr = new XMLHttpRequest();
                 xhr.open('POST', url, true);
                 xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
@@ -1776,6 +1789,16 @@ function clearSelectionAndLogout(logoutUser) {
         clearBtn.style.cursor = 'not-allowed';
     }
     if (logoutUser) {
+        if (window.SIMPLE_ORDER_MODE && !window.__KEEP_LOGGED_IN_UPDATED__) {
+            // Always synchronously update keep_logged_in state in DB before redirect
+            var keepLoggedInCheckbox = document.getElementById('keep-logged-in-header');
+            var keepVal = (keepLoggedInCheckbox && keepLoggedInCheckbox.checked) ? '1' : '0';
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', 'simple-order/submit-order', false); // synchronous
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+            try { xhr.send('keep_logged_in=' + keepVal); } catch(e) {}
+        }
         window.location.replace('<?= $this->url("user/simple-login") ?>');
     }
 }
@@ -2334,30 +2357,36 @@ document.addEventListener('DOMContentLoaded', function() {
                             hasOrder = true;
                         }
                     }
+                    // Always include keep_logged_in state in auto-order
+                    var keepLoggedInCheckbox = document.getElementById('keep-logged-in-header');
+                    data['keep_logged_in'] = (keepLoggedInCheckbox && keepLoggedInCheckbox.checked) ? '1' : '0';
                     if (hasOrder) {
                         // Add is_auto_order flag
                         data['is_auto_order'] = '1';
-                        var url = 'simple-order/submit-order';
-                        var params = [];
-                        for (var key in data) {
-                            if (data.hasOwnProperty(key)) {
-                                params.push(encodeURIComponent(key) + '=' + encodeURIComponent(data[key]));
-                            }
-                        }
-                        var xhr = new XMLHttpRequest();
-                        xhr.open('POST', url, false); // synchronous to ensure order is sent before logout
-                        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-                        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-                        try {
-                            xhr.send(params.join('&'));
-                        } catch (e) {}
                     }
+                    var url = 'simple-order/submit-order';
+                    var params = [];
+                    for (var key in data) {
+                        if (data.hasOwnProperty(key)) {
+                            params.push(encodeURIComponent(key) + '=' + encodeURIComponent(data[key]));
+                        }
+                    }
+                    var xhr = new XMLHttpRequest();
+                    xhr.open('POST', url, false); // synchronous to ensure state is saved before logout
+                    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+                    try {
+                        xhr.send(params.join('&'));
+                    } catch (e) {}
                 }
                 if (typeof clearSelectionAndLogout === 'function') {
                     // Suppress confirmation dialog for auto-order logout
+                    // Mark keep_logged_in as already updated to skip duplicate XHR
+                    window.__KEEP_LOGGED_IN_UPDATED__ = true;
                     window.__AUTO_ORDER_LOGOUT__ = true;
                     clearSelectionAndLogout(true);
                     window.__AUTO_ORDER_LOGOUT__ = false;
+                    window.__KEEP_LOGGED_IN_UPDATED__ = false;
                 } else {
                     window.location.replace('<?= $this->url("user/simple-login") ?>');
                 }
