@@ -211,7 +211,12 @@
                     var memberTotalPaid = parseFloat(member.total_paid || 0);
                     membersTotalSum += memberTotalPaid;
                     html += '<tr class="' + config.rowClass + '" data-member-uid="' + memberUid + '">';
-                    html += '<td style="padding:6px 8px;">' + escapeHtml(member.name || '') + ' (' + escapeHtml(member.email || '') + ')</td>';
+                    var memberDisplay = escapeHtml(member.name || '');
+                    var depositComment = member.deposit_comment ? escapeHtml(member.deposit_comment.trim()) : '';
+                    if (depositComment) {
+                        memberDisplay += ' - ' + depositComment;
+                    }
+                    html += '<td style="padding:6px 8px;">' + memberDisplay + '</td>';
                     html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(memberTotalPaid) + ';">' + formatCurrency(memberTotalPaid) + '</td>';
                     if (isMember) {
                         var restAmount = amountPerMember - memberTotalPaid;
@@ -461,7 +466,7 @@
                     r.balanceHeader.innerHTML = 'Gesamtsaldo Konto: <span style="color:' + amountColor(accountBalance) + ';">' + formatCurrency(accountBalance) + '</span>';
                 }
 
-                var canManageMembers = !!data.can_manage_members;
+                var canManageMembers = !!data.can_manage_members && !data.team_event_closed;
                 r.content.innerHTML = buildStatsHtml(data, canManageMembers);
                 bindMemberControls(canManageMembers);
             } catch (err) {

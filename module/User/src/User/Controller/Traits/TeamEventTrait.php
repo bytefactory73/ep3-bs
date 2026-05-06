@@ -290,7 +290,8 @@ trait TeamEventTrait
                     u.alias,
                     u.email,
                     COALESCE(SUM(d.amount), 0) AS total_paid,
-                    1 AS is_member
+                    1 AS is_member,
+                    "" AS deposit_comment
              FROM drinks_teamevent_members m
              JOIN bs_users u ON u.uid = m.user_id
              LEFT JOIN drink_deposits d
@@ -308,8 +309,9 @@ trait TeamEventTrait
                     d.createdbyuserid AS uid,
                     u.alias,
                     u.email,
-                    COALESCE(SUM(d.amount), 0) AS total_paid,
-                    0 AS is_member
+                    d.amount AS total_paid,
+                    0 AS is_member,
+                    COALESCE(d.comment, "") AS deposit_comment
              FROM drink_deposits d
              JOIN bs_users u ON u.uid = d.createdbyuserid
              WHERE d.user_id = ?
@@ -321,7 +323,6 @@ trait TeamEventTrait
                AND d.createdbyuserid NOT IN (
                     SELECT m.user_id FROM drinks_teamevent_members m WHERE m.team_event_id = ?
                )
-             GROUP BY d.createdbyuserid, u.alias, u.email
              ORDER BY is_member DESC, alias ASC, uid ASC',
             [$teamAdminUserId, $teamEventId, $teamEventLabel, $teamEventId, $teamAdminUserId, $teamEventId, $teamEventLabel, $teamEventId]
         )->toArray();
@@ -336,12 +337,14 @@ trait TeamEventTrait
             $email = isset($row['email']) ? trim((string)$row['email']) : '';
             $name = $alias !== '' ? $alias : ('User ' . $uid);
             $isMember = isset($row['is_member']) ? (bool)(int)$row['is_member'] : false;
+            $depositComment = isset($row['deposit_comment']) ? trim((string)$row['deposit_comment']) : '';
             $result[] = [
                 'uid' => $uid,
                 'name' => $name,
                 'email' => $email,
                 'total_paid' => isset($row['total_paid']) ? (float)$row['total_paid'] : 0.0,
                 'is_member' => $isMember,
+                'deposit_comment' => $depositComment,
             ];
         }
         return $result;
