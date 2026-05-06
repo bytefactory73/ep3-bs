@@ -1222,7 +1222,7 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
                 <?php if ((int)($drink['category'] ?? 0) === 0) continue; // skip hidden drinks ?>
                 <div class="drink-tile" data-category="<?= (int)($drink['category'] ?? 0) ?>" favourite-count="<?= (int)($drink['user_total_count'] ?? 0) ?>" data-drink-id="<?= (int)$drink['id'] ?>" style="position:relative; cursor:pointer;">
                     <?php
-                    $imgFile = isset($drink['image']) && $drink['image'] ? $drink['image'] : 'drink-placeholder.png';
+                    $imgFile = isset($drink['image']) && $drink['image'] ? $drink['image'] : 'ep3-bs-pos-de.png';
                     $imgPath = $this->basePath('/imgs/branding/' . $imgFile);
                     ?>
                     <div class="drink-controls">

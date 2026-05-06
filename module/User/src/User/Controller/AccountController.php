@@ -1552,39 +1552,55 @@ class AccountController extends AbstractActionController
         $users = $userManager->getAll('alias ASC');
         $message = null;
         $uploadDir = realpath(__DIR__ . '/../../../../../public/imgs/branding');
+        if (!$uploadDir) {
+            $uploadDir = dirname(__DIR__, 5) . '/public/imgs/branding';
+            if (!is_dir($uploadDir)) {
+                @mkdir($uploadDir, 0755, true);
+            }
+        }
         $drinkCategories = $drinkCategoryManager->getAll();
         // Handle add/edit/delete/deposit
         if ($this->getRequest()->isPost()) {
             $post = $this->params()->fromPost();
             $files = $this->getRequest()->getFiles()->toArray();
             if (isset($post['add_drink'])) {
-                $name = trim($post['name']);
-                $price = floatval($post['price']);
+                $name = trim((string)($post['name'] ?? ''));
+                $price = floatval($post['price'] ?? 0);
                 $category = isset($post['category']) ? (int)$post['category'] : null;
                 $imageName = null;
-                if (!empty($files['image']['tmp_name']) && is_uploaded_file($files['image']['tmp_name'])) {
+                if ($uploadDir && !empty($files['image']['tmp_name']) && is_uploaded_file($files['image']['tmp_name'])) {
                     $ext = pathinfo($files['image']['name'], PATHINFO_EXTENSION);
                     $imageName = uniqid('drink_', true) . '.' . $ext;
-                    move_uploaded_file($files['image']['tmp_name'], $uploadDir . DIRECTORY_SEPARATOR . $imageName);
+                    if (!move_uploaded_file($files['image']['tmp_name'], $uploadDir . DIRECTORY_SEPARATOR . $imageName)) {
+                        $message = 'Image upload failed.';
+                        $imageName = null;
+                    }
                 }
                 if ($name && $price > 0) {
                     $dbAdapter->query('INSERT INTO drinks (name, price, image, category) VALUES (?, ?, ?, ?)', [$name, $price, $imageName, $category]);
-                    $message = 'Drink added.';
+                    if (!$message) {
+                        $message = 'Drink added.';
+                    }
                 }
             } elseif (isset($post['edit_drink'])) {
-                $id = intval($post['id']);
-                $name = trim($post['name']);
-                $price = floatval($post['price']);
+                $id = intval($post['id'] ?? 0);
+                $name = trim((string)($post['name'] ?? ''));
+                $price = floatval($post['price'] ?? 0);
                 $category = isset($post['category']) ? (int)$post['category'] : null;
                 $imageName = $post['existing_image'] ?? null;
-                if (!empty($files['image']['tmp_name']) && is_uploaded_file($files['image']['tmp_name'])) {
+                if ($uploadDir && !empty($files['image']['tmp_name']) && is_uploaded_file($files['image']['tmp_name'])) {
                     $ext = pathinfo($files['image']['name'], PATHINFO_EXTENSION);
                     $imageName = uniqid('drink_', true) . '.' . $ext;
-                    move_uploaded_file($files['image']['tmp_name'], $uploadDir . DIRECTORY_SEPARATOR . $imageName);
+                    if (!move_uploaded_file($files['image']['tmp_name'], $uploadDir . DIRECTORY_SEPARATOR . $imageName)) {
+                        $message = 'Image upload failed.';
+                        $imageName = $post['existing_image'] ?? null;
+                    }
                 }
                 if ($id && $name && $price > 0) {
                     $dbAdapter->query('UPDATE drinks SET name = ?, price = ?, image = ?, category = ? WHERE id = ?', [$name, $price, $imageName, $category, $id]);
-                    $message = 'Drink updated.';
+                    if (!$message) {
+                        $message = 'Drink updated.';
+                    }
                 }
             } elseif (isset($post['delete_drink'])) {
                 $id = intval($post['id']);
