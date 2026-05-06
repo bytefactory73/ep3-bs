@@ -526,10 +526,12 @@ class SimpleLoginController extends AbstractActionController
             if ($selectedTeamEventLabel === '') {
                 list($selectedTeamEventLabel) = $this->resolveSessionTeamEventSelection($teamAdminUserId, $session);
             }
-            $event = $this->getOrCreateTeamEventByLabel($teamAdminUserId, $selectedTeamEventLabel);
-            if ($event) {
-                $teamEventId = (int)$event['id'];
-                $session->current_teamevent_id = $teamEventId;
+            if ($selectedTeamEventLabel !== '') {
+                $event = $this->getTeamEventByLabel($teamAdminUserId, $selectedTeamEventLabel);
+                if ($event) {
+                    $teamEventId = (int)$event['id'];
+                    $session->current_teamevent_id = $teamEventId;
+                }
             }
             // Spieltag is stored via teamevent_id only; keep comment for actual free-text comments.
             $comment = null;

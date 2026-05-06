@@ -1283,6 +1283,16 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
             form.addEventListener('submit', function(e) {
                 e.preventDefault();
                 if (submitBtn.disabled) return;
+                // In simple order mode for team accounts: require a valid Spieltag BEFORE showing order overview
+                if (window.SIMPLE_ORDER_MODE && spieltagSelect) {
+                    var currentSpieltag = spieltagSelect.value || '';
+                    if (!currentSpieltag || currentSpieltag === '__new__') {
+                        if (typeof openSpieltagCreateModal === 'function') {
+                            openSpieltagCreateModal();
+                        }
+                        return;
+                    }
+                }
                 if (typeof confirmDrinkOrder === 'function' && !confirmDrinkOrder()) return;
                 var data = getDrinkOrderData();
                 var hasData = false;
@@ -1536,7 +1546,13 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
                             window.teamSpieltagUpdateFromApi(data);
                         }
                         closeSpieltagCreateModal();
-                        window.location.reload();
+                        // Auto-submit the booking form with the new Spieltag
+                        if (spieltagSelect) {
+                            spieltagSelect.value = newName;
+                        }
+                        if (form) {
+                            form.dispatchEvent(new Event('submit'));
+                        }
                     }).catch(function() {
                         if (spieltagCreateError) {
                             spieltagCreateError.textContent = '<?= $this->t('Netzwerkfehler beim Speichern des Spieltags.') ?>';

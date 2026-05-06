@@ -530,13 +530,15 @@ trait TeamEventTrait
     {
         $selectedTeamEventLabel = $this->normalizeTeamEventLabel(isset($session->current_spieltag) ? $session->current_spieltag : '');
         $availableTeamEventLabels = $this->getAvailableTeamEventLabels($teamAdminUserId);
-        if ($selectedTeamEventLabel === '' && empty($availableTeamEventLabels)) {
-            $selectedTeamEventLabel = 'Spieltag ' . date('Y-m-d');
-        }
         if ($selectedTeamEventLabel !== '') {
-            $teamEvent = $this->getOrCreateTeamEventByLabel($teamAdminUserId, $selectedTeamEventLabel);
+            $teamEvent = $this->getTeamEventByLabel($teamAdminUserId, $selectedTeamEventLabel);
             if ($teamEvent) {
                 $session->current_teamevent_id = (int)$teamEvent['id'];
+            } else {
+                // Event does not exist – clear stale session value
+                $selectedTeamEventLabel = '';
+                $session->current_spieltag = '';
+                $session->current_teamevent_id = 0;
             }
         }
         if ($selectedTeamEventLabel !== '' && !in_array($selectedTeamEventLabel, $availableTeamEventLabels, true)) {
