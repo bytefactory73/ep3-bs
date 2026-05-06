@@ -1314,11 +1314,7 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
                             alert('<?= $this->t('Bestellung erfolgreich!') ?>');
                             <?php endif; ?>
                             if (window.SIMPLE_ORDER_MODE) {
-                                <?php if ($isTeamAccount): ?>
-                                window.location.reload();
-                                <?php else: ?>
                                 window.location.replace('<?= $this->url("user/simple-login") ?>');
-                                <?php endif; ?>
                             } else {
                                 window.location.reload();
                             }
