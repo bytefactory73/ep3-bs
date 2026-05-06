@@ -16,11 +16,15 @@ CREATE TABLE IF NOT EXISTS drinks_teamevents (
     id INT AUTO_INCREMENT PRIMARY KEY,
     team_admin_user_id INT UNSIGNED NOT NULL,
     comment VARCHAR(255) NOT NULL,
+    closed TINYINT(1) NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (team_admin_user_id) REFERENCES bs_users(uid),
     INDEX idx_drinks_teamevents_admin (team_admin_user_id),
     INDEX idx_drinks_teamevents_comment (comment)
 );
+
+-- To update existing databases, run:
+-- ALTER TABLE drinks_teamevents ADD COLUMN closed TINYINT(1) NOT NULL DEFAULT 0;
 
 -- Team event members (participants assigned to a Spieltag)
 CREATE TABLE IF NOT EXISTS drinks_teamevent_members (

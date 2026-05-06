@@ -216,6 +216,16 @@ return array(
                             ),
                         ),
                     ),
+                    'teamlead-close-team-event' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/teamlead-close-team-event',
+                            'defaults' => array(
+                                'controller' => 'User\Controller\Account',
+                                'action' => 'teamleadCloseTeamEvent',
+                            ),
+                        ),
+                    ),
                     'manage-drinks' => array(
                         'type' => 'Literal',
                         'options' => array(
@@ -334,6 +344,16 @@ return array(
                                     'defaults' => array(
                                         'controller' => 'User\Controller\SimpleLogin',
                                         'action' => 'teamMembers',
+                                    ),
+                                ),
+                            ),
+                            'close-team-event' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/close-team-event',
+                                    'defaults' => array(
+                                        'controller' => 'User\Controller\SimpleLogin',
+                                        'action' => 'closeTeamEvent',
                                     ),
                                 ),
                             ),

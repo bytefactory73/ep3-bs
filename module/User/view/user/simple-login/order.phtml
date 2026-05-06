@@ -152,7 +152,6 @@ window.teamSpieltagUpdateFromApi = function(data) {
     newOpt.textContent = 'Neuen Spieltag anlegen';
     select.appendChild(newOpt);
 
-    syncTeamStatsSpieltagSelect(selected);
 };
 
 var teamStatsModalController = createTeamStatsModal({
@@ -182,6 +181,49 @@ var teamStatsModalController = createTeamStatsModal({
                 member_user_id: String(memberUserId)
             })
         };
+    },
+    buildCloseEventRequest: function(state) {
+        return {
+            url: 'simple-order/close-team-event',
+            body: new URLSearchParams({
+                team_event_id: String(state.currentEventId)
+            })
+        };
+    },
+    onTeamEventClosed: function() {
+        fetch('simple-order/spieltag', {
+            credentials: 'same-origin',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(function(resp) { return resp.json(); })
+        .then(function(data) {
+            if (typeof window.teamSpieltagUpdateFromApi === 'function') {
+                window.teamSpieltagUpdateFromApi(data);
+            }
+        })
+        .catch(function() {});
+    },
+    afterLoadData: function(data, state, refs) {
+        if (!refs.select) return;
+        while (refs.select.firstChild) {
+            refs.select.removeChild(refs.select.firstChild);
+        }
+        var spieltage = Array.isArray(data.spieltage) ? data.spieltage : [];
+        var openSpieltage = Array.isArray(data.open_spieltage) ? data.open_spieltage : [];
+        var selectedSpieltag = String(data.spieltag || '').trim();
+        for (var i = 0; i < spieltage.length; i++) {
+            var name = String(spieltage[i] || '').trim();
+            if (!name) continue;
+            var opt = document.createElement('option');
+            opt.value = name;
+            var isOpen = openSpieltage.indexOf(name) !== -1;
+            opt.textContent = isOpen ? (name + ' (offen)') : name;
+            if (name === selectedSpieltag) opt.selected = true;
+            refs.select.appendChild(opt);
+        }
+        refs.select.disabled = spieltage.length === 0;
     },
     getInitialSpieltag: function() {
         var bookingSelect = document.getElementById('spieltag-select');

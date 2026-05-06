@@ -91,7 +91,7 @@ class AccountController extends AbstractActionController
         }
 
         $requestedTeamEventLabel = $this->normalizeTeamEventLabel($this->params()->fromQuery('spieltag', ''));
-        $spieltage = $this->getAvailableTeamEventLabels($teamUserId);
+        $spieltage = $this->getAvailableTeamEventLabels($teamUserId, true);
 
         if ($requestedTeamEventLabel === '' && count($spieltage) > 0) {
             $requestedTeamEventLabel = $spieltage[0];
@@ -123,6 +123,7 @@ class AccountController extends AbstractActionController
             'team_uid' => $teamUserId,
             'team_alias' => isset($teamAliasRow['alias']) ? trim((string)$teamAliasRow['alias']) : '',
             'spieltage' => $spieltage,
+            'open_spieltage' => $this->getAvailableTeamEventLabels($teamUserId, false),
             'account_balance' => $accountBalance,
         ], $this->buildTeamStatsPayload($teamUserId, $requestedTeamEventLabel))));
     }
@@ -170,6 +171,59 @@ class AccountController extends AbstractActionController
             return $this->getResponse()->setStatusCode(400)->setContent(json_encode($responseData));
         }
         return $this->getResponse()->setContent(json_encode($responseData));
+    }
+
+    public function teamleadCloseTeamEventAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $request = $this->getRequest();
+        if (!$request->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required.']));
+        }
+
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $sessionUser = $userSessionManager->getSessionUser();
+        if (!$sessionUser) {
+            return $this->getResponse()->setStatusCode(401)->setContent(json_encode(['success' => false, 'error' => 'Not authenticated.']));
+        }
+
+        $teamUserId = (int)$this->params()->fromPost('team_uid', 0);
+        $teamEventId = (int)$this->params()->fromPost('team_event_id', 0);
+        if ($teamUserId <= 0 || $teamEventId <= 0) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültige Eingabe.']));
+        }
+
+        $sessionEmail = trim((string)$sessionUser->get('email'));
+        if ($sessionEmail === '') {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'Keine Berechtigung.']));
+        }
+
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+        $teamAliasRow = $dbAdapter->query(
+            'SELECT user_id FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND LOWER(TRIM(COALESCE(teamlead_email, ""))) = LOWER(TRIM(?))',
+            [$teamUserId, $sessionEmail]
+        )->current();
+        if (!$teamAliasRow) {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'Keine Berechtigung für diesen Team-Account.']));
+        }
+
+        $closeResult = $this->closeTeamEventWithStatus($teamUserId, $teamEventId);
+        if (empty($closeResult['success'])) {
+            $error = isset($closeResult['error']) ? $closeResult['error'] : '';
+            if ($error === 'feature_unavailable') {
+                return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Team-Event Schließen ist noch nicht verfügbar.']));
+            }
+            if ($error === 'not_found') {
+                return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'Spieltag nicht gefunden.']));
+            }
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültige Eingabe.']));
+        }
+
+        return $this->getResponse()->setContent(json_encode([
+            'success' => true,
+            'already_closed' => !empty($closeResult['already_closed'])
+        ]));
     }
 
     /**

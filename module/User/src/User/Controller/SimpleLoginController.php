@@ -288,6 +288,8 @@ class SimpleLoginController extends AbstractActionController
         return $this->getResponse()->setContent(json_encode(array_merge([
             'success' => true,
             'account_balance' => $accountBalance,
+            'spieltage' => $this->getAvailableTeamEventLabels($teamAdminUserId, true),
+            'open_spieltage' => $this->getAvailableTeamEventLabels($teamAdminUserId, false),
         ], $this->buildTeamStatsPayload($teamAdminUserId, $requestedTeamEventLabel))));
     }
 
@@ -321,6 +323,69 @@ class SimpleLoginController extends AbstractActionController
             return $this->getResponse()->setStatusCode(400)->setContent(json_encode($responseData));
         }
         return $this->getResponse()->setContent(json_encode($responseData));
+    }
+
+    public function closeTeamEventAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $request = $this->getRequest();
+        if (!$request->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required.']));
+        }
+
+        $sessionManager = $this->getServiceLocator()->get('Zend\Session\SessionManager');
+        $sessionManager->start();
+        $session = new \Zend\Session\Container('SimpleLogin');
+        if (empty($session->user_id)) {
+            return $this->getResponse()->setStatusCode(401)->setContent(json_encode(['success' => false, 'error' => 'Not authenticated.']));
+        }
+
+        $teamAdminUserId = (int)$session->user_id;
+        $teamEventId = (int)$this->params()->fromPost('team_event_id', 0);
+        if ($teamEventId <= 0) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültiger Spieltag.']));
+        }
+
+        $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
+        $aliasRow = $db->query('SELECT is_team FROM drink_aliases WHERE user_id = ?', [$teamAdminUserId])->current();
+        if (!$aliasRow || empty($aliasRow['is_team'])) {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'Kein Team-Account.']));
+        }
+
+        $closeResult = $this->closeTeamEventWithStatus($teamAdminUserId, $teamEventId);
+        if (empty($closeResult['success'])) {
+            $error = isset($closeResult['error']) ? $closeResult['error'] : '';
+            if ($error === 'feature_unavailable') {
+                return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Team-Event Schließen ist noch nicht verfügbar.']));
+            }
+            if ($error === 'not_found') {
+                return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'Spieltag nicht gefunden.']));
+            }
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültiger Spieltag.']));
+        }
+
+        $eventRow = isset($closeResult['event']) ? $closeResult['event'] : null;
+
+        // If the closed event is currently selected, move session selection to latest open event.
+        if (isset($session->current_spieltag)) {
+            $closedLabel = isset($eventRow['comment']) ? trim((string)$eventRow['comment']) : '';
+            if ($closedLabel !== '' && trim((string)$session->current_spieltag) === $closedLabel) {
+                $openLabels = $this->getAvailableTeamEventLabels($teamAdminUserId, false);
+                $session->current_spieltag = !empty($openLabels) ? $openLabels[0] : '';
+                $session->current_teamevent_id = null;
+                if (!empty($openLabels)) {
+                    $openEvent = $this->getTeamEventByLabel($teamAdminUserId, $openLabels[0]);
+                    if ($openEvent && isset($openEvent['id'])) {
+                        $session->current_teamevent_id = (int)$openEvent['id'];
+                    }
+                }
+            }
+        }
+
+        return $this->getResponse()->setContent(json_encode([
+            'success' => true,
+            'already_closed' => !empty($closeResult['already_closed'])
+        ]));
     }
 
     public function spieltagAction()

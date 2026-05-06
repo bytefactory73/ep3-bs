@@ -121,6 +121,15 @@ var frontendTeamStatsModalController = createTeamStatsModal({
             })
         };
     },
+    buildCloseEventRequest: function(state) {
+        return {
+            url: '<?= $this->url('user/teamlead-close-team-event') ?>',
+            body: new URLSearchParams({
+                team_uid: String(state.teamUid),
+                team_event_id: String(state.currentEventId)
+            })
+        };
+    },
     afterLoadData: function(data, state, refs) {
         if (data.team_alias) {
             state.teamAlias = String(data.team_alias);
@@ -130,13 +139,15 @@ var frontendTeamStatsModalController = createTeamStatsModal({
                 refs.select.removeChild(refs.select.firstChild);
             }
             var spieltage = Array.isArray(data.spieltage) ? data.spieltage : [];
+            var openSpieltage = Array.isArray(data.open_spieltage) ? data.open_spieltage : [];
             var selectedSpieltag = data.spieltag || '';
             for (var i = 0; i < spieltage.length; i++) {
                 var name = String(spieltage[i] || '').trim();
                 if (!name) continue;
                 var opt = document.createElement('option');
                 opt.value = name;
-                opt.textContent = name;
+                var isOpen = openSpieltage.indexOf(name) !== -1;
+                opt.textContent = isOpen ? (name + ' (offen)') : name;
                 if (name === selectedSpieltag) opt.selected = true;
                 refs.select.appendChild(opt);
             }

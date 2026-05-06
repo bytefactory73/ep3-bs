@@ -33,7 +33,8 @@
             selectedMemberId: 0,
             selectedIndex: -1,
             teamUid: 0,
-            teamAlias: config.initialTeamAlias || ''
+            teamAlias: config.initialTeamAlias || '',
+            isCurrentEventClosed: false
         };
 
         function refs() {
@@ -252,7 +253,46 @@
             }
             html += '</div>';
 
+            if (data && data.can_close_team_event) {
+                html += '<div style="margin-top:14px; padding-top:10px; border-top:1px solid #e4edf6; display:flex; justify-content:flex-end;">';
+                if (data.team_event_closed) {
+                    html += '<span style="font-weight:600; color:#607d8b;">Abrechnung ist bereits beendet.</span>';
+                } else {
+                    html += '<button type="button" id="' + (config.closeEventBtnId || 'team-stats-close-event-btn') + '" class="default-button mini-button" style="background:#d32f2f; border-color:#d32f2f; color:#fff;">Abrechnung Beenden</button>';
+                }
+                html += '</div>';
+            }
+
             return html;
+        }
+
+        async function closeCurrentTeamEvent() {
+            if (typeof config.buildCloseEventRequest !== 'function') {
+                throw new Error('Close request is not configured.');
+            }
+            if (!state.currentEventId) {
+                throw new Error('Kein Spieltag ausgewählt.');
+            }
+
+            var requestData = config.buildCloseEventRequest(state);
+            var resp = await fetch(requestData.url, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: requestData.body
+            });
+            var data = await resp.json();
+            if (!resp.ok || !data || !data.success) {
+                throw new Error((data && data.error) ? data.error : 'Fehler beim Schließen der Abrechnung.');
+            }
+
+            if (typeof config.onTeamEventClosed === 'function') {
+                config.onTeamEventClosed(state);
+            }
+            await loadCurrentSelection();
         }
 
         async function updateMember(operation, memberUserId) {
@@ -274,10 +314,9 @@
         }
 
         function bindMemberControls(canManageMembers) {
-            if (!canManageMembers) return;
             var r = refs();
 
-            if (r.memberInput) {
+            if (canManageMembers && r.memberInput) {
                 r.memberInput.addEventListener('input', function() {
                     state.selectedMemberId = 0;
                     renderMemberList(r.memberInput.value || '');
@@ -315,7 +354,7 @@
                 });
             }
 
-            if (r.memberClearBtn && r.memberInput) {
+            if (canManageMembers && r.memberClearBtn && r.memberInput) {
                 r.memberClearBtn.addEventListener('click', function() {
                     r.memberInput.value = '';
                     state.selectedMemberId = 0;
@@ -328,7 +367,7 @@
                 });
             }
 
-            if (r.memberAddBtn) {
+            if (canManageMembers && r.memberAddBtn) {
                 r.memberAddBtn.addEventListener('click', async function() {
                     var uid = parseInt(state.selectedMemberId || 0, 10);
                     if (!uid) {
@@ -343,29 +382,47 @@
                 });
             }
 
-            document.querySelectorAll('.' + config.removeButtonClass).forEach(function(btn) {
-                btn.addEventListener('click', async function() {
-                    var uid = parseInt(btn.getAttribute('data-member-uid') || '0', 10);
-                    if (!uid) return;
-                    try {
-                        await updateMember('remove', uid);
-                    } catch (e) {
-                        alert(e && e.message ? e.message : 'Fehler beim Entfernen des Teilnehmers.');
-                    }
+            if (canManageMembers) {
+                document.querySelectorAll('.' + config.removeButtonClass).forEach(function(btn) {
+                    btn.addEventListener('click', async function() {
+                        var uid = parseInt(btn.getAttribute('data-member-uid') || '0', 10);
+                        if (!uid) return;
+                        try {
+                            await updateMember('remove', uid);
+                        } catch (e) {
+                            alert(e && e.message ? e.message : 'Fehler beim Entfernen des Teilnehmers.');
+                        }
+                    });
                 });
-            });
 
-            document.querySelectorAll('.' + config.addDirectButtonClass).forEach(function(btn) {
-                btn.addEventListener('click', async function() {
-                    var uid = parseInt(btn.getAttribute('data-member-uid') || '0', 10);
-                    if (!uid) return;
+                document.querySelectorAll('.' + config.addDirectButtonClass).forEach(function(btn) {
+                    btn.addEventListener('click', async function() {
+                        var uid = parseInt(btn.getAttribute('data-member-uid') || '0', 10);
+                        if (!uid) return;
+                        try {
+                            await updateMember('add', uid);
+                        } catch (e) {
+                            alert(e && e.message ? e.message : 'Fehler beim Hinzufuegen des Teilnehmers.');
+                        }
+                    });
+                });
+            }
+
+            var closeBtn = document.getElementById(config.closeEventBtnId || 'team-stats-close-event-btn');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', async function() {
+                    if (!window.confirm('Abrechnung für diesen Spieltag wirklich beenden?')) {
+                        return;
+                    }
+                    closeBtn.disabled = true;
                     try {
-                        await updateMember('add', uid);
+                        await closeCurrentTeamEvent();
                     } catch (e) {
-                        alert(e && e.message ? e.message : 'Fehler beim Hinzufuegen des Teilnehmers.');
+                        closeBtn.disabled = false;
+                        alert(e && e.message ? e.message : 'Fehler beim Schließen der Abrechnung.');
                     }
                 });
-            });
+            }
         }
 
         async function load(spieltag) {
@@ -393,6 +450,7 @@
                 state.memberCandidates = Array.isArray(data.member_candidates) ? data.member_candidates : [];
                 state.selectedMemberId = 0;
                 state.selectedIndex = -1;
+                state.isCurrentEventClosed = !!data.team_event_closed;
 
                 if (typeof config.afterLoadData === 'function') {
                     config.afterLoadData(data, state, r);

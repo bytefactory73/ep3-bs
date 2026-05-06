@@ -4,6 +4,49 @@ namespace User\Controller\Traits;
 
 trait TeamEventTrait
 {
+    protected function getTeamEventSelectColumnsSql()
+    {
+        return $this->canUseTeamEventClosedColumn() ? 'id, comment, closed' : 'id, comment';
+    }
+
+    protected function getTeamEventOpenFilterSql($includeClosed = false)
+    {
+        return ($this->canUseTeamEventClosedColumn() && !(bool)$includeClosed)
+            ? ' AND (closed IS NULL OR closed = 0)'
+            : '';
+    }
+
+    protected function canUseTeamEventClosedColumn()
+    {
+        static $hasClosedColumn = null;
+        if ($hasClosedColumn !== null) {
+            return $hasClosedColumn;
+        }
+
+        try {
+            $column = $this->getTeamEventDbAdapter()->query(
+                "SHOW COLUMNS FROM drinks_teamevents LIKE 'closed'",
+                []
+            )->current();
+            $hasClosedColumn = (bool)$column;
+        } catch (\Exception $e) {
+            $hasClosedColumn = false;
+        }
+
+        return $hasClosedColumn;
+    }
+
+    protected function isTeamEventClosedRow($teamEventRow)
+    {
+        if (!$this->canUseTeamEventClosedColumn()) {
+            return false;
+        }
+        if (!is_array($teamEventRow) && !($teamEventRow instanceof \ArrayAccess)) {
+            return false;
+        }
+        return isset($teamEventRow['closed']) && (int)$teamEventRow['closed'] === 1;
+    }
+
     protected function getTeamEventDbAdapter()
     {
         return $this->getServiceLocator()->get('Zend\\Db\\Adapter\\Adapter');
@@ -21,7 +64,7 @@ trait TeamEventTrait
     protected function getLatestTeamEventRow($teamAdminUserId)
     {
         return $this->getTeamEventDbAdapter()->query(
-            'SELECT id, comment FROM drinks_teamevents WHERE team_admin_user_id = ? ORDER BY created_at DESC, id DESC LIMIT 1',
+            'SELECT ' . $this->getTeamEventSelectColumnsSql() . ' FROM drinks_teamevents WHERE team_admin_user_id = ? ORDER BY created_at DESC, id DESC LIMIT 1',
             [$teamAdminUserId]
         )->current();
     }
@@ -34,7 +77,7 @@ trait TeamEventTrait
         }
 
         return $this->getTeamEventDbAdapter()->query(
-            'SELECT id, comment FROM drinks_teamevents WHERE team_admin_user_id = ? AND id = ? LIMIT 1',
+            'SELECT ' . $this->getTeamEventSelectColumnsSql() . ' FROM drinks_teamevents WHERE team_admin_user_id = ? AND id = ? LIMIT 1',
             [$teamAdminUserId, $teamEventId]
         )->current();
     }
@@ -47,9 +90,50 @@ trait TeamEventTrait
         }
 
         return $this->getTeamEventDbAdapter()->query(
-            'SELECT id, comment FROM drinks_teamevents WHERE team_admin_user_id = ? AND comment = ? ORDER BY id DESC LIMIT 1',
+            'SELECT ' . $this->getTeamEventSelectColumnsSql() . ' FROM drinks_teamevents WHERE team_admin_user_id = ? AND comment = ? ORDER BY id DESC LIMIT 1',
             [$teamAdminUserId, $label]
         )->current();
+    }
+
+    protected function closeTeamEvent($teamAdminUserId, $teamEventId)
+    {
+        $teamAdminUserId = (int)$teamAdminUserId;
+        $teamEventId = (int)$teamEventId;
+        if ($teamAdminUserId <= 0 || $teamEventId <= 0) {
+            return false;
+        }
+        if (!$this->canUseTeamEventClosedColumn()) {
+            return false;
+        }
+
+        $this->getTeamEventDbAdapter()->query(
+            'UPDATE drinks_teamevents SET closed = 1 WHERE team_admin_user_id = ? AND id = ?',
+            [$teamAdminUserId, $teamEventId]
+        );
+        return true;
+    }
+
+    protected function closeTeamEventWithStatus($teamAdminUserId, $teamEventId)
+    {
+        $teamAdminUserId = (int)$teamAdminUserId;
+        $teamEventId = (int)$teamEventId;
+        if ($teamAdminUserId <= 0 || $teamEventId <= 0) {
+            return ['success' => false, 'error' => 'invalid_input'];
+        }
+        if (!$this->canUseTeamEventClosedColumn()) {
+            return ['success' => false, 'error' => 'feature_unavailable'];
+        }
+
+        $eventRow = $this->getTeamEventById($teamAdminUserId, $teamEventId);
+        if (!$eventRow) {
+            return ['success' => false, 'error' => 'not_found'];
+        }
+        if ($this->isTeamEventClosedRow($eventRow)) {
+            return ['success' => true, 'already_closed' => true, 'event' => $eventRow];
+        }
+
+        $this->closeTeamEvent($teamAdminUserId, $teamEventId);
+        return ['success' => true, 'already_closed' => false, 'event' => $eventRow];
     }
 
     protected function getOrCreateTeamEventByLabel($teamAdminUserId, $label)
@@ -323,11 +407,14 @@ trait TeamEventTrait
         $teamEventLabel = $this->normalizeTeamEventLabel($teamEventLabel);
         $selectedTeamEvent = $this->getTeamEventByLabel($teamAdminUserId, $teamEventLabel);
         $selectedTeamEventId = $selectedTeamEvent && isset($selectedTeamEvent['id']) ? (int)$selectedTeamEvent['id'] : 0;
+        $isClosed = $this->isTeamEventClosedRow($selectedTeamEvent);
         $stats = $this->getTeamEventOrderRowsAndTotal($teamAdminUserId, $teamEventLabel);
 
         return array_merge([
             'spieltag' => $teamEventLabel,
             'team_event_id' => $selectedTeamEventId,
+            'team_event_closed' => $isClosed,
+            'can_close_team_event' => true,
             'rows' => $stats['rows'],
             'total_sum' => $stats['total_sum'],
             'members' => $this->getTeamEventMembersWithContribution($teamAdminUserId, $selectedTeamEventId, $teamEventLabel),
@@ -419,10 +506,11 @@ trait TeamEventTrait
         return true;
     }
 
-    protected function getAvailableTeamEventLabels($teamAdminUserId)
+    protected function getAvailableTeamEventLabels($teamAdminUserId, $includeClosed = false)
     {
+        $includeClosed = (bool)$includeClosed;
         $rows = $this->getTeamEventDbAdapter()->query(
-            'SELECT comment AS team_event_label FROM drinks_teamevents WHERE team_admin_user_id = ? ORDER BY created_at DESC, id DESC',
+            'SELECT comment AS team_event_label FROM drinks_teamevents WHERE team_admin_user_id = ?' . $this->getTeamEventOpenFilterSql($includeClosed) . ' ORDER BY created_at DESC, id DESC',
             [$teamAdminUserId]
         )->toArray();
         $result = [];
@@ -467,7 +555,7 @@ trait TeamEventTrait
         $preferredTeamEventId = (int)$preferredTeamEventId;
         if ($preferredTeamEventId > 0) {
             $selectedTeamEvent = $this->getTeamEventById($teamAdminUserId, $preferredTeamEventId);
-            if ($selectedTeamEvent) {
+            if ($selectedTeamEvent && !$this->isTeamEventClosedRow($selectedTeamEvent)) {
                 return $selectedTeamEvent;
             }
             return null;
@@ -520,10 +608,11 @@ trait TeamEventTrait
         return $depositTotal - $orderTotal;
     }
 
-    protected function getTeamEventsWithBalances($teamAdminUserId)
+    protected function getTeamEventsWithBalances($teamAdminUserId, $includeClosed = false)
     {
+        $includeClosed = (bool)$includeClosed;
         $rows = $this->getTeamEventDbAdapter()->query(
-            'SELECT id, comment FROM drinks_teamevents WHERE team_admin_user_id = ? ORDER BY created_at DESC, id DESC',
+            'SELECT ' . $this->getTeamEventSelectColumnsSql() . ' FROM drinks_teamevents WHERE team_admin_user_id = ?' . $this->getTeamEventOpenFilterSql($includeClosed) . ' ORDER BY created_at DESC, id DESC',
             [$teamAdminUserId]
         )->toArray();
 
@@ -539,6 +628,7 @@ trait TeamEventTrait
                 'id' => $teamEventId,
                 'label' => $teamEventLabel,
                 'balance' => $this->calculateTeamEventBalance($teamAdminUserId, $teamEventId, $teamEventLabel),
+                'closed' => $this->canUseTeamEventClosedColumn() ? ((isset($row['closed']) && (int)$row['closed'] === 1) ? 1 : 0) : 0,
             ];
         }
 
