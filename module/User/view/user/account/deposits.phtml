@@ -308,9 +308,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 var id = evt && evt.id ? String(evt.id) : '';
                 var label = evt && evt.label ? String(evt.label) : '';
                 if (!id || !label) return;
+                var displayLabel = label;
+                if (evt && evt.closed) {
+                    displayLabel += ' (abgeschlossen)';
+                } else {
+                    displayLabel += ' (offen)';
+                }
+                if (typeof evt.balance !== 'undefined' && evt.balance !== null) {
+                    displayLabel += ' | ' + formatCurrency(evt.balance);
+                }
                 var option = document.createElement('option');
                 option.value = id;
-                option.textContent = label;
+                option.textContent = displayLabel;
                 if (String(selectedId || '') === id) option.selected = true;
                 teamSpieltagSelect.appendChild(option);
             });

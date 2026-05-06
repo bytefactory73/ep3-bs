@@ -1902,18 +1902,11 @@ class AccountController extends AbstractActionController
         $currentTeamEventId = null;
         $preferredTeamEventId = (int)$this->params()->fromQuery('selected_teamevent_id', 0);
         if ($isTeam) {
-            $eventRows = $dbAdapter->query('SELECT id, comment FROM drinks_teamevents WHERE team_admin_user_id = ? ORDER BY created_at DESC, id DESC', [$uid])->toArray();
-            foreach ($eventRows as $eventRow) {
-                $eventId = isset($eventRow['id']) ? (int)$eventRow['id'] : 0;
-                $label = isset($eventRow['comment']) ? trim((string)$eventRow['comment']) : '';
-                if ($label === '') {
-                    continue;
-                }
-                $teamEvents[] = [
-                    'id' => $eventId,
-                    'label' => $label,
-                ];
-                if ($eventId > 0) {
+            $teamEvents = $this->getTeamEventsWithBalances($uid, true);
+            foreach ($teamEvents as $teamEvent) {
+                $eventId = $teamEvent['id'];
+                $label = $teamEvent['label'];
+                if ($eventId > 0 && $label !== '') {
                     if ($latestTeamEventId === null) {
                         $latestTeamEventId = $eventId;
                     }
