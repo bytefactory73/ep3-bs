@@ -196,6 +196,12 @@ if ($__partyModeEnabled) {
                                     <input type="text" id="spieltag-new-name" maxlength="100" style="width:100%; padding:8px 12px; border:1px solid #ccc; border-radius:12px; font-size:15px; min-height:36px;" />
                                 </div>
                                 <div>
+                                    <label for="spieltag-is-medenspiel" style="display:inline-flex; align-items:center; gap:8px; font-weight:600; color:#1769aa; font-size:14px; cursor:pointer;">
+                                        <input type="checkbox" id="spieltag-is-medenspiel" checked="checked" style="width:18px; height:18px; cursor:pointer;" />
+                                        <span><?= $this->t('medenspiel') ?></span>
+                                    </label>
+                                </div>
+                                <div>
                                     <label style="display:block; margin-bottom:8px; font-weight:600; color:#1769aa; font-size:14px;"><?= $this->t('TEILNEHMER') ?></label>
                                     <div id="spieltag-members-rows" style="display:flex; flex-direction:column; gap:8px;"></div>
                                 </div>
@@ -1283,6 +1289,7 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
         var spieltagCreateCancelBtn = document.getElementById('spieltag-create-cancel');
         var spieltagCreateConfirmBtn = document.getElementById('spieltag-create-confirm');
         var spieltagNewNameInput = document.getElementById('spieltag-new-name');
+        var spieltagIsMedenspielCheckbox = document.getElementById('spieltag-is-medenspiel');
         var spieltagMembersRows = document.getElementById('spieltag-members-rows');
         var spieltagCreateError = document.getElementById('spieltag-create-error');
         if (form && submitBtn) {
@@ -1535,7 +1542,8 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
                     var memberIds = getSpieltagSelectedMemberIds();
                     var paramsNew = 'spieltag=' + encodeURIComponent('__new__')
                         + '&new_spieltag=' + encodeURIComponent(newName)
-                        + '&member_user_ids=' + encodeURIComponent(memberIds.join(','));
+                        + '&member_user_ids=' + encodeURIComponent(memberIds.join(','))
+                        + '&is_medenspiel=' + encodeURIComponent(spieltagIsMedenspielCheckbox && spieltagIsMedenspielCheckbox.checked ? '1' : '0');
 
                     if (spieltagCreateError) spieltagCreateError.textContent = '';
                     spieltagCreateConfirmBtn.disabled = true;

@@ -155,6 +155,36 @@ trait TeamEventTrait
         return $this->getTeamEventByLabel($teamAdminUserId, $label);
     }
 
+    protected function ensureTeamEventDrinkOrderExists($teamAdminUserId, $teamEventId, $drinkId, $quantity = 1)
+    {
+        $teamAdminUserId = (int)$teamAdminUserId;
+        $teamEventId = (int)$teamEventId;
+        $drinkId = (int)$drinkId;
+        $quantity = (int)$quantity;
+        if ($teamAdminUserId <= 0 || $teamEventId <= 0 || $drinkId <= 0 || $quantity <= 0) {
+            return false;
+        }
+
+        $dbAdapter = $this->getTeamEventDbAdapter();
+        $existingOrder = $dbAdapter->query(
+            'SELECT id
+             FROM drink_orders
+             WHERE user_id = ?
+               AND drink_id = ?
+               AND teamevent_id = ?
+               AND (deleted IS NULL OR deleted = 0)
+             LIMIT 1',
+            [$teamAdminUserId, $drinkId, $teamEventId]
+        )->current();
+        if ($existingOrder) {
+            return true;
+        }
+
+        $drinkOrderManager = $this->getServiceLocator()->get('Drinks\\Manager\\DrinkOrderManager');
+        $drinkOrderManager->addOrder($teamAdminUserId, $drinkId, $quantity, $teamAdminUserId, 0, null, null, $teamEventId);
+        return true;
+    }
+
     protected function parseTeamEventMemberIds($rawValue)
     {
         if (is_array($rawValue)) {

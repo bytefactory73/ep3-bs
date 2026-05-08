@@ -454,6 +454,7 @@ class SimpleLoginController extends AbstractActionController
         if ($this->getRequest()->isPost()) {
             $selectedRaw = $this->normalizeTeamEventLabel($this->params()->fromPost('spieltag', ''));
             $isNewTeamEventRequest = ($selectedRaw === self::TEAM_SPIELTAG_NEW_OPTION || $selectedRaw === '');
+            $isMedenspiel = (int)$this->params()->fromPost('is_medenspiel', 1) === 1;
             $selected = $selectedRaw;
             if ($isNewTeamEventRequest) {
                 $selected = $this->normalizeTeamEventLabel($this->params()->fromPost('new_spieltag', ''));
@@ -467,6 +468,13 @@ class SimpleLoginController extends AbstractActionController
             }
 
             if ($isNewTeamEventRequest) {
+                if ($isMedenspiel) {
+                    try {
+                        $this->ensureTeamEventDrinkOrderExists($teamAdminUserId, (int)$event['id'], 2, 1);
+                    } catch (\Exception $e) {
+                        return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Medenspielpauschale konnte nicht angelegt werden.']));
+                    }
+                }
                 $memberIdsRaw = $this->params()->fromPost('member_user_ids', '');
                 $memberUserIds = $this->parseTeamEventMemberIds($memberIdsRaw);
                 $this->saveTeamEventMembers($teamAdminUserId, (int)$event['id'], $memberUserIds);
