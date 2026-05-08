@@ -84,7 +84,7 @@ if ($partyModeEnabled) {
         <div id="teamStatsContent" style="padding:2px 4px 8px 4px;"></div>
     </div>
 </div>
-<script src="<?= $this->basePath('js/team-stats-modal.js') ?>"></script>
+<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260508-4') ?>"></script>
 <script>
 function getTeamStatsSpieltagOptions() {
     var bookingSelect = document.getElementById('spieltag-select');
@@ -179,6 +179,17 @@ var teamStatsModalController = createTeamStatsModal({
                 operation: operation,
                 team_event_id: String(state.currentEventId),
                 member_user_id: String(memberUserId)
+            })
+        };
+    },
+    buildOrderRelevanceUpdateRequest: function(drinkId, unitPrice, memberUserIds, state) {
+        return {
+            url: 'simple-order/team-order-relevance',
+            body: new URLSearchParams({
+                team_event_id: String(state.currentEventId),
+                drink_id: String(drinkId),
+                unit_price: String(unitPrice),
+                member_user_ids: String((memberUserIds || []).join(','))
             })
         };
     },

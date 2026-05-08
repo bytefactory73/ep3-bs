@@ -36,6 +36,26 @@ trait TeamEventTrait
         return $hasClosedColumn;
     }
 
+    protected function canUseTeamEventOrderRelevanceTable()
+    {
+        static $hasTable = null;
+        if ($hasTable !== null) {
+            return $hasTable;
+        }
+
+        try {
+            $tableRow = $this->getTeamEventDbAdapter()->query(
+                "SHOW TABLES LIKE 'drinks_teamevent_order_relevance'",
+                []
+            )->current();
+            $hasTable = (bool)$tableRow;
+        } catch (\Exception $e) {
+            $hasTable = false;
+        }
+
+        return $hasTable;
+    }
+
     protected function isTeamEventClosedRow($teamEventRow)
     {
         if (!$this->canUseTeamEventClosedColumn()) {
@@ -210,6 +230,106 @@ trait TeamEventTrait
             }
         }
         return $result;
+    }
+
+    protected function getTeamEventMemberUserIds($teamEventId)
+    {
+        $teamEventId = (int)$teamEventId;
+        if ($teamEventId <= 0) {
+            return [];
+        }
+
+        $rows = $this->getTeamEventDbAdapter()->query(
+            'SELECT user_id FROM drinks_teamevent_members WHERE team_event_id = ? ORDER BY user_id ASC',
+            [$teamEventId]
+        )->toArray();
+
+        $result = [];
+        foreach ($rows as $row) {
+            $userId = isset($row['user_id']) ? (int)$row['user_id'] : 0;
+            if ($userId > 0) {
+                $result[] = $userId;
+            }
+        }
+
+        return array_values(array_unique($result));
+    }
+
+    protected function getTeamEventOrderRelevanceMap($teamEventId)
+    {
+        $teamEventId = (int)$teamEventId;
+        if ($teamEventId <= 0 || !$this->canUseTeamEventOrderRelevanceTable()) {
+            return [];
+        }
+
+        $rows = $this->getTeamEventDbAdapter()->query(
+            'SELECT drink_id, unit_price, member_user_id
+             FROM drinks_teamevent_order_relevance
+             WHERE team_event_id = ?',
+            [$teamEventId]
+        )->toArray();
+
+        $map = [];
+        foreach ($rows as $row) {
+            $drinkId = isset($row['drink_id']) ? (int)$row['drink_id'] : 0;
+            $unitPrice = isset($row['unit_price']) ? (float)$row['unit_price'] : 0.0;
+            $memberUserId = isset($row['member_user_id']) ? (int)$row['member_user_id'] : 0;
+            if ($drinkId <= 0 || $unitPrice <= 0 || $memberUserId <= 0) {
+                continue;
+            }
+            $key = $drinkId . '|' . number_format($unitPrice, 2, '.', '');
+            if (!isset($map[$key])) {
+                $map[$key] = [];
+            }
+            $map[$key][] = $memberUserId;
+        }
+
+        foreach ($map as $key => $memberIds) {
+            $map[$key] = array_values(array_unique($memberIds));
+        }
+
+        return $map;
+    }
+
+    protected function saveTeamEventOrderRelevance($teamAdminUserId, $teamEventId, $drinkId, $unitPrice, array $memberUserIds)
+    {
+        $teamAdminUserId = (int)$teamAdminUserId;
+        $teamEventId = (int)$teamEventId;
+        $drinkId = (int)$drinkId;
+        $unitPrice = round((float)$unitPrice, 2);
+        $memberUserIds = array_values(array_unique(array_map('intval', $memberUserIds)));
+        $memberUserIds = array_values(array_filter($memberUserIds, function ($userId) {
+            return $userId > 0;
+        }));
+
+        if ($teamAdminUserId <= 0 || $teamEventId <= 0 || $drinkId <= 0 || $unitPrice <= 0) {
+            throw new \RuntimeException('Invalid relevance input');
+        }
+        if (!$this->canUseTeamEventOrderRelevanceTable()) {
+            throw new \RuntimeException('Relevance table not available');
+        }
+
+        $teamEvent = $this->getTeamEventById($teamAdminUserId, $teamEventId);
+        if (!$teamEvent) {
+            throw new \RuntimeException('Team event not found');
+        }
+
+        $dbAdapter = $this->getTeamEventDbAdapter();
+        $dbAdapter->query(
+            'DELETE FROM drinks_teamevent_order_relevance
+             WHERE team_event_id = ? AND drink_id = ? AND unit_price = ?',
+            [$teamEventId, $drinkId, $unitPrice]
+        );
+
+        foreach ($memberUserIds as $memberUserId) {
+            $dbAdapter->query(
+                'INSERT INTO drinks_teamevent_order_relevance (team_event_id, drink_id, unit_price, member_user_id)
+                 VALUES (?, ?, ?, ?)',
+                [$teamEventId, $drinkId, $unitPrice, $memberUserId]
+            );
+        }
+
+        return true;
     }
 
     protected function saveTeamEventMembers($teamAdminUserId, $teamEventId, array $memberUserIds)
@@ -388,8 +508,36 @@ trait TeamEventTrait
             return ['rows' => [], 'total_sum' => 0.0];
         }
 
+        $selectedTeamEvent = $this->getTeamEventByLabel($teamAdminUserId, $teamEventLabel);
+        $selectedTeamEventId = $selectedTeamEvent && isset($selectedTeamEvent['id']) ? (int)$selectedTeamEvent['id'] : 0;
+        $activeMembers = $selectedTeamEventId > 0
+            ? $this->getTeamEventMembersWithContribution($teamAdminUserId, $selectedTeamEventId, $teamEventLabel)
+            : [];
+        $storedRelevanceByRowKey = $selectedTeamEventId > 0
+            ? $this->getTeamEventOrderRelevanceMap($selectedTeamEventId)
+            : [];
+        $relevantMembers = [];
+        $activeMemberNamesById = [];
+        foreach ($activeMembers as $memberRow) {
+            if (empty($memberRow['is_member'])) {
+                continue;
+            }
+            $memberUid = isset($memberRow['uid']) ? (int)$memberRow['uid'] : 0;
+            if ($memberUid <= 0) {
+                continue;
+            }
+            $memberName = isset($memberRow['name']) ? (string)$memberRow['name'] : ('User ' . $memberUid);
+            $relevantMembers[] = [
+                'uid' => $memberUid,
+                'name' => $memberName,
+            ];
+            $activeMemberNamesById[$memberUid] = $memberName;
+        }
+
         $orderRows = $this->getTeamEventDbAdapter()->query(
             'SELECT
+                o.drink_id,
+                o.price AS unit_price,
                 COALESCE(c.name, "") AS category_name,
                 COALESCE(c.sort_priority, 0) AS category_sort,
                 d.name AS article,
@@ -417,12 +565,46 @@ trait TeamEventTrait
 
         $rows = [];
         foreach ($orderRows as $orderRow) {
+            $totalPrice = isset($orderRow['total_price']) ? (float)$orderRow['total_price'] : 0.0;
+            $drinkId = isset($orderRow['drink_id']) ? (int)$orderRow['drink_id'] : 0;
+            $unitPrice = isset($orderRow['unit_price']) ? round((float)$orderRow['unit_price'], 2) : 0.0;
+            $rowKey = $drinkId . '|' . number_format($unitPrice, 2, '.', '');
+
+            $selectedRelevantIds = [];
+            if (isset($storedRelevanceByRowKey[$rowKey]) && is_array($storedRelevanceByRowKey[$rowKey])) {
+                foreach ($storedRelevanceByRowKey[$rowKey] as $memberId) {
+                    $memberId = (int)$memberId;
+                    if ($memberId > 0 && isset($activeMemberNamesById[$memberId])) {
+                        $selectedRelevantIds[] = $memberId;
+                    }
+                }
+                $selectedRelevantIds = array_values(array_unique($selectedRelevantIds));
+            }
+
+            $rowRelevantMembers = [];
+            if (!empty($selectedRelevantIds)) {
+                foreach ($selectedRelevantIds as $memberId) {
+                    $rowRelevantMembers[] = [
+                        'uid' => $memberId,
+                        'name' => $activeMemberNamesById[$memberId],
+                    ];
+                }
+            } else {
+                $rowRelevantMembers = $relevantMembers;
+            }
+
+            $rowRelevantMemberCount = count($rowRelevantMembers);
             $rows[] = [
+                'drink_id' => $drinkId,
+                'unit_price' => $unitPrice,
                 'category' => isset($orderRow['category_name']) ? (string)$orderRow['category_name'] : '',
                 'article' => isset($orderRow['article']) ? (string)$orderRow['article'] : '',
                 'quantity' => isset($orderRow['quantity']) ? (int)$orderRow['quantity'] : 0,
                 'single_price' => isset($orderRow['single_price']) ? (float)$orderRow['single_price'] : 0.0,
-                'total_price' => isset($orderRow['total_price']) ? (float)$orderRow['total_price'] : 0.0,
+                'total_price' => $totalPrice,
+                'relevant_members' => $rowRelevantMembers,
+                'relevant_member_count' => $rowRelevantMemberCount,
+                'share_per_member' => $rowRelevantMemberCount > 0 ? ($totalPrice / $rowRelevantMemberCount) : 0.0,
             ];
         }
 

@@ -371,6 +371,73 @@ class SimpleLoginController extends AbstractActionController
         return $this->getResponse()->setContent(json_encode($responseData));
     }
 
+    public function teamOrderRelevanceAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $request = $this->getRequest();
+        if (!$request->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required.']));
+        }
+
+        $sessionManager = $this->getServiceLocator()->get('Zend\Session\SessionManager');
+        $sessionManager->start();
+        $session = new \Zend\Session\Container('SimpleLogin');
+        if (empty($session->user_id)) {
+            return $this->getResponse()->setStatusCode(401)->setContent(json_encode(['success' => false, 'error' => 'Not authenticated.']));
+        }
+
+        $teamAdminUserId = (int)$session->user_id;
+        $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
+        $aliasRow = $db->query('SELECT is_team FROM drink_aliases WHERE user_id = ?', [$teamAdminUserId])->current();
+        if (!$aliasRow || empty($aliasRow['is_team'])) {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'Kein Team-Account.']));
+        }
+
+        $teamEventId = (int)$this->params()->fromPost('team_event_id', 0);
+        $drinkId = (int)$this->params()->fromPost('drink_id', 0);
+        $unitPrice = (float)$this->params()->fromPost('unit_price', 0);
+        $memberUserIdsRaw = $this->params()->fromPost('member_user_ids', '');
+        $memberUserIds = $this->parseTeamEventMemberIds($memberUserIdsRaw);
+        if ($teamEventId <= 0 || $drinkId <= 0 || $unitPrice <= 0) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültige Eingabe.']));
+        }
+
+        $teamEvent = $this->getTeamEventById($teamAdminUserId, $teamEventId);
+        if (!$teamEvent) {
+            return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'Spieltag nicht gefunden.']));
+        }
+        if ($this->isTeamEventClosedRow($teamEvent)) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Abrechnung ist beendet.']));
+        }
+
+        $allowedMemberIds = $this->getTeamEventMemberUserIds($teamEventId);
+        $allowedLookup = [];
+        foreach ($allowedMemberIds as $allowedMemberId) {
+            $allowedLookup[(int)$allowedMemberId] = true;
+        }
+        $filteredMemberIds = [];
+        foreach ($memberUserIds as $memberUserId) {
+            $memberUserId = (int)$memberUserId;
+            if ($memberUserId > 0 && isset($allowedLookup[$memberUserId])) {
+                $filteredMemberIds[] = $memberUserId;
+            }
+        }
+        $filteredMemberIds = array_values(array_unique($filteredMemberIds));
+
+        try {
+            $this->saveTeamEventOrderRelevance($teamAdminUserId, $teamEventId, $drinkId, $unitPrice, $filteredMemberIds);
+        } catch (\Exception $e) {
+            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Relevanz konnte nicht gespeichert werden.']));
+        }
+
+        $teamEventLabel = isset($teamEvent['comment']) ? trim((string)$teamEvent['comment']) : '';
+        return $this->getResponse()->setContent(json_encode(array_merge([
+            'success' => true,
+            'spieltage' => $this->getAvailableTeamEventLabels($teamAdminUserId, true),
+            'open_spieltage' => $this->getAvailableTeamEventLabels($teamAdminUserId, false),
+        ], $this->buildTeamStatsPayload($teamAdminUserId, $teamEventLabel))));
+    }
+
     public function closeTeamEventAction()
     {
         $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');

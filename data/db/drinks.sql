@@ -158,3 +158,35 @@ CREATE TABLE IF NOT EXISTS drink_checks (
 -- To update existing databases, run:
 -- ALTER TABLE drink_aliases ADD COLUMN keep_logged_in TINYINT(1) DEFAULT 0 AFTER teamlead_email;
 -- ALTER TABLE drink_aliases ADD COLUMN keep_logged_in_expires DATETIME NULL AFTER keep_logged_in;
+
+-- Per-order relevance mapping for team event cost distribution
+CREATE TABLE IF NOT EXISTS drinks_teamevent_order_relevance (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    team_event_id INT NOT NULL,
+    drink_id INT NOT NULL,
+    unit_price DECIMAL(10,2) NOT NULL,
+    member_user_id INT UNSIGNED NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_teamevent_order_member (team_event_id, drink_id, unit_price, member_user_id),
+    INDEX idx_teamevent_order (team_event_id, drink_id, unit_price),
+    INDEX idx_teamevent_member (team_event_id, member_user_id),
+    FOREIGN KEY (team_event_id) REFERENCES drinks_teamevents(id) ON DELETE CASCADE,
+    FOREIGN KEY (drink_id) REFERENCES drinks(id),
+    FOREIGN KEY (member_user_id) REFERENCES bs_users(uid)
+);
+
+-- To update existing databases, run:
+-- CREATE TABLE drinks_teamevent_order_relevance (
+--     id INT AUTO_INCREMENT PRIMARY KEY,
+--     team_event_id INT NOT NULL,
+--     drink_id INT NOT NULL,
+--     unit_price DECIMAL(10,2) NOT NULL,
+--     member_user_id INT UNSIGNED NOT NULL,
+--     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+--     UNIQUE KEY uniq_teamevent_order_member (team_event_id, drink_id, unit_price, member_user_id),
+--     INDEX idx_teamevent_order (team_event_id, drink_id, unit_price),
+--     INDEX idx_teamevent_member (team_event_id, member_user_id),
+--     FOREIGN KEY (team_event_id) REFERENCES drinks_teamevents(id) ON DELETE CASCADE,
+--     FOREIGN KEY (drink_id) REFERENCES drinks(id),
+--     FOREIGN KEY (member_user_id) REFERENCES bs_users(uid)
+-- );

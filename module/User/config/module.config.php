@@ -216,6 +216,16 @@ return array(
                             ),
                         ),
                     ),
+                    'teamlead-order-relevance' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/teamlead-order-relevance',
+                            'defaults' => array(
+                                'controller' => 'User\Controller\Account',
+                                'action' => 'teamleadOrderRelevance',
+                            ),
+                        ),
+                    ),
                     'teamlead-close-team-event' => array(
                         'type' => 'Literal',
                         'options' => array(
@@ -344,6 +354,16 @@ return array(
                                     'defaults' => array(
                                         'controller' => 'User\Controller\SimpleLogin',
                                         'action' => 'teamMembers',
+                                    ),
+                                ),
+                            ),
+                            'team-order-relevance' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/team-order-relevance',
+                                    'defaults' => array(
+                                        'controller' => 'User\Controller\SimpleLogin',
+                                        'action' => 'teamOrderRelevance',
                                     ),
                                 ),
                             ),

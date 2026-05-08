@@ -22,6 +22,17 @@
         return '#333';
     }
 
+    function getInitials(name) {
+        var value = String(name || '').trim();
+        if (!value) return '?';
+        var parts = value.split(/\s+/).filter(function(part) { return part; });
+        if (parts.length === 0) return '?';
+        if (parts.length === 1) {
+            return parts[0].slice(0, 2).toUpperCase();
+        }
+        return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+    }
+
     function byId(id) {
         return id ? document.getElementById(id) : null;
     }
@@ -140,6 +151,11 @@
             var rows = Array.isArray(data.rows) ? data.rows : [];
             var members = Array.isArray(data.members) ? data.members : [];
             var html = '';
+            var memberSharesByUid = {};
+            var canEditRelevance = canManageMembers && typeof config.buildOrderRelevanceUpdateRequest === 'function';
+            var relevanceTriggerClass = config.orderRelevanceTriggerClass || 'team-stats-order-relevance-trigger';
+
+            state.relevanceEditorRows = {};
 
             if (rows.length === 0) {
                 html += '<div style="color:#555;">Keine Eintraege fuer diesen Spieltag.</div>';
@@ -147,10 +163,21 @@
                 html += '<table class="default-table" style="width:100%; margin:0;">';
                 html += '<tr style="background:#e3f0fa;">';
                 html += '<th style="text-align:left; padding:6px 8px;">Artikel</th>';
+                html += '<th style="text-align:left; padding:6px 8px;">Relevant für</th>';
                 html += '<th style="text-align:right; padding:6px 8px;">Menge</th>';
                 html += '<th style="text-align:right; padding:6px 8px;">Einzelpreis</th>';
+                html += '<th style="text-align:right; padding:6px 8px;">Anteil p.P.</th>';
                 html += '<th style="text-align:right; padding:6px 8px;">Gesamtpreis</th>';
                 html += '</tr>';
+
+                var activeMembers = members.filter(function(member) {
+                    return !!(member && member.is_member);
+                });
+                var activeMemberIds = activeMembers.map(function(member) {
+                    return parseInt(member.uid || 0, 10);
+                }).filter(function(uid) {
+                    return uid > 0;
+                });
 
                 var lastCategory = null;
                 for (var i = 0; i < rows.length; i++) {
@@ -160,20 +187,73 @@
                         lastCategory = category;
                         if (category !== '') {
                             html += '<tr style="background:#f0f4fa;">';
-                            html += '<td colspan="4" style="font-weight:bold; color:#1769aa; padding:6px 8px 4px 8px;">' + escapeHtml(category) + '</td>';
+                            html += '<td colspan="6" style="font-weight:bold; color:#1769aa; padding:6px 8px 4px 8px;">' + escapeHtml(category) + '</td>';
                             html += '</tr>';
                         }
                     }
+
+                    var relevantMembers = Array.isArray(row.relevant_members) ? row.relevant_members : [];
+                    var relevantIds = [];
+                    for (var ri = 0; ri < relevantMembers.length; ri++) {
+                        var relevantMember = relevantMembers[ri] || {};
+                        var relevantUid = parseInt(relevantMember.uid || 0, 10);
+                        if (relevantUid > 0) {
+                            relevantIds.push(relevantUid);
+                            memberSharesByUid[relevantUid] = (memberSharesByUid[relevantUid] || 0) + parseFloat(row.share_per_member || 0);
+                        }
+                    }
+                    relevantIds = Array.from(new Set(relevantIds));
+
+                    var allSelected = activeMemberIds.length > 0 && relevantIds.length === activeMemberIds.length;
+                    var noneSelected = relevantIds.length === 0;
+                    var rowKey = String(row.drink_id || '') + '|' + String(row.unit_price || '');
+                    state.relevanceEditorRows[rowKey] = {
+                        drinkId: parseInt(row.drink_id || 0, 10),
+                        unitPrice: parseFloat(row.unit_price || 0),
+                        article: String(row.article || ''),
+                        activeMembers: activeMembers.map(function(member) {
+                            return {
+                                uid: parseInt(member.uid || 0, 10),
+                                name: String(member.name || '')
+                            };
+                        }),
+                        selectedIds: relevantIds
+                    };
+
+                    var labelsHtml = '';
+                    if (allSelected) {
+                        labelsHtml = '<span style="display:inline-flex; align-items:center; padding:2px 8px; border-radius:999px; background:#e3f2fd; color:#0d47a1; font-size:12px; font-weight:700;">ALLE</span>';
+                    } else if (noneSelected) {
+                        labelsHtml = '<span style="display:inline-flex; align-items:center; padding:2px 8px; border-radius:999px; background:#f3f4f6; color:#5f6368; font-size:12px; font-weight:700;">NIEMAND</span>';
+                    } else {
+                        var chips = [];
+                        for (var ci = 0; ci < relevantMembers.length; ci++) {
+                            var chipMember = relevantMembers[ci] || {};
+                            var chipName = String(chipMember.name || '').trim();
+                            if (!chipName) continue;
+                            chips.push('<span title="' + escapeHtml(chipName) + '" style="display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:50%; background:#d7ecff; color:#0d47a1; font-size:11px; font-weight:700;">' + escapeHtml(getInitials(chipName)) + '</span>');
+                        }
+                        labelsHtml = chips.join(' ');
+                    }
+
                     html += '<tr>';
                     html += '<td style="padding:6px 8px;">' + escapeHtml(row.article || '') + '</td>';
+                    html += '<td style="padding:6px 8px;">';
+                    if (canEditRelevance && parseInt(row.drink_id || 0, 10) > 0 && parseFloat(row.unit_price || 0) > 0) {
+                        html += '<button type="button" class="' + relevanceTriggerClass + '" data-row-key="' + escapeHtml(rowKey) + '" style="border:none; background:transparent; cursor:pointer; padding:2px; text-align:left; display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;">' + labelsHtml + '</button>';
+                    } else {
+                        html += labelsHtml || '-';
+                    }
+                    html += '</td>';
                     html += '<td style="text-align:right; padding:6px 8px;">' + escapeHtml(row.quantity || 0) + '</td>';
                     html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(row.single_price) + ';">' + formatCurrency(row.single_price) + '</td>';
+                    html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(row.share_per_member) + ';">' + formatCurrency(row.share_per_member) + '</td>';
                     html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(row.total_price) + ';">' + formatCurrency(row.total_price) + '</td>';
                     html += '</tr>';
                 }
 
                 html += '<tr style="font-weight:bold; background:#f5faff;">';
-                html += '<td colspan="3" style="text-align:right; padding:6px 8px;">Gesamtsumme Ausgaben</td>';
+                html += '<td colspan="5" style="text-align:right; padding:6px 8px;">Gesamtsumme Ausgaben</td>';
                 html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(data.total_sum) + ';">' + formatCurrency(data.total_sum) + '</td>';
                 html += '</tr>';
                 html += '</table>';
@@ -184,7 +264,7 @@
             html += '<table class="default-table" style="width:100%; margin:0; margin-bottom:10px;">';
             html += '<tr style="background:#e3f0fa;">';
             html += '<th style="text-align:left; padding:6px 8px;">Mitglied</th>';
-            html += '<th style="text-align:right; padding:6px 8px;">Beiträge gesamt</th>';
+            html += '<th style="text-align:right; padding:6px 8px;">Bereits gezahlt</th>';
             html += '<th style="text-align:right; padding:6px 8px;">Zu zahlen</th>';
             html += '<th style="text-align:right; padding:6px 8px;">Rest</th>';
             if (canManageMembers) {
@@ -193,14 +273,6 @@
             html += '</tr>';
 
             var membersTotalSum = 0;
-            var activeMembersCount = 0;
-            for (var mi = 0; mi < members.length; mi++) {
-                if (members[mi] && members[mi].is_member) {
-                    activeMembersCount++;
-                }
-            }
-            var totalExpensesAbs = Math.abs(parseFloat(data.total_sum || 0));
-            var amountPerMember = activeMembersCount > 0 ? (totalExpensesAbs / activeMembersCount) : 0;
             if (members.length === 0) {
                 html += '<tr><td colspan="' + (canManageMembers ? '5' : '4') + '" style="padding:8px; color:#666;">Keine Mitglieder hinterlegt.</td></tr>';
             } else {
@@ -219,8 +291,9 @@
                     html += '<td style="padding:6px 8px;">' + memberDisplay + '</td>';
                     html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(memberTotalPaid) + ';">' + formatCurrency(memberTotalPaid) + '</td>';
                     if (isMember) {
-                        var restAmount = amountPerMember - memberTotalPaid;
-                        html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(amountPerMember) + ';">' + formatCurrency(amountPerMember) + '</td>';
+                        var memberDue = memberSharesByUid[memberUid] || 0;
+                        var restAmount = memberDue - memberTotalPaid;
+                        html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(memberDue) + ';">' + formatCurrency(memberDue) + '</td>';
                         html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(restAmount) + ';">' + formatCurrency(restAmount) + '</td>';
                     } else {
                         html += '<td style="text-align:right; padding:6px 8px; color:#999;">-</td>';
@@ -318,6 +391,108 @@
             await loadCurrentSelection();
         }
 
+        async function updateOrderRelevance(drinkId, unitPrice, memberUserIds) {
+            if (typeof config.buildOrderRelevanceUpdateRequest !== 'function') {
+                throw new Error('Relevanz-Update ist nicht konfiguriert.');
+            }
+            var requestData = config.buildOrderRelevanceUpdateRequest(drinkId, unitPrice, memberUserIds, state);
+            var resp = await fetch(requestData.url, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: requestData.body
+            });
+            var data = await resp.json();
+            if (!resp.ok || !data || !data.success) {
+                throw new Error((data && data.error) ? data.error : 'Fehler beim Speichern der Relevanz.');
+            }
+            await loadCurrentSelection();
+        }
+
+        function ensureOrderRelevancePopup() {
+            var popupId = config.orderRelevancePopupId || 'team-stats-order-relevance-popup';
+            var overlay = byId(popupId);
+            if (overlay) {
+                return {
+                    overlay: overlay,
+                    title: byId(popupId + '-title'),
+                    list: byId(popupId + '-list'),
+                    saveBtn: byId(popupId + '-save'),
+                    cancelBtn: byId(popupId + '-cancel'),
+                    allBtn: byId(popupId + '-all'),
+                    noneBtn: byId(popupId + '-none')
+                };
+            }
+
+            overlay = document.createElement('div');
+            overlay.id = popupId;
+            overlay.style.cssText = 'display:none; position:fixed; inset:0; background:rgba(0,0,0,0.38); z-index:100001; align-items:center; justify-content:center; padding:16px;';
+            overlay.innerHTML = '' +
+                '<div style="width:min(420px, 94vw); background:#fff; border-radius:12px; box-shadow:0 12px 32px rgba(0,0,0,0.22); overflow:hidden;">' +
+                '  <div style="padding:14px 16px; border-bottom:1px solid #e6edf5; font-weight:700; color:#1769aa;" id="' + popupId + '-title"></div>' +
+                '  <div style="padding:12px 16px; display:flex; gap:8px;">' +
+                '    <button type="button" class="mini-button" id="' + popupId + '-all">Alle</button>' +
+                '    <button type="button" class="mini-button" id="' + popupId + '-none">Niemand</button>' +
+                '  </div>' +
+                '  <div id="' + popupId + '-list" style="padding:0 16px 12px 16px; max-height:280px; overflow:auto;"></div>' +
+                '  <div style="padding:12px 16px; border-top:1px solid #e6edf5; display:flex; justify-content:flex-end; gap:8px;">' +
+                '    <button type="button" class="mini-button" id="' + popupId + '-cancel">Abbrechen</button>' +
+                '    <button type="button" class="default-button mini-button" id="' + popupId + '-save">Speichern</button>' +
+                '  </div>' +
+                '</div>';
+            document.body.appendChild(overlay);
+            overlay.addEventListener('click', function(e) {
+                if (e.target === overlay) {
+                    overlay.style.display = 'none';
+                }
+            });
+
+            return {
+                overlay: overlay,
+                title: byId(popupId + '-title'),
+                list: byId(popupId + '-list'),
+                saveBtn: byId(popupId + '-save'),
+                cancelBtn: byId(popupId + '-cancel'),
+                allBtn: byId(popupId + '-all'),
+                noneBtn: byId(popupId + '-none')
+            };
+        }
+
+        function openOrderRelevancePopup(rowKey) {
+            var payload = state.relevanceEditorRows ? state.relevanceEditorRows[rowKey] : null;
+            if (!payload) return;
+
+            state.relevanceEditorRowKey = rowKey;
+            var popup = ensureOrderRelevancePopup();
+            if (!popup.overlay || !popup.list || !popup.title) return;
+
+            popup.title.textContent = 'Relevant für: ' + String(payload.article || 'Artikel');
+            popup.list.innerHTML = '';
+
+            var selectedLookup = {};
+            (payload.selectedIds || []).forEach(function(uid) {
+                selectedLookup[parseInt(uid, 10)] = true;
+            });
+
+            (payload.activeMembers || []).forEach(function(member) {
+                var uid = parseInt(member.uid || 0, 10);
+                if (!uid) return;
+                var name = String(member.name || ('User ' + uid));
+                var checked = !!selectedLookup[uid];
+                var row = document.createElement('label');
+                row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:6px 4px; cursor:pointer; border-radius:6px;';
+                row.innerHTML = '<input type="checkbox" data-member-uid="' + escapeHtml(uid) + '"' + (checked ? ' checked' : '') + '>' +
+                    '<span style="display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:50%; background:#d7ecff; color:#0d47a1; font-size:11px; font-weight:700;">' + escapeHtml(getInitials(name)) + '</span>' +
+                    '<span>' + escapeHtml(name) + '</span>';
+                popup.list.appendChild(row);
+            });
+
+            popup.overlay.style.display = 'flex';
+        }
+
         function bindMemberControls(canManageMembers) {
             var r = refs();
 
@@ -411,6 +586,64 @@
                         }
                     });
                 });
+
+                var relevanceTriggerClass = config.orderRelevanceTriggerClass || 'team-stats-order-relevance-trigger';
+                document.querySelectorAll('.' + relevanceTriggerClass).forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        var rowKey = String(btn.getAttribute('data-row-key') || '');
+                        if (!rowKey) return;
+                        openOrderRelevancePopup(rowKey);
+                    });
+                });
+
+                var popup = ensureOrderRelevancePopup();
+                if (popup.cancelBtn) {
+                    popup.cancelBtn.onclick = function() {
+                        popup.overlay.style.display = 'none';
+                    };
+                }
+                if (popup.noneBtn) {
+                    popup.noneBtn.onclick = function() {
+                        popup.list.querySelectorAll('input[type="checkbox"][data-member-uid]').forEach(function(cb) {
+                            cb.checked = false;
+                        });
+                    };
+                }
+                if (popup.allBtn) {
+                    popup.allBtn.onclick = function() {
+                        popup.list.querySelectorAll('input[type="checkbox"][data-member-uid]').forEach(function(cb) {
+                            cb.checked = true;
+                        });
+                    };
+                }
+                if (popup.saveBtn) {
+                    popup.saveBtn.onclick = async function() {
+                        var rowKey = String(state.relevanceEditorRowKey || '');
+                        var payload = state.relevanceEditorRows ? state.relevanceEditorRows[rowKey] : null;
+                        if (!payload) {
+                            popup.overlay.style.display = 'none';
+                            return;
+                        }
+
+                        var memberUserIds = [];
+                        popup.list.querySelectorAll('input[type="checkbox"][data-member-uid]').forEach(function(cb) {
+                            if (cb.checked) {
+                                var uid = parseInt(cb.getAttribute('data-member-uid') || '0', 10);
+                                if (uid > 0) memberUserIds.push(uid);
+                            }
+                        });
+
+                        popup.saveBtn.disabled = true;
+                        try {
+                            await updateOrderRelevance(payload.drinkId, payload.unitPrice, memberUserIds);
+                            popup.overlay.style.display = 'none';
+                        } catch (e) {
+                            alert(e && e.message ? e.message : 'Fehler beim Speichern der Relevanz.');
+                        } finally {
+                            popup.saveBtn.disabled = false;
+                        }
+                    };
+                }
             }
 
             var closeBtn = document.getElementById(config.closeEventBtnId || 'team-stats-close-event-btn');

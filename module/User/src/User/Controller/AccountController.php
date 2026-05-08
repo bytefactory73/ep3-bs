@@ -226,6 +226,90 @@ class AccountController extends AbstractActionController
         ]));
     }
 
+    public function teamleadOrderRelevanceAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $request = $this->getRequest();
+        if (!$request->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required.']));
+        }
+
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $sessionUser = $userSessionManager->getSessionUser();
+        if (!$sessionUser) {
+            return $this->getResponse()->setStatusCode(401)->setContent(json_encode(['success' => false, 'error' => 'Not authenticated.']));
+        }
+
+        $teamUserId = (int)$this->params()->fromPost('team_uid', 0);
+        $teamEventId = (int)$this->params()->fromPost('team_event_id', 0);
+        $drinkId = (int)$this->params()->fromPost('drink_id', 0);
+        $unitPrice = (float)$this->params()->fromPost('unit_price', 0);
+        $memberUserIdsRaw = $this->params()->fromPost('member_user_ids', '');
+        $memberUserIds = $this->parseTeamEventMemberIds($memberUserIdsRaw);
+
+        if ($teamUserId <= 0 || $teamEventId <= 0 || $drinkId <= 0 || $unitPrice <= 0) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültige Eingabe.']));
+        }
+
+        $sessionEmail = trim((string)$sessionUser->get('email'));
+        if ($sessionEmail === '') {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'Keine Berechtigung.']));
+        }
+
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+        $teamAliasRow = $dbAdapter->query(
+            'SELECT user_id, alias FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND LOWER(TRIM(COALESCE(teamlead_email, ""))) = LOWER(TRIM(?))',
+            [$teamUserId, $sessionEmail]
+        )->current();
+        if (!$teamAliasRow) {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'Keine Berechtigung für diesen Team-Account.']));
+        }
+
+        $teamEvent = $this->getTeamEventById($teamUserId, $teamEventId);
+        if (!$teamEvent) {
+            return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'Spieltag nicht gefunden.']));
+        }
+        if ($this->isTeamEventClosedRow($teamEvent)) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Abrechnung ist beendet.']));
+        }
+
+        $allowedMemberIds = $this->getTeamEventMemberUserIds($teamEventId);
+        $allowedLookup = [];
+        foreach ($allowedMemberIds as $allowedMemberId) {
+            $allowedLookup[(int)$allowedMemberId] = true;
+        }
+        $filteredMemberIds = [];
+        foreach ($memberUserIds as $memberUserId) {
+            $memberUserId = (int)$memberUserId;
+            if ($memberUserId > 0 && isset($allowedLookup[$memberUserId])) {
+                $filteredMemberIds[] = $memberUserId;
+            }
+        }
+        $filteredMemberIds = array_values(array_unique($filteredMemberIds));
+
+        try {
+            $this->saveTeamEventOrderRelevance($teamUserId, $teamEventId, $drinkId, $unitPrice, $filteredMemberIds);
+        } catch (\Exception $e) {
+            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Relevanz konnte nicht gespeichert werden.']));
+        }
+
+        $teamEventLabel = isset($teamEvent['comment']) ? trim((string)$teamEvent['comment']) : '';
+        $serviceManager = @$this->getServiceLocator();
+        $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
+        $accountBalance = (float)$drinkManager->calculateUserDrinkBalance($teamUserId, $serviceManager);
+        $spieltage = $this->getAvailableTeamEventLabels($teamUserId, true);
+
+        return $this->getResponse()->setContent(json_encode(array_merge([
+            'success' => true,
+            'team_uid' => $teamUserId,
+            'team_alias' => isset($teamAliasRow['alias']) ? trim((string)$teamAliasRow['alias']) : '',
+            'spieltage' => $spieltage,
+            'open_spieltage' => $this->getAvailableTeamEventLabels($teamUserId, false),
+            'account_balance' => $accountBalance,
+        ], $this->buildTeamStatsPayload($teamUserId, $teamEventLabel))));
+    }
+
     /**
      * Admin: Übersicht aller Nutzer mit Buchungen oder Einzahlungen, sortiert nach Kontostand
      */
