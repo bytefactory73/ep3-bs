@@ -70,7 +70,7 @@ $teamLeadTeamAlias = isset($this->teamLeadTeamAlias) ? (string)$this->teamLeadTe
         <div id="frontendTeamStatsContent" style="padding:2px 4px 8px 4px;"></div>
     </div>
 </div>
-<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260508-4') ?>"></script>
+<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260509-1') ?>"></script>
 <script>
 window.__frontendTeamStatsTeamAlias = <?= json_encode($teamLeadTeamAlias, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 window.__frontendTeamStatsTeamUid = 0;
@@ -130,6 +130,43 @@ var frontendTeamStatsModalController = createTeamStatsModal({
                 drink_id: String(drinkId),
                 unit_price: String(unitPrice),
                 member_user_ids: String((memberUserIds || []).join(','))
+            })
+        };
+    },
+    buildExtraCostCreateRequest: function(payload, state) {
+        return {
+            url: '<?= $this->url('user/teamlead-extra-cost') ?>',
+            body: new URLSearchParams({
+                team_uid: String(state.teamUid),
+                team_event_id: String(state.currentEventId),
+                payer_user_id: String(payload.payerUserId || 0),
+                amount: String(payload.amount || 0),
+                comment: String(payload.comment || ''),
+                relevant_member_ids: String((payload.relevantMemberIds || []).join(','))
+            })
+        };
+    },
+    buildExtraCostUpdateRequest: function(payload, state) {
+        return {
+            url: '<?= $this->url('user/teamlead-update-extra-cost') ?>',
+            body: new URLSearchParams({
+                team_uid: String(state.teamUid),
+                extra_cost_id: String(payload.extraCostId || 0),
+                team_event_id: String(state.currentEventId),
+                payer_user_id: String(payload.payerUserId || 0),
+                amount: String(payload.amount || 0),
+                comment: String(payload.comment || ''),
+                relevant_member_ids: String((payload.relevantMemberIds || []).join(','))
+            })
+        };
+    },
+    buildExtraCostDeleteRequest: function(extraCostId, state) {
+        return {
+            url: '<?= $this->url('user/teamlead-delete-extra-cost') ?>',
+            body: new URLSearchParams({
+                team_uid: String(state.teamUid),
+                extra_cost_id: String(extraCostId || 0),
+                team_event_id: String(state.currentEventId)
             })
         };
     },

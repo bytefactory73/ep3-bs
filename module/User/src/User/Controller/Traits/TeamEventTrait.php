@@ -497,6 +497,53 @@ trait TeamEventTrait
                 'deposit_comment' => $depositComment,
             ];
         }
+
+        // Add payer contributions from extra costs (money paid outside the booking system).
+        $extraCosts = $this->getTeamEventExtraCosts($teamEventId);
+        if (!empty($extraCosts)) {
+            $resultByUid = [];
+            foreach ($result as $index => $row) {
+                $uid = isset($row['uid']) ? (int)$row['uid'] : 0;
+                if ($uid > 0) {
+                    $resultByUid[$uid] = $index;
+                }
+            }
+
+            foreach ($extraCosts as $extraCost) {
+                $payerUid = isset($extraCost['payer_user_id']) ? (int)$extraCost['payer_user_id'] : 0;
+                $amount = isset($extraCost['amount']) ? (float)$extraCost['amount'] : 0.0;
+                if ($payerUid <= 0 || $amount <= 0) {
+                    continue;
+                }
+
+                if (isset($resultByUid[$payerUid])) {
+                    $idx = (int)$resultByUid[$payerUid];
+                    $result[$idx]['total_paid'] = (float)$result[$idx]['total_paid'] + $amount;
+                    continue;
+                }
+
+                $userRow = $this->getTeamEventDbAdapter()->query(
+                    'SELECT uid, alias, email FROM bs_users WHERE uid = ? LIMIT 1',
+                    [$payerUid]
+                )->current();
+                if (!$userRow) {
+                    continue;
+                }
+
+                $alias = isset($userRow['alias']) ? trim((string)$userRow['alias']) : '';
+                $email = isset($userRow['email']) ? trim((string)$userRow['email']) : '';
+                $result[] = [
+                    'uid' => $payerUid,
+                    'name' => $alias !== '' ? $alias : ('User ' . $payerUid),
+                    'email' => $email,
+                    'total_paid' => $amount,
+                    'is_member' => false,
+                    'deposit_comment' => 'Extrakosten',
+                ];
+                $resultByUid[$payerUid] = count($result) - 1;
+            }
+        }
+
         return $result;
     }
 
@@ -505,7 +552,7 @@ trait TeamEventTrait
         $teamAdminUserId = (int)$teamAdminUserId;
         $teamEventLabel = $this->normalizeTeamEventLabel($teamEventLabel);
         if ($teamAdminUserId <= 0 || $teamEventLabel === '') {
-            return ['rows' => [], 'total_sum' => 0.0];
+            return ['rows' => [], 'total_sum' => 0.0, 'extra_costs' => []];
         }
 
         $selectedTeamEvent = $this->getTeamEventByLabel($teamAdminUserId, $teamEventLabel);
@@ -595,6 +642,7 @@ trait TeamEventTrait
 
             $rowRelevantMemberCount = count($rowRelevantMembers);
             $rows[] = [
+                'row_type' => 'order',
                 'drink_id' => $drinkId,
                 'unit_price' => $unitPrice,
                 'category' => isset($orderRow['category_name']) ? (string)$orderRow['category_name'] : '',
@@ -608,12 +656,91 @@ trait TeamEventTrait
             ];
         }
 
+        $extraCosts = [];
+        if ($selectedTeamEventId > 0) {
+            $rawExtraCosts = $this->getTeamEventExtraCosts($selectedTeamEventId);
+            foreach ($rawExtraCosts as $extraCost) {
+                $extraCostId = isset($extraCost['id']) ? (int)$extraCost['id'] : 0;
+                $amount = isset($extraCost['amount']) ? (float)$extraCost['amount'] : 0.0;
+                if ($extraCostId <= 0 || $amount <= 0) {
+                    continue;
+                }
+                $signedAmount = 0.0 - abs($amount);
+
+                $selectedRelevantIds = [];
+                if (!empty($extraCost['relevant_member_ids']) && is_array($extraCost['relevant_member_ids'])) {
+                    foreach ($extraCost['relevant_member_ids'] as $memberId) {
+                        $memberId = (int)$memberId;
+                        if ($memberId > 0 && isset($activeMemberNamesById[$memberId])) {
+                            $selectedRelevantIds[] = $memberId;
+                        }
+                    }
+                    $selectedRelevantIds = array_values(array_unique($selectedRelevantIds));
+                }
+
+                $rowRelevantMembers = [];
+                if (!empty($selectedRelevantIds)) {
+                    foreach ($selectedRelevantIds as $memberId) {
+                        $rowRelevantMembers[] = [
+                            'uid' => $memberId,
+                            'name' => $activeMemberNamesById[$memberId],
+                        ];
+                    }
+                } else {
+                    $rowRelevantMembers = $relevantMembers;
+                    $selectedRelevantIds = array_keys($activeMemberNamesById);
+                }
+
+                $rowRelevantMemberCount = count($rowRelevantMembers);
+                $articleLabel = 'Extrakosten';
+                $comment = isset($extraCost['comment']) ? trim((string)$extraCost['comment']) : '';
+                $payerName = isset($extraCost['payer_name']) ? trim((string)$extraCost['payer_name']) : '';
+                if ($comment !== '') {
+                    $articleLabel .= ': ' . $comment;
+                }
+                if ($payerName !== '') {
+                    $articleLabel .= ' (' . $payerName . ')';
+                }
+
+                $extraRowsEntry = [
+                    'id' => $extraCostId,
+                    'row_type' => 'extra_cost',
+                    'extra_cost_id' => $extraCostId,
+                    'payer_user_id' => isset($extraCost['payer_user_id']) ? (int)$extraCost['payer_user_id'] : 0,
+                    'payer_name' => $payerName,
+                    'comment' => $comment,
+                    'amount' => $amount,
+                    'total_price' => $signedAmount,
+                    'relevant_member_ids' => $selectedRelevantIds,
+                    'relevant_members' => $rowRelevantMembers,
+                    'relevant_member_count' => $rowRelevantMemberCount,
+                    'share_per_member' => $rowRelevantMemberCount > 0 ? ($signedAmount / $rowRelevantMemberCount) : 0.0,
+                ];
+                $extraCosts[] = $extraRowsEntry;
+
+                $rows[] = [
+                    'row_type' => 'extra_cost',
+                    'extra_cost_id' => $extraCostId,
+                    'drink_id' => 0,
+                    'unit_price' => $signedAmount,
+                    'category' => 'Extrakosten',
+                    'article' => $articleLabel,
+                    'quantity' => 1,
+                    'single_price' => $signedAmount,
+                    'total_price' => $signedAmount,
+                    'relevant_members' => $rowRelevantMembers,
+                    'relevant_member_count' => $rowRelevantMemberCount,
+                    'share_per_member' => $rowRelevantMemberCount > 0 ? ($signedAmount / $rowRelevantMemberCount) : 0.0,
+                ];
+            }
+        }
+
         $totalSum = 0.0;
         foreach ($rows as $row) {
             $totalSum += (float)$row['total_price'];
         }
 
-        return ['rows' => $rows, 'total_sum' => $totalSum];
+        return ['rows' => $rows, 'total_sum' => $totalSum, 'extra_costs' => $extraCosts];
     }
 
     protected function buildTeamStatsPayload($teamAdminUserId, $teamEventLabel, array $extra = [])
@@ -632,6 +759,7 @@ trait TeamEventTrait
             'can_close_team_event' => true,
             'rows' => $stats['rows'],
             'total_sum' => $stats['total_sum'],
+            'extra_costs' => isset($stats['extra_costs']) ? $stats['extra_costs'] : [],
             'members' => $this->getTeamEventMembersWithContribution($teamAdminUserId, $selectedTeamEventId, $teamEventLabel),
             'member_candidates' => $this->getTeamEventMemberCandidates($teamAdminUserId, $selectedTeamEventId),
             'can_manage_members' => true,
@@ -850,5 +978,251 @@ trait TeamEventTrait
         }
 
         return $result;
+    }
+
+    protected function canUseTeamEventExtraCostsTable()
+    {
+        static $hasTable = null;
+        if ($hasTable !== null) {
+            return $hasTable;
+        }
+
+        try {
+            $tableRow = $this->getTeamEventDbAdapter()->query(
+                "SHOW TABLES LIKE 'drinks_teamevent_extra_costs'",
+                []
+            )->current();
+            $hasTable = (bool)$tableRow;
+        } catch (\Exception $e) {
+            $hasTable = false;
+        }
+
+        return $hasTable;
+    }
+
+    protected function canUseTeamEventExtraCostRelevanceTable()
+    {
+        static $hasTable = null;
+        if ($hasTable !== null) {
+            return $hasTable;
+        }
+
+        try {
+            $tableRow = $this->getTeamEventDbAdapter()->query(
+                "SHOW TABLES LIKE 'drinks_teamevent_extra_cost_relevance'",
+                []
+            )->current();
+            $hasTable = (bool)$tableRow;
+        } catch (\Exception $e) {
+            $hasTable = false;
+        }
+
+        return $hasTable;
+    }
+
+    protected function getTeamEventExtraCosts($teamEventId, $includeSoftDeleted = false)
+    {
+        if (!$this->canUseTeamEventExtraCostsTable()) {
+            return [];
+        }
+
+        $teamEventId = (int)$teamEventId;
+        if ($teamEventId <= 0) {
+            return [];
+        }
+
+        $deleteFilter = $includeSoftDeleted ? '' : ' AND (deleted IS NULL OR deleted = 0)';
+        $rows = $this->getTeamEventDbAdapter()->query(
+            'SELECT ec.id, ec.team_event_id, ec.payer_user_id, ec.amount, ec.comment, ec.created_at, ec.updated_at, ec.deleted, u.alias, u.email
+             FROM drinks_teamevent_extra_costs ec
+             JOIN bs_users u ON u.uid = ec.payer_user_id
+             WHERE ec.team_event_id = ?' . $deleteFilter . '
+             ORDER BY ec.created_at ASC',
+            [$teamEventId]
+        )->toArray();
+
+        $result = [];
+        foreach ($rows as $row) {
+            $extraCostId = isset($row['id']) ? (int)$row['id'] : 0;
+            if ($extraCostId <= 0) {
+                continue;
+            }
+
+            $payerUid = isset($row['payer_user_id']) ? (int)$row['payer_user_id'] : 0;
+            $relevance = $this->getTeamEventExtraCostRelevance($extraCostId);
+            $relevanceIds = [];
+            foreach ($relevance as $rel) {
+                $memberId = isset($rel['member_user_id']) ? (int)$rel['member_user_id'] : 0;
+                if ($memberId > 0) {
+                    $relevanceIds[] = $memberId;
+                }
+            }
+
+            $result[] = [
+                'id' => $extraCostId,
+                'team_event_id' => isset($row['team_event_id']) ? (int)$row['team_event_id'] : 0,
+                'payer_user_id' => $payerUid,
+                'payer_name' => isset($row['alias']) && trim($row['alias']) !== '' ? (string)$row['alias'] : ('User ' . $payerUid),
+                'payer_email' => isset($row['email']) ? (string)$row['email'] : '',
+                'amount' => isset($row['amount']) ? (float)$row['amount'] : 0.0,
+                'comment' => isset($row['comment']) ? (string)$row['comment'] : '',
+                'relevant_member_ids' => $relevanceIds,
+                'created_at' => isset($row['created_at']) ? (string)$row['created_at'] : '',
+                'updated_at' => isset($row['updated_at']) ? (string)$row['updated_at'] : '',
+                'deleted' => isset($row['deleted']) ? (int)$row['deleted'] : 0,
+            ];
+        }
+
+        return $result;
+    }
+
+    protected function getTeamEventExtraCostRelevance($extraCostId)
+    {
+        if (!$this->canUseTeamEventExtraCostsTable() || !$this->canUseTeamEventExtraCostRelevanceTable()) {
+            return [];
+        }
+
+        $extraCostId = (int)$extraCostId;
+        if ($extraCostId <= 0) {
+            return [];
+        }
+
+        return $this->getTeamEventDbAdapter()->query(
+            'SELECT member_user_id FROM drinks_teamevent_extra_cost_relevance
+             WHERE extra_cost_id = ?
+             ORDER BY member_user_id ASC',
+            [$extraCostId]
+        )->toArray();
+    }
+
+    protected function saveTeamEventExtraCost($teamEventId, $payerUserId, $amount, $comment = '', $relevantMemberIds = [])
+    {
+        if (!$this->canUseTeamEventExtraCostsTable()) {
+            throw new \Exception('Extra costs table not available');
+        }
+
+        $teamEventId = (int)$teamEventId;
+        $payerUserId = (int)$payerUserId;
+        $amount = (float)$amount;
+        $comment = trim((string)($comment ?? ''));
+
+        if ($teamEventId <= 0) {
+            throw new \Exception('Invalid team event ID');
+        }
+        if ($payerUserId <= 0) {
+            throw new \Exception('Invalid payer user ID');
+        }
+        if ($amount <= 0) {
+            throw new \Exception('Invalid amount');
+        }
+
+        $dbAdapter = $this->getTeamEventDbAdapter();
+        $result = $dbAdapter->query(
+            'INSERT INTO drinks_teamevent_extra_costs (team_event_id, payer_user_id, amount, comment)
+             VALUES (?, ?, ?, ?)',
+            [$teamEventId, $payerUserId, $amount, $comment]
+        );
+
+        $extraCostId = $dbAdapter->getDriver()->getLastGeneratedValue();
+        if (!$extraCostId) {
+            throw new \Exception('Failed to insert extra cost');
+        }
+
+        $this->saveTeamEventExtraCostRelevance($extraCostId, $relevantMemberIds);
+
+        return (int)$extraCostId;
+    }
+
+    protected function updateTeamEventExtraCost($extraCostId, $teamEventId, $payerUserId, $amount, $comment = '', $relevantMemberIds = [])
+    {
+        if (!$this->canUseTeamEventExtraCostsTable()) {
+            throw new \Exception('Extra costs table not available');
+        }
+
+        $extraCostId = (int)$extraCostId;
+        $teamEventId = (int)$teamEventId;
+        $payerUserId = (int)$payerUserId;
+        $amount = (float)$amount;
+        $comment = trim((string)($comment ?? ''));
+
+        if ($extraCostId <= 0 || $teamEventId <= 0 || $payerUserId <= 0 || $amount <= 0) {
+            throw new \Exception('Invalid parameters');
+        }
+
+        $dbAdapter = $this->getTeamEventDbAdapter();
+        $dbAdapter->query(
+            'UPDATE drinks_teamevent_extra_costs
+             SET payer_user_id = ?, amount = ?, comment = ?, updated_at = NOW()
+             WHERE id = ? AND team_event_id = ?',
+            [$payerUserId, $amount, $comment, $extraCostId, $teamEventId]
+        );
+
+        $this->saveTeamEventExtraCostRelevance($extraCostId, $relevantMemberIds);
+    }
+
+    protected function saveTeamEventExtraCostRelevance($extraCostId, $relevantMemberIds = [])
+    {
+        if (!$this->canUseTeamEventExtraCostsTable() || !$this->canUseTeamEventExtraCostRelevanceTable()) {
+            return;
+        }
+
+        $extraCostId = (int)$extraCostId;
+        if ($extraCostId <= 0) {
+            return;
+        }
+
+        $dbAdapter = $this->getTeamEventDbAdapter();
+
+        // Delete existing relevance entries
+        $dbAdapter->query(
+            'DELETE FROM drinks_teamevent_extra_cost_relevance WHERE extra_cost_id = ?',
+            [$extraCostId]
+        );
+
+        // Insert new relevance entries
+        $relevantMemberIds = array_filter(array_map('intval', (array)$relevantMemberIds));
+        if (empty($relevantMemberIds)) {
+            return;
+        }
+
+        $relevantMemberIds = array_unique($relevantMemberIds);
+        foreach ($relevantMemberIds as $memberId) {
+            if ($memberId > 0) {
+                $dbAdapter->query(
+                    'INSERT INTO drinks_teamevent_extra_cost_relevance (extra_cost_id, member_user_id)
+                     VALUES (?, ?)',
+                    [$extraCostId, $memberId]
+                );
+            }
+        }
+    }
+
+    protected function deleteTeamEventExtraCost($extraCostId, $softDelete = true)
+    {
+        if (!$this->canUseTeamEventExtraCostsTable()) {
+            throw new \Exception('Extra costs table not available');
+        }
+
+        $extraCostId = (int)$extraCostId;
+        if ($extraCostId <= 0) {
+            throw new \Exception('Invalid extra cost ID');
+        }
+
+        $dbAdapter = $this->getTeamEventDbAdapter();
+        if ($softDelete) {
+            $dbAdapter->query(
+                'UPDATE drinks_teamevent_extra_costs SET deleted = 1 WHERE id = ?',
+                [$extraCostId]
+            );
+        } else {
+            $dbAdapter->query(
+                'DELETE FROM drinks_teamevent_extra_cost_relevance WHERE extra_cost_id = ?',
+                [$extraCostId]
+            );
+            $dbAdapter->query(
+                'DELETE FROM drinks_teamevent_extra_costs WHERE id = ?',
+                [$extraCostId]
+            );
+        }
     }
 }

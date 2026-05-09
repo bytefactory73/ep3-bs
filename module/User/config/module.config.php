@@ -226,6 +226,36 @@ return array(
                             ),
                         ),
                     ),
+                        'teamlead-extra-cost' => array(
+                            'type' => 'Literal',
+                            'options' => array(
+                                'route' => '/teamlead-extra-cost',
+                                'defaults' => array(
+                                    'controller' => 'User\Controller\Account',
+                                    'action' => 'teamleadExtraCost',
+                                ),
+                            ),
+                        ),
+                        'teamlead-update-extra-cost' => array(
+                            'type' => 'Literal',
+                            'options' => array(
+                                'route' => '/teamlead-update-extra-cost',
+                                'defaults' => array(
+                                    'controller' => 'User\Controller\Account',
+                                    'action' => 'teamleadUpdateExtraCost',
+                                ),
+                            ),
+                        ),
+                        'teamlead-delete-extra-cost' => array(
+                            'type' => 'Literal',
+                            'options' => array(
+                                'route' => '/teamlead-delete-extra-cost',
+                                'defaults' => array(
+                                    'controller' => 'User\Controller\Account',
+                                    'action' => 'teamleadDeleteExtraCost',
+                                ),
+                            ),
+                        ),
                     'teamlead-close-team-event' => array(
                         'type' => 'Literal',
                         'options' => array(
@@ -364,6 +394,36 @@ return array(
                                     'defaults' => array(
                                         'controller' => 'User\Controller\SimpleLogin',
                                         'action' => 'teamOrderRelevance',
+                                    ),
+                                ),
+                            ),
+                            'team-extra-cost' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/team-extra-cost',
+                                    'defaults' => array(
+                                        'controller' => 'User\Controller\SimpleLogin',
+                                        'action' => 'teamExtraCost',
+                                    ),
+                                ),
+                            ),
+                            'team-update-extra-cost' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/team-update-extra-cost',
+                                    'defaults' => array(
+                                        'controller' => 'User\Controller\SimpleLogin',
+                                        'action' => 'teamUpdateExtraCost',
+                                    ),
+                                ),
+                            ),
+                            'team-delete-extra-cost' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/team-delete-extra-cost',
+                                    'defaults' => array(
+                                        'controller' => 'User\Controller\SimpleLogin',
+                                        'action' => 'teamDeleteExtraCost',
                                     ),
                                 ),
                             ),

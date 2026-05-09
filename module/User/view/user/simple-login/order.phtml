@@ -84,7 +84,7 @@ if ($partyModeEnabled) {
         <div id="teamStatsContent" style="padding:2px 4px 8px 4px;"></div>
     </div>
 </div>
-<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260508-4') ?>"></script>
+<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260509-1') ?>"></script>
 <script>
 function getTeamStatsSpieltagOptions() {
     var bookingSelect = document.getElementById('spieltag-select');
@@ -190,6 +190,40 @@ var teamStatsModalController = createTeamStatsModal({
                 drink_id: String(drinkId),
                 unit_price: String(unitPrice),
                 member_user_ids: String((memberUserIds || []).join(','))
+            })
+        };
+    },
+    buildExtraCostCreateRequest: function(payload, state) {
+        return {
+            url: 'simple-order/team-extra-cost',
+            body: new URLSearchParams({
+                team_event_id: String(state.currentEventId),
+                payer_user_id: String(payload.payerUserId || 0),
+                amount: String(payload.amount || 0),
+                comment: String(payload.comment || ''),
+                relevant_member_ids: String((payload.relevantMemberIds || []).join(','))
+            })
+        };
+    },
+    buildExtraCostUpdateRequest: function(payload, state) {
+        return {
+            url: 'simple-order/team-update-extra-cost',
+            body: new URLSearchParams({
+                extra_cost_id: String(payload.extraCostId || 0),
+                team_event_id: String(state.currentEventId),
+                payer_user_id: String(payload.payerUserId || 0),
+                amount: String(payload.amount || 0),
+                comment: String(payload.comment || ''),
+                relevant_member_ids: String((payload.relevantMemberIds || []).join(','))
+            })
+        };
+    },
+    buildExtraCostDeleteRequest: function(extraCostId, state) {
+        return {
+            url: 'simple-order/team-delete-extra-cost',
+            body: new URLSearchParams({
+                extra_cost_id: String(extraCostId || 0),
+                team_event_id: String(state.currentEventId)
             })
         };
     },

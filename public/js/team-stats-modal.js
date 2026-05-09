@@ -33,6 +33,42 @@
         return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
     }
 
+    function renderRelevantMemberLabels(relevantMembers, activeMemberIds) {
+        var list = Array.isArray(relevantMembers) ? relevantMembers : [];
+        var ids = [];
+        for (var i = 0; i < list.length; i++) {
+            var uid = parseInt((list[i] || {}).uid || 0, 10);
+            if (uid > 0) ids.push(uid);
+        }
+        ids = Array.from(new Set(ids));
+
+        var allSelected = Array.isArray(activeMemberIds) && activeMemberIds.length > 0 && ids.length === activeMemberIds.length;
+        var noneSelected = ids.length === 0;
+        var labelsHtml = '';
+
+        if (allSelected) {
+            labelsHtml = '<span style="display:inline-flex; align-items:center; padding:2px 8px; border-radius:999px; background:#e3f2fd; color:#0d47a1; font-size:12px; font-weight:700;">ALLE</span>';
+        } else if (noneSelected) {
+            labelsHtml = '<span style="display:inline-flex; align-items:center; padding:2px 8px; border-radius:999px; background:#f3f4f6; color:#5f6368; font-size:12px; font-weight:700;">NIEMAND</span>';
+        } else {
+            var chips = [];
+            for (var ci = 0; ci < list.length; ci++) {
+                var chipMember = list[ci] || {};
+                var chipName = String(chipMember.name || '').trim();
+                if (!chipName) continue;
+                chips.push('<span title="' + escapeHtml(chipName) + '" style="display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:50%; background:#d7ecff; color:#0d47a1; font-size:11px; font-weight:700;">' + escapeHtml(getInitials(chipName)) + '</span>');
+            }
+            labelsHtml = chips.join(' ');
+        }
+
+        return {
+            ids: ids,
+            allSelected: allSelected,
+            noneSelected: noneSelected,
+            html: labelsHtml
+        };
+    }
+
     function byId(id) {
         return id ? document.getElementById(id) : null;
     }
@@ -150,14 +186,42 @@
         function buildStatsHtml(data, canManageMembers) {
             var rows = Array.isArray(data.rows) ? data.rows : [];
             var members = Array.isArray(data.members) ? data.members : [];
+            var extraCosts = Array.isArray(data.extra_costs) ? data.extra_costs : [];
+            var orderRows = rows.filter(function(row) {
+                return String((row || {}).row_type || 'order') !== 'extra_cost';
+            });
             var html = '';
             var memberSharesByUid = {};
             var canEditRelevance = canManageMembers && typeof config.buildOrderRelevanceUpdateRequest === 'function';
+            var canEditExtraCosts = canManageMembers
+                && typeof config.buildExtraCostCreateRequest === 'function'
+                && typeof config.buildExtraCostUpdateRequest === 'function'
+                && typeof config.buildExtraCostDeleteRequest === 'function';
             var relevanceTriggerClass = config.orderRelevanceTriggerClass || 'team-stats-order-relevance-trigger';
+            var extraCostAddClass = config.extraCostAddClass || 'team-stats-extra-cost-add';
+            var extraCostEditClass = config.extraCostEditClass || 'team-stats-extra-cost-edit';
+            var extraCostDeleteClass = config.extraCostDeleteClass || 'team-stats-extra-cost-delete';
+            var extraCostRelevanceTriggerClass = config.extraCostRelevanceTriggerClass || 'team-stats-extra-cost-relevance-trigger';
+
+            var activeMembers = members.filter(function(member) {
+                return !!(member && member.is_member);
+            });
+            var activeMemberIds = activeMembers.map(function(member) {
+                return parseInt(member.uid || 0, 10);
+            }).filter(function(uid) {
+                return uid > 0;
+            });
+            state.activeMembersForCurrentEvent = activeMembers.map(function(member) {
+                return {
+                    uid: parseInt(member.uid || 0, 10),
+                    name: String(member.name || '')
+                };
+            });
 
             state.relevanceEditorRows = {};
+            state.extraCostRows = {};
 
-            if (rows.length === 0) {
+            if (orderRows.length === 0) {
                 html += '<div style="color:#555;">Keine Eintraege fuer diesen Spieltag.</div>';
             } else {
                 html += '<table class="default-table" style="width:100%; margin:0;">';
@@ -170,18 +234,9 @@
                 html += '<th style="text-align:right; padding:6px 8px;">Gesamtpreis</th>';
                 html += '</tr>';
 
-                var activeMembers = members.filter(function(member) {
-                    return !!(member && member.is_member);
-                });
-                var activeMemberIds = activeMembers.map(function(member) {
-                    return parseInt(member.uid || 0, 10);
-                }).filter(function(uid) {
-                    return uid > 0;
-                });
-
                 var lastCategory = null;
-                for (var i = 0; i < rows.length; i++) {
-                    var row = rows[i] || {};
+                for (var i = 0; i < orderRows.length; i++) {
+                    var row = orderRows[i] || {};
                     var category = row.category || '';
                     if (category !== lastCategory) {
                         lastCategory = category;
@@ -193,19 +248,12 @@
                     }
 
                     var relevantMembers = Array.isArray(row.relevant_members) ? row.relevant_members : [];
-                    var relevantIds = [];
-                    for (var ri = 0; ri < relevantMembers.length; ri++) {
-                        var relevantMember = relevantMembers[ri] || {};
-                        var relevantUid = parseInt(relevantMember.uid || 0, 10);
-                        if (relevantUid > 0) {
-                            relevantIds.push(relevantUid);
-                            memberSharesByUid[relevantUid] = (memberSharesByUid[relevantUid] || 0) + parseFloat(row.share_per_member || 0);
-                        }
+                    var relevanceDisplay = renderRelevantMemberLabels(relevantMembers, activeMemberIds);
+                    for (var ri = 0; ri < relevanceDisplay.ids.length; ri++) {
+                        var relId = relevanceDisplay.ids[ri];
+                        memberSharesByUid[relId] = (memberSharesByUid[relId] || 0) + parseFloat(row.share_per_member || 0);
                     }
-                    relevantIds = Array.from(new Set(relevantIds));
 
-                    var allSelected = activeMemberIds.length > 0 && relevantIds.length === activeMemberIds.length;
-                    var noneSelected = relevantIds.length === 0;
                     var rowKey = String(row.drink_id || '') + '|' + String(row.unit_price || '');
                     state.relevanceEditorRows[rowKey] = {
                         drinkId: parseInt(row.drink_id || 0, 10),
@@ -217,32 +265,16 @@
                                 name: String(member.name || '')
                             };
                         }),
-                        selectedIds: relevantIds
+                        selectedIds: relevanceDisplay.ids
                     };
-
-                    var labelsHtml = '';
-                    if (allSelected) {
-                        labelsHtml = '<span style="display:inline-flex; align-items:center; padding:2px 8px; border-radius:999px; background:#e3f2fd; color:#0d47a1; font-size:12px; font-weight:700;">ALLE</span>';
-                    } else if (noneSelected) {
-                        labelsHtml = '<span style="display:inline-flex; align-items:center; padding:2px 8px; border-radius:999px; background:#f3f4f6; color:#5f6368; font-size:12px; font-weight:700;">NIEMAND</span>';
-                    } else {
-                        var chips = [];
-                        for (var ci = 0; ci < relevantMembers.length; ci++) {
-                            var chipMember = relevantMembers[ci] || {};
-                            var chipName = String(chipMember.name || '').trim();
-                            if (!chipName) continue;
-                            chips.push('<span title="' + escapeHtml(chipName) + '" style="display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:50%; background:#d7ecff; color:#0d47a1; font-size:11px; font-weight:700;">' + escapeHtml(getInitials(chipName)) + '</span>');
-                        }
-                        labelsHtml = chips.join(' ');
-                    }
 
                     html += '<tr>';
                     html += '<td style="padding:6px 8px;">' + escapeHtml(row.article || '') + '</td>';
                     html += '<td style="padding:6px 8px;">';
                     if (canEditRelevance && parseInt(row.drink_id || 0, 10) > 0 && parseFloat(row.unit_price || 0) > 0) {
-                        html += '<button type="button" class="' + relevanceTriggerClass + '" data-row-key="' + escapeHtml(rowKey) + '" style="border:none; background:transparent; cursor:pointer; padding:2px; text-align:left; display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;">' + labelsHtml + '</button>';
+                        html += '<button type="button" class="' + relevanceTriggerClass + '" data-row-key="' + escapeHtml(rowKey) + '" style="border:none; background:transparent; cursor:pointer; padding:2px; text-align:left; display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;">' + relevanceDisplay.html + '</button>';
                     } else {
-                        html += labelsHtml || '-';
+                        html += relevanceDisplay.html || '-';
                     }
                     html += '</td>';
                     html += '<td style="text-align:right; padding:6px 8px;">' + escapeHtml(row.quantity || 0) + '</td>';
@@ -251,13 +283,84 @@
                     html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(row.total_price) + ';">' + formatCurrency(row.total_price) + '</td>';
                     html += '</tr>';
                 }
-
-                html += '<tr style="font-weight:bold; background:#f5faff;">';
-                html += '<td colspan="5" style="text-align:right; padding:6px 8px;">Gesamtsumme Ausgaben</td>';
-                html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(data.total_sum) + ';">' + formatCurrency(data.total_sum) + '</td>';
-                html += '</tr>';
                 html += '</table>';
             }
+
+            html += '<div style="margin-top:14px;">';
+            html += '<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; flex-wrap:wrap;">';
+            html += '<h3 style="margin:0; color:#1769aa;">Extrakosten</h3>';
+            if (canEditExtraCosts) {
+                html += '<button type="button" class="mini-button ' + extraCostAddClass + '">Kosten hinzufügen</button>';
+            }
+            html += '</div>';
+            html += '<table class="default-table" style="width:100%; margin:0;">';
+            html += '<tr style="background:#e3f0fa;">';
+            html += '<th style="text-align:left; padding:6px 8px;">Bezahler</th>';
+            html += '<th style="text-align:left; padding:6px 8px;">Kommentar</th>';
+            html += '<th style="text-align:left; padding:6px 8px;">Relevant für</th>';
+            html += '<th style="text-align:right; padding:6px 8px;">Betrag</th>';
+            if (canEditExtraCosts) {
+                html += '<th style="text-align:center; padding:6px 8px; width:170px;">Aktion</th>';
+            }
+            html += '</tr>';
+
+            if (extraCosts.length === 0) {
+                html += '<tr><td colspan="' + (canEditExtraCosts ? '5' : '4') + '" style="padding:8px; color:#666;">Keine Extrakosten hinterlegt.</td></tr>';
+            } else {
+                for (var ex = 0; ex < extraCosts.length; ex++) {
+                    var extraCost = extraCosts[ex] || {};
+                    var extraCostId = parseInt(extraCost.id || 0, 10);
+                    if (!extraCostId) continue;
+
+                    var extraRelevantMembers = Array.isArray(extraCost.relevant_members) ? extraCost.relevant_members : [];
+                    var extraRelevanceDisplay = renderRelevantMemberLabels(extraRelevantMembers, activeMemberIds);
+                    for (var eri = 0; eri < extraRelevanceDisplay.ids.length; eri++) {
+                        var extraRelId = extraRelevanceDisplay.ids[eri];
+                        memberSharesByUid[extraRelId] = (memberSharesByUid[extraRelId] || 0) + parseFloat(extraCost.share_per_member || 0);
+                    }
+
+                    state.extraCostRows[extraCostId] = {
+                        id: extraCostId,
+                        payerUserId: parseInt(extraCost.payer_user_id || 0, 10),
+                        payerName: String(extraCost.payer_name || ''),
+                        comment: String(extraCost.comment || ''),
+                        amount: parseFloat(extraCost.amount || 0),
+                        selectedIds: extraRelevanceDisplay.ids,
+                        activeMembers: activeMembers.map(function(member) {
+                            return {
+                                uid: parseInt(member.uid || 0, 10),
+                                name: String(member.name || '')
+                            };
+                        })
+                    };
+
+                    html += '<tr>';
+                    html += '<td style="padding:6px 8px;">' + escapeHtml(extraCost.payer_name || '') + '</td>';
+                    html += '<td style="padding:6px 8px;">' + escapeHtml(extraCost.comment || '-') + '</td>';
+                    if (canEditExtraCosts) {
+                        html += '<td style="padding:6px 8px;"><button type="button" class="' + extraCostRelevanceTriggerClass + '" data-extra-cost-id="' + escapeHtml(extraCostId) + '" style="border:none; background:transparent; cursor:pointer; padding:2px; text-align:left; display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;">' + (extraRelevanceDisplay.html || '-') + '</button></td>';
+                    } else {
+                        html += '<td style="padding:6px 8px;">' + (extraRelevanceDisplay.html || '-') + '</td>';
+                    }
+                    var extraCostDisplayAmount = (typeof extraCost.total_price !== 'undefined')
+                        ? parseFloat(extraCost.total_price || 0)
+                        : (0 - Math.abs(parseFloat(extraCost.amount || 0)));
+                    html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(extraCostDisplayAmount) + ';">' + formatCurrency(extraCostDisplayAmount) + '</td>';
+                    if (canEditExtraCosts) {
+                        html += '<td style="text-align:center; padding:6px 8px; white-space:nowrap;">';
+                        html += '<button type="button" class="mini-button ' + extraCostEditClass + '" data-extra-cost-id="' + escapeHtml(extraCostId) + '" style="margin-right:6px;">Bearbeiten</button>';
+                        html += '<button type="button" class="mini-button ' + extraCostDeleteClass + '" data-extra-cost-id="' + escapeHtml(extraCostId) + '">Löschen</button>';
+                        html += '</td>';
+                    }
+                    html += '</tr>';
+                }
+            }
+            html += '</table>';
+            html += '<div style="margin-top:8px; padding:8px 6px; border-top:2px solid #1769aa; font-weight:bold; color:#1769aa; display:flex; justify-content:flex-end; gap:20px;">';
+            html += '<span>Gesamtsumme Ausgaben:</span>';
+            html += '<span style="color:' + amountColor(data.total_sum) + ';">' + formatCurrency(data.total_sum) + '</span>';
+            html += '</div>';
+            html += '</div>';
 
             html += '<div style="margin-top:14px;">';
             html += '<h3 style="margin:0 0 8px 0; color:#1769aa;">Mitglieder und Beiträge</h3>';
@@ -292,7 +395,7 @@
                     html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(memberTotalPaid) + ';">' + formatCurrency(memberTotalPaid) + '</td>';
                     if (isMember) {
                         var memberDue = memberSharesByUid[memberUid] || 0;
-                        var restAmount = memberDue - memberTotalPaid;
+                        var restAmount = memberDue + memberTotalPaid;
                         html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(memberDue) + ';">' + formatCurrency(memberDue) + '</td>';
                         html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(restAmount) + ';">' + formatCurrency(restAmount) + '</td>';
                     } else {
@@ -336,7 +439,9 @@
                 if (data.team_event_closed) {
                     html += '<span style="font-weight:600; color:#607d8b;">Abrechnung ist bereits beendet.</span>';
                 } else {
-                    html += '<button type="button" id="' + (config.closeEventBtnId || 'team-stats-close-event-btn') + '" class="default-button mini-button" style="background:#d32f2f; border-color:#d32f2f; color:#fff;">Abrechnung Beenden</button>';
+                    var disableClose = (grandTotal < 0);
+                    var closeTitle = disableClose ? 'Abrechnung kann nur beendet werden, wenn die Gesamtsumme (Ausgaben + Einzahlungen) mindestens 0 € ist.' : '';
+                    html += '<button type="button" id="' + (config.closeEventBtnId || 'team-stats-close-event-btn') + '" class="default-button mini-button" style="background:#d32f2f; border-color:#d32f2f; color:#fff;"' + (disableClose ? ' disabled title="' + closeTitle + '"' : '') + '>Abrechnung Beenden</button>';
                 }
                 html += '</div>';
             }
@@ -410,6 +515,182 @@
                 throw new Error((data && data.error) ? data.error : 'Fehler beim Speichern der Relevanz.');
             }
             await loadCurrentSelection();
+        }
+
+        async function createExtraCost(payload) {
+            if (typeof config.buildExtraCostCreateRequest !== 'function') {
+                throw new Error('Extrakosten-Create ist nicht konfiguriert.');
+            }
+            var requestData = config.buildExtraCostCreateRequest(payload, state);
+            var resp = await fetch(requestData.url, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: requestData.body
+            });
+            var data = await resp.json();
+            if (!resp.ok || !data || !data.success) {
+                throw new Error((data && data.error) ? data.error : 'Fehler beim Speichern der Extrakosten.');
+            }
+            await loadCurrentSelection();
+        }
+
+        async function updateExtraCost(payload) {
+            if (typeof config.buildExtraCostUpdateRequest !== 'function') {
+                throw new Error('Extrakosten-Update ist nicht konfiguriert.');
+            }
+            var requestData = config.buildExtraCostUpdateRequest(payload, state);
+            var resp = await fetch(requestData.url, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: requestData.body
+            });
+            var data = await resp.json();
+            if (!resp.ok || !data || !data.success) {
+                throw new Error((data && data.error) ? data.error : 'Fehler beim Aktualisieren der Extrakosten.');
+            }
+            await loadCurrentSelection();
+        }
+
+        async function deleteExtraCost(extraCostId) {
+            if (typeof config.buildExtraCostDeleteRequest !== 'function') {
+                throw new Error('Extrakosten-Delete ist nicht konfiguriert.');
+            }
+            var requestData = config.buildExtraCostDeleteRequest(extraCostId, state);
+            var resp = await fetch(requestData.url, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: requestData.body
+            });
+            var data = await resp.json();
+            if (!resp.ok || !data || !data.success) {
+                throw new Error((data && data.error) ? data.error : 'Fehler beim Löschen der Extrakosten.');
+            }
+            await loadCurrentSelection();
+        }
+
+        function ensureExtraCostPopup() {
+            var popupId = config.extraCostPopupId || 'team-stats-extra-cost-popup';
+            var overlay = byId(popupId);
+            if (overlay) {
+                return {
+                    overlay: overlay,
+                    title: byId(popupId + '-title'),
+                    payer: byId(popupId + '-payer'),
+                    amount: byId(popupId + '-amount'),
+                    comment: byId(popupId + '-comment'),
+                    members: byId(popupId + '-members'),
+                    saveBtn: byId(popupId + '-save'),
+                    cancelBtn: byId(popupId + '-cancel'),
+                    allBtn: byId(popupId + '-all'),
+                    noneBtn: byId(popupId + '-none')
+                };
+            }
+
+            overlay = document.createElement('div');
+            overlay.id = popupId;
+            overlay.style.cssText = 'display:none; position:fixed; inset:0; background:rgba(0,0,0,0.38); z-index:100002; align-items:center; justify-content:center; padding:16px;';
+            overlay.innerHTML = '' +
+                '<div style="width:min(520px, 94vw); background:#fff; border-radius:12px; box-shadow:0 12px 32px rgba(0,0,0,0.22); overflow:hidden;">' +
+                '  <div style="padding:14px 16px; border-bottom:1px solid #e6edf5; font-weight:700; color:#1769aa;" id="' + popupId + '-title"></div>' +
+                '  <div style="padding:12px 16px; display:grid; gap:10px;">' +
+                '    <label style="display:grid; gap:4px;"><span>Bezahler</span><select id="' + popupId + '-payer" style="padding:6px 8px; border:1px solid #c8d6e5; border-radius:6px;"></select></label>' +
+                '    <label style="display:grid; gap:4px;"><span>Kommentar</span><input id="' + popupId + '-comment" type="text" maxlength="255" style="padding:6px 8px; border:1px solid #c8d6e5; border-radius:6px;"></label>' +
+                '    <label style="display:grid; gap:4px;"><span>Betrag</span><input id="' + popupId + '-amount" type="number" step="0.01" min="0.01" style="padding:6px 8px; border:1px solid #c8d6e5; border-radius:6px;"></label>' +
+                '    <div style="font-weight:600; color:#1769aa; margin-top:2px;">Relevant für</div>' +
+                '    <div style="display:flex; gap:8px; margin-top:-4px;">' +
+                '      <button type="button" class="mini-button" id="' + popupId + '-all">Alle</button>' +
+                '      <button type="button" class="mini-button" id="' + popupId + '-none">Niemand</button>' +
+                '    </div>' +
+                '    <div id="' + popupId + '-members" style="max-height:180px; overflow:auto; border:1px solid #e6edf5; border-radius:8px; padding:8px;"></div>' +
+                '  </div>' +
+                '  <div style="padding:12px 16px; border-top:1px solid #e6edf5; display:flex; justify-content:flex-end; gap:8px;">' +
+                '    <button type="button" class="mini-button" id="' + popupId + '-cancel">Abbrechen</button>' +
+                '    <button type="button" class="default-button mini-button" id="' + popupId + '-save">Speichern</button>' +
+                '  </div>' +
+                '</div>';
+            document.body.appendChild(overlay);
+            overlay.addEventListener('click', function(e) {
+                if (e.target === overlay) {
+                    overlay.style.display = 'none';
+                }
+            });
+
+            return {
+                overlay: overlay,
+                title: byId(popupId + '-title'),
+                payer: byId(popupId + '-payer'),
+                amount: byId(popupId + '-amount'),
+                comment: byId(popupId + '-comment'),
+                members: byId(popupId + '-members'),
+                saveBtn: byId(popupId + '-save'),
+                cancelBtn: byId(popupId + '-cancel'),
+                allBtn: byId(popupId + '-all'),
+                noneBtn: byId(popupId + '-none')
+            };
+        }
+
+        function openExtraCostPopup(extraCostId) {
+            var popup = ensureExtraCostPopup();
+            var payload = extraCostId ? (state.extraCostRows ? state.extraCostRows[extraCostId] : null) : null;
+
+            state.extraCostEditorId = payload ? parseInt(payload.id || 0, 10) : 0;
+            popup.title.textContent = payload ? 'Extrakosten bearbeiten' : 'Extrakosten hinzufügen';
+
+            popup.payer.innerHTML = '';
+            var payerMembers = payload && payload.activeMembers
+                ? payload.activeMembers
+                : (Array.isArray(state.activeMembersForCurrentEvent) ? state.activeMembersForCurrentEvent : []);
+
+            var payerLookup = {};
+            payerMembers.forEach(function(member) {
+                var uid = parseInt(member.uid || 0, 10);
+                if (!uid || payerLookup[uid]) return;
+                payerLookup[uid] = true;
+                var option = document.createElement('option');
+                option.value = String(uid);
+                option.textContent = String(member.name || ('User ' + uid));
+                popup.payer.appendChild(option);
+            });
+
+            popup.comment.value = payload ? String(payload.comment || '') : '';
+            popup.amount.value = payload ? String(Number(payload.amount || 0).toFixed(2)) : '';
+            if (payload && payload.payerUserId) {
+                popup.payer.value = String(payload.payerUserId);
+            }
+
+            var selectedLookup = {};
+            (payload ? payload.selectedIds : []).forEach(function(uid) {
+                selectedLookup[parseInt(uid, 10)] = true;
+            });
+
+            popup.members.innerHTML = '';
+            var activeMembers = payload ? (payload.activeMembers || []) : payerMembers;
+            activeMembers.forEach(function(member) {
+                var uid = parseInt(member.uid || 0, 10);
+                if (!uid) return;
+                var name = String(member.name || ('User ' + uid));
+                var checked = payload ? !!selectedLookup[uid] : true;
+                var row = document.createElement('label');
+                row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:6px 4px; cursor:pointer; border-radius:6px;';
+                row.innerHTML = '<input type="checkbox" data-member-uid="' + escapeHtml(uid) + '"' + (checked ? ' checked' : '') + '>' +
+                    '<span style="display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:50%; background:#d7ecff; color:#0d47a1; font-size:11px; font-weight:700;">' + escapeHtml(getInitials(name)) + '</span>' +
+                    '<span>' + escapeHtml(name) + '</span>';
+                popup.members.appendChild(row);
+            });
+
+            popup.overlay.style.display = 'flex';
         }
 
         function ensureOrderRelevancePopup() {
@@ -641,6 +922,116 @@
                             alert(e && e.message ? e.message : 'Fehler beim Speichern der Relevanz.');
                         } finally {
                             popup.saveBtn.disabled = false;
+                        }
+                    };
+                }
+
+                var extraCostAddClass = config.extraCostAddClass || 'team-stats-extra-cost-add';
+                var extraCostEditClass = config.extraCostEditClass || 'team-stats-extra-cost-edit';
+                var extraCostDeleteClass = config.extraCostDeleteClass || 'team-stats-extra-cost-delete';
+                var extraCostRelevanceTriggerClass = config.extraCostRelevanceTriggerClass || 'team-stats-extra-cost-relevance-trigger';
+
+                document.querySelectorAll('.' + extraCostAddClass).forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        openExtraCostPopup(0);
+                    });
+                });
+
+                document.querySelectorAll('.' + extraCostEditClass).forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        var extraCostId = parseInt(btn.getAttribute('data-extra-cost-id') || '0', 10);
+                        if (!extraCostId) return;
+                        openExtraCostPopup(extraCostId);
+                    });
+                });
+
+                document.querySelectorAll('.' + extraCostRelevanceTriggerClass).forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        var extraCostId = parseInt(btn.getAttribute('data-extra-cost-id') || '0', 10);
+                        if (!extraCostId) return;
+                        openExtraCostPopup(extraCostId);
+                    });
+                });
+
+                document.querySelectorAll('.' + extraCostDeleteClass).forEach(function(btn) {
+                    btn.addEventListener('click', async function() {
+                        var extraCostId = parseInt(btn.getAttribute('data-extra-cost-id') || '0', 10);
+                        if (!extraCostId) return;
+                        if (!window.confirm('Extrakosten-Eintrag wirklich löschen?')) {
+                            return;
+                        }
+                        btn.disabled = true;
+                        try {
+                            await deleteExtraCost(extraCostId);
+                        } catch (e) {
+                            btn.disabled = false;
+                            alert(e && e.message ? e.message : 'Fehler beim Löschen der Extrakosten.');
+                        }
+                    });
+                });
+
+                var extraPopup = ensureExtraCostPopup();
+                if (extraPopup.cancelBtn) {
+                    extraPopup.cancelBtn.onclick = function() {
+                        extraPopup.overlay.style.display = 'none';
+                    };
+                }
+                if (extraPopup.allBtn) {
+                    extraPopup.allBtn.onclick = function() {
+                        extraPopup.members.querySelectorAll('input[type="checkbox"][data-member-uid]').forEach(function(cb) {
+                            cb.checked = true;
+                        });
+                    };
+                }
+                if (extraPopup.noneBtn) {
+                    extraPopup.noneBtn.onclick = function() {
+                        extraPopup.members.querySelectorAll('input[type="checkbox"][data-member-uid]').forEach(function(cb) {
+                            cb.checked = false;
+                        });
+                    };
+                }
+                if (extraPopup.saveBtn) {
+                    extraPopup.saveBtn.onclick = async function() {
+                        var payerUserId = parseInt(extraPopup.payer.value || '0', 10);
+                        var amount = parseFloat(extraPopup.amount.value || '0');
+                        var comment = String(extraPopup.comment.value || '').trim();
+                        var relevantMemberIds = [];
+                        extraPopup.members.querySelectorAll('input[type="checkbox"][data-member-uid]').forEach(function(cb) {
+                            if (cb.checked) {
+                                var uid = parseInt(cb.getAttribute('data-member-uid') || '0', 10);
+                                if (uid > 0) relevantMemberIds.push(uid);
+                            }
+                        });
+
+                        if (!payerUserId) {
+                            alert('Bitte einen Bezahler auswählen.');
+                            return;
+                        }
+                        if (!amount || amount <= 0) {
+                            alert('Bitte einen gültigen Betrag eingeben.');
+                            return;
+                        }
+
+                        var payload = {
+                            extraCostId: parseInt(state.extraCostEditorId || 0, 10),
+                            payerUserId: payerUserId,
+                            amount: amount,
+                            comment: comment,
+                            relevantMemberIds: relevantMemberIds
+                        };
+
+                        extraPopup.saveBtn.disabled = true;
+                        try {
+                            if (payload.extraCostId > 0) {
+                                await updateExtraCost(payload);
+                            } else {
+                                await createExtraCost(payload);
+                            }
+                            extraPopup.overlay.style.display = 'none';
+                        } catch (e) {
+                            alert(e && e.message ? e.message : 'Fehler beim Speichern der Extrakosten.');
+                        } finally {
+                            extraPopup.saveBtn.disabled = false;
                         }
                     };
                 }
