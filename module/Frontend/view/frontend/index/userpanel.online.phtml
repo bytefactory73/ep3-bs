@@ -70,7 +70,7 @@ $teamLeadTeamAlias = isset($this->teamLeadTeamAlias) ? (string)$this->teamLeadTe
         <div id="frontendTeamStatsContent" style="padding:2px 4px 8px 4px;"></div>
     </div>
 </div>
-<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260509-1') ?>"></script>
+<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260510-6') ?>"></script>
 <script>
 window.__frontendTeamStatsTeamAlias = <?= json_encode($teamLeadTeamAlias, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 window.__frontendTeamStatsTeamUid = 0;
@@ -166,6 +166,41 @@ var frontendTeamStatsModalController = createTeamStatsModal({
             body: new URLSearchParams({
                 team_uid: String(state.teamUid),
                 extra_cost_id: String(extraCostId || 0),
+                team_event_id: String(state.currentEventId)
+            })
+        };
+    },
+    buildGuestDonationCreateRequest: function(payload, state) {
+        return {
+            url: '<?= $this->url('user/teamlead-guest-donation') ?>',
+            body: new URLSearchParams({
+                team_uid: String(state.teamUid),
+                team_event_id: String(state.currentEventId),
+                receiver_user_id: String(payload.receiverUserId || 0),
+                amount: String(payload.amount || 0),
+                comment: String(payload.comment || '')
+            })
+        };
+    },
+    buildGuestDonationUpdateRequest: function(payload, state) {
+        return {
+            url: '<?= $this->url('user/teamlead-update-guest-donation') ?>',
+            body: new URLSearchParams({
+                team_uid: String(state.teamUid),
+                guest_donation_id: String(payload.guestDonationId || 0),
+                team_event_id: String(state.currentEventId),
+                receiver_user_id: String(payload.receiverUserId || 0),
+                amount: String(payload.amount || 0),
+                comment: String(payload.comment || '')
+            })
+        };
+    },
+    buildGuestDonationDeleteRequest: function(guestDonationId, state) {
+        return {
+            url: '<?= $this->url('user/teamlead-delete-guest-donation') ?>',
+            body: new URLSearchParams({
+                team_uid: String(state.teamUid),
+                guest_donation_id: String(guestDonationId || 0),
                 team_event_id: String(state.currentEventId)
             })
         };

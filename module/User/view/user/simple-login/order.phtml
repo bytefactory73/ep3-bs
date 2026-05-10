@@ -84,7 +84,7 @@ if ($partyModeEnabled) {
         <div id="teamStatsContent" style="padding:2px 4px 8px 4px;"></div>
     </div>
 </div>
-<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260509-1') ?>"></script>
+<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260510-6') ?>"></script>
 <script>
 function getTeamStatsSpieltagOptions() {
     var bookingSelect = document.getElementById('spieltag-select');
@@ -223,6 +223,38 @@ var teamStatsModalController = createTeamStatsModal({
             url: 'simple-order/team-delete-extra-cost',
             body: new URLSearchParams({
                 extra_cost_id: String(extraCostId || 0),
+                team_event_id: String(state.currentEventId)
+            })
+        };
+    },
+    buildGuestDonationCreateRequest: function(payload, state) {
+        return {
+            url: 'simple-order/team-guest-donation',
+            body: new URLSearchParams({
+                team_event_id: String(state.currentEventId),
+                receiver_user_id: String(payload.receiverUserId || 0),
+                amount: String(payload.amount || 0),
+                comment: String(payload.comment || '')
+            })
+        };
+    },
+    buildGuestDonationUpdateRequest: function(payload, state) {
+        return {
+            url: 'simple-order/team-update-guest-donation',
+            body: new URLSearchParams({
+                guest_donation_id: String(payload.guestDonationId || 0),
+                team_event_id: String(state.currentEventId),
+                receiver_user_id: String(payload.receiverUserId || 0),
+                amount: String(payload.amount || 0),
+                comment: String(payload.comment || '')
+            })
+        };
+    },
+    buildGuestDonationDeleteRequest: function(guestDonationId, state) {
+        return {
+            url: 'simple-order/team-delete-guest-donation',
+            body: new URLSearchParams({
+                guest_donation_id: String(guestDonationId || 0),
                 team_event_id: String(state.currentEventId)
             })
         };

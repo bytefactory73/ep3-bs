@@ -256,6 +256,36 @@ return array(
                                 ),
                             ),
                         ),
+                        'teamlead-guest-donation' => array(
+                            'type' => 'Literal',
+                            'options' => array(
+                                'route' => '/teamlead-guest-donation',
+                                'defaults' => array(
+                                    'controller' => 'User\Controller\Account',
+                                    'action' => 'teamleadGuestDonation',
+                                ),
+                            ),
+                        ),
+                        'teamlead-update-guest-donation' => array(
+                            'type' => 'Literal',
+                            'options' => array(
+                                'route' => '/teamlead-update-guest-donation',
+                                'defaults' => array(
+                                    'controller' => 'User\Controller\Account',
+                                    'action' => 'teamleadUpdateGuestDonation',
+                                ),
+                            ),
+                        ),
+                        'teamlead-delete-guest-donation' => array(
+                            'type' => 'Literal',
+                            'options' => array(
+                                'route' => '/teamlead-delete-guest-donation',
+                                'defaults' => array(
+                                    'controller' => 'User\Controller\Account',
+                                    'action' => 'teamleadDeleteGuestDonation',
+                                ),
+                            ),
+                        ),
                     'teamlead-close-team-event' => array(
                         'type' => 'Literal',
                         'options' => array(
@@ -424,6 +454,36 @@ return array(
                                     'defaults' => array(
                                         'controller' => 'User\Controller\SimpleLogin',
                                         'action' => 'teamDeleteExtraCost',
+                                    ),
+                                ),
+                            ),
+                            'team-guest-donation' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/team-guest-donation',
+                                    'defaults' => array(
+                                        'controller' => 'User\Controller\SimpleLogin',
+                                        'action' => 'teamGuestDonation',
+                                    ),
+                                ),
+                            ),
+                            'team-update-guest-donation' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/team-update-guest-donation',
+                                    'defaults' => array(
+                                        'controller' => 'User\Controller\SimpleLogin',
+                                        'action' => 'teamUpdateGuestDonation',
+                                    ),
+                                ),
+                            ),
+                            'team-delete-guest-donation' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/team-delete-guest-donation',
+                                    'defaults' => array(
+                                        'controller' => 'User\Controller\SimpleLogin',
+                                        'action' => 'teamDeleteGuestDonation',
                                     ),
                                 ),
                             ),

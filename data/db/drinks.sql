@@ -247,3 +247,36 @@ CREATE TABLE IF NOT EXISTS drinks_teamevent_extra_cost_relevance (
 --     FOREIGN KEY (extra_cost_id) REFERENCES drinks_teamevent_extra_costs(id) ON DELETE CASCADE,
 --     FOREIGN KEY (member_user_id) REFERENCES bs_users(uid)
 -- );
+
+-- Guest donations received by a participant from external guests.
+-- The receiver must additionally transfer this amount to the team account.
+CREATE TABLE IF NOT EXISTS drinks_teamevent_guest_donations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    team_event_id INT NOT NULL,
+    receiver_user_id INT UNSIGNED NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    comment VARCHAR(255) DEFAULT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted TINYINT(1) NOT NULL DEFAULT 0,
+    INDEX idx_teamevent_guest_donation (team_event_id),
+    INDEX idx_receiver_guest_donation (receiver_user_id),
+    FOREIGN KEY (team_event_id) REFERENCES drinks_teamevents(id) ON DELETE CASCADE,
+    FOREIGN KEY (receiver_user_id) REFERENCES bs_users(uid)
+);
+
+-- To update existing databases, run:
+-- CREATE TABLE drinks_teamevent_guest_donations (
+--     id INT AUTO_INCREMENT PRIMARY KEY,
+--     team_event_id INT NOT NULL,
+--     receiver_user_id INT UNSIGNED NOT NULL,
+--     amount DECIMAL(10,2) NOT NULL,
+--     comment VARCHAR(255) DEFAULT NULL,
+--     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+--     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+--     deleted TINYINT(1) NOT NULL DEFAULT 0,
+--     INDEX idx_teamevent_guest_donation (team_event_id),
+--     INDEX idx_receiver_guest_donation (receiver_user_id),
+--     FOREIGN KEY (team_event_id) REFERENCES drinks_teamevents(id) ON DELETE CASCADE,
+--     FOREIGN KEY (receiver_user_id) REFERENCES bs_users(uid)
+-- );

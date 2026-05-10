@@ -187,6 +187,7 @@
             var rows = Array.isArray(data.rows) ? data.rows : [];
             var members = Array.isArray(data.members) ? data.members : [];
             var extraCosts = Array.isArray(data.extra_costs) ? data.extra_costs : [];
+            var guestDonations = Array.isArray(data.guest_donations) ? data.guest_donations : [];
             var orderRows = rows.filter(function(row) {
                 return String((row || {}).row_type || 'order') !== 'extra_cost';
             });
@@ -197,11 +198,18 @@
                 && typeof config.buildExtraCostCreateRequest === 'function'
                 && typeof config.buildExtraCostUpdateRequest === 'function'
                 && typeof config.buildExtraCostDeleteRequest === 'function';
+            var canEditGuestDonations = canManageMembers
+                && typeof config.buildGuestDonationCreateRequest === 'function'
+                && typeof config.buildGuestDonationUpdateRequest === 'function'
+                && typeof config.buildGuestDonationDeleteRequest === 'function';
             var relevanceTriggerClass = config.orderRelevanceTriggerClass || 'team-stats-order-relevance-trigger';
             var extraCostAddClass = config.extraCostAddClass || 'team-stats-extra-cost-add';
             var extraCostEditClass = config.extraCostEditClass || 'team-stats-extra-cost-edit';
             var extraCostDeleteClass = config.extraCostDeleteClass || 'team-stats-extra-cost-delete';
             var extraCostRelevanceTriggerClass = config.extraCostRelevanceTriggerClass || 'team-stats-extra-cost-relevance-trigger';
+            var guestDonationAddClass = config.guestDonationAddClass || 'team-stats-guest-donation-add';
+            var guestDonationEditClass = config.guestDonationEditClass || 'team-stats-guest-donation-edit';
+            var guestDonationDeleteClass = config.guestDonationDeleteClass || 'team-stats-guest-donation-delete';
 
             var activeMembers = members.filter(function(member) {
                 return !!(member && member.is_member);
@@ -220,18 +228,19 @@
 
             state.relevanceEditorRows = {};
             state.extraCostRows = {};
+            state.guestDonationRows = {};
 
             if (orderRows.length === 0) {
                 html += '<div style="color:#555;">Keine Eintraege fuer diesen Spieltag.</div>';
             } else {
                 html += '<table class="default-table" style="width:100%; margin:0;">';
                 html += '<tr style="background:#e3f0fa;">';
-                html += '<th style="text-align:left; padding:6px 8px;">Artikel</th>';
-                html += '<th style="text-align:left; padding:6px 8px;">Relevant für</th>';
-                html += '<th style="text-align:right; padding:6px 8px;">Menge</th>';
-                html += '<th style="text-align:right; padding:6px 8px;">Einzelpreis</th>';
-                html += '<th style="text-align:right; padding:6px 8px;">Anteil p.P.</th>';
-                html += '<th style="text-align:right; padding:6px 8px;">Gesamtpreis</th>';
+                html += '<th style="text-align:left; padding:4px 8px;">Artikel</th>';
+                html += '<th style="text-align:left; padding:4px 8px;">Relevant für</th>';
+                html += '<th style="text-align:right; padding:4px 8px;">Menge</th>';
+                html += '<th style="text-align:right; padding:4px 8px;">Einzelpreis</th>';
+                html += '<th style="text-align:right; padding:4px 8px;">Anteil p.P.</th>';
+                html += '<th style="text-align:right; padding:4px 8px;">Gesamtpreis</th>';
                 html += '</tr>';
 
                 var lastCategory = null;
@@ -269,18 +278,18 @@
                     };
 
                     html += '<tr>';
-                    html += '<td style="padding:6px 8px;">' + escapeHtml(row.article || '') + '</td>';
-                    html += '<td style="padding:6px 8px;">';
+                    html += '<td style="padding:4px 8px;">' + escapeHtml(row.article || '') + '</td>';
+                    html += '<td style="padding:4px 8px;">';
                     if (canEditRelevance && parseInt(row.drink_id || 0, 10) > 0 && parseFloat(row.unit_price || 0) > 0) {
                         html += '<button type="button" class="' + relevanceTriggerClass + '" data-row-key="' + escapeHtml(rowKey) + '" style="border:none; background:transparent; cursor:pointer; padding:2px; text-align:left; display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;">' + relevanceDisplay.html + '</button>';
                     } else {
                         html += relevanceDisplay.html || '-';
                     }
                     html += '</td>';
-                    html += '<td style="text-align:right; padding:6px 8px;">' + escapeHtml(row.quantity || 0) + '</td>';
-                    html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(row.single_price) + ';">' + formatCurrency(row.single_price) + '</td>';
-                    html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(row.share_per_member) + ';">' + formatCurrency(row.share_per_member) + '</td>';
-                    html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(row.total_price) + ';">' + formatCurrency(row.total_price) + '</td>';
+                    html += '<td style="text-align:right; padding:4px 8px;">' + escapeHtml(row.quantity || 0) + '</td>';
+                    html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(row.single_price) + ';">' + formatCurrency(row.single_price) + '</td>';
+                    html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(row.share_per_member) + ';">' + formatCurrency(row.share_per_member) + '</td>';
+                    html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(row.total_price) + ';">' + formatCurrency(row.total_price) + '</td>';
                     html += '</tr>';
                 }
                 html += '</table>';
@@ -289,18 +298,15 @@
             html += '<div style="margin-top:14px;">';
             html += '<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; flex-wrap:wrap;">';
             html += '<h3 style="margin:0; color:#1769aa;">Extrakosten</h3>';
-            if (canEditExtraCosts) {
-                html += '<button type="button" class="mini-button ' + extraCostAddClass + '">Kosten hinzufügen</button>';
-            }
             html += '</div>';
             html += '<table class="default-table" style="width:100%; margin:0;">';
             html += '<tr style="background:#e3f0fa;">';
-            html += '<th style="text-align:left; padding:6px 8px;">Bezahler</th>';
-            html += '<th style="text-align:left; padding:6px 8px;">Kommentar</th>';
-            html += '<th style="text-align:left; padding:6px 8px;">Relevant für</th>';
-            html += '<th style="text-align:right; padding:6px 8px;">Betrag</th>';
+            html += '<th style="text-align:left; padding:4px 8px;">Bezahler</th>';
+            html += '<th style="text-align:left; padding:4px 8px;">Kommentar</th>';
+            html += '<th style="text-align:left; padding:4px 8px;">Relevant für</th>';
+            html += '<th style="text-align:right; padding:4px 8px;">Betrag</th>';
             if (canEditExtraCosts) {
-                html += '<th style="text-align:center; padding:6px 8px; width:170px;">Aktion</th>';
+                html += '<th style="text-align:center; padding:4px 8px; width:170px;">Aktion</th>';
             }
             html += '</tr>';
 
@@ -335,19 +341,19 @@
                     };
 
                     html += '<tr>';
-                    html += '<td style="padding:6px 8px;">' + escapeHtml(extraCost.payer_name || '') + '</td>';
-                    html += '<td style="padding:6px 8px;">' + escapeHtml(extraCost.comment || '-') + '</td>';
+                    html += '<td style="padding:4px 8px;">' + escapeHtml(extraCost.payer_name || '') + '</td>';
+                    html += '<td style="padding:4px 8px;">' + escapeHtml(extraCost.comment || '-') + '</td>';
                     if (canEditExtraCosts) {
-                        html += '<td style="padding:6px 8px;"><button type="button" class="' + extraCostRelevanceTriggerClass + '" data-extra-cost-id="' + escapeHtml(extraCostId) + '" style="border:none; background:transparent; cursor:pointer; padding:2px; text-align:left; display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;">' + (extraRelevanceDisplay.html || '-') + '</button></td>';
+                        html += '<td style="padding:4px 8px;"><button type="button" class="' + extraCostRelevanceTriggerClass + '" data-extra-cost-id="' + escapeHtml(extraCostId) + '" style="border:none; background:transparent; cursor:pointer; padding:2px; text-align:left; display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;">' + (extraRelevanceDisplay.html || '-') + '</button></td>';
                     } else {
-                        html += '<td style="padding:6px 8px;">' + (extraRelevanceDisplay.html || '-') + '</td>';
+                        html += '<td style="padding:4px 8px;">' + (extraRelevanceDisplay.html || '-') + '</td>';
                     }
                     var extraCostDisplayAmount = (typeof extraCost.total_price !== 'undefined')
                         ? parseFloat(extraCost.total_price || 0)
                         : (0 - Math.abs(parseFloat(extraCost.amount || 0)));
-                    html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(extraCostDisplayAmount) + ';">' + formatCurrency(extraCostDisplayAmount) + '</td>';
+                    html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(extraCostDisplayAmount) + ';">' + formatCurrency(extraCostDisplayAmount) + '</td>';
                     if (canEditExtraCosts) {
-                        html += '<td style="text-align:center; padding:6px 8px; white-space:nowrap;">';
+                        html += '<td style="text-align:center; padding:4px 8px; white-space:nowrap;">';
                         html += '<button type="button" class="mini-button ' + extraCostEditClass + '" data-extra-cost-id="' + escapeHtml(extraCostId) + '" style="margin-right:6px;">Bearbeiten</button>';
                         html += '<button type="button" class="mini-button ' + extraCostDeleteClass + '" data-extra-cost-id="' + escapeHtml(extraCostId) + '">Löschen</button>';
                         html += '</td>';
@@ -356,22 +362,129 @@
                 }
             }
             html += '</table>';
-            html += '<div style="margin-top:8px; padding:8px 6px; border-top:2px solid #1769aa; font-weight:bold; color:#1769aa; display:flex; justify-content:flex-end; gap:20px;">';
+            html += '<div style="margin-top:8px; padding:8px 6px; border-top:2px solid #1769aa; font-weight:bold; color:#1769aa; display:flex; justify-content:space-between; align-items:center; gap:20px;">';
+            if (canEditExtraCosts) {
+                html += '<button type="button" class="mini-button ' + extraCostAddClass + '">Kosten hinzufügen</button>';
+            } else {
+                html += '<div></div>';
+            }
+            html += '<div style="display:flex; gap:20px; align-items:center;">';
             html += '<span>Gesamtsumme Ausgaben:</span>';
             html += '<span style="color:' + amountColor(data.total_sum) + ';">' + formatCurrency(data.total_sum) + '</span>';
             html += '</div>';
             html += '</div>';
+            html += '</div>';
+
+            html += '<div style="margin-top:14px;">';
+            html += '<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; flex-wrap:wrap;">';
+            html += '<h3 style="margin:0; color:#1769aa;">Spenden von Gästen</h3>';
+            html += '</div>';
+            html += '<table class="default-table" style="width:100%; margin:0;">';
+            html += '<tr style="background:#e3f0fa;">';
+            html += '<th style="text-align:left; padding:4px 8px;">Empfänger</th>';
+            html += '<th style="text-align:left; padding:4px 8px;">Kommentar</th>';
+            html += '<th style="text-align:right; padding:4px 8px;">Betrag</th>';
+            if (canEditGuestDonations) {
+                html += '<th style="text-align:center; padding:4px 8px; width:170px;">Aktion</th>';
+            }
+            html += '</tr>';
+
+            var guestDonationTotal = 0;
+            if (guestDonations.length === 0) {
+                html += '<tr><td colspan="' + (canEditGuestDonations ? '4' : '3') + '" style="padding:8px; color:#666;">Keine Gastspenden hinterlegt.</td></tr>';
+            } else {
+                for (var gd = 0; gd < guestDonations.length; gd++) {
+                    var guestDonation = guestDonations[gd] || {};
+                    var guestDonationId = parseInt(guestDonation.id || 0, 10);
+                    if (!guestDonationId) continue;
+
+                    var receiverUserId = parseInt(guestDonation.receiver_user_id || 0, 10);
+                    var guestAmount = Math.abs(parseFloat(guestDonation.amount || 0));
+                    // Note: Guest donations reduce the pool, they are NOT added to memberSharesByUid here.
+                    // Receivers have additional payment obligations (they must transfer the donation cash),
+                    // but this is handled separately - they pay their regular share PLUS the donation amount.
+
+                    guestDonationTotal += guestAmount;
+                    state.guestDonationRows[guestDonationId] = {
+                        id: guestDonationId,
+                        receiverUserId: receiverUserId,
+                        receiverName: String(guestDonation.receiver_name || ''),
+                        comment: String(guestDonation.comment || ''),
+                        amount: guestAmount,
+                        activeMembers: activeMembers.map(function(member) {
+                            return {
+                                uid: parseInt(member.uid || 0, 10),
+                                name: String(member.name || '')
+                            };
+                        })
+                    };
+
+                    html += '<tr>';
+                    html += '<td style="padding:4px 8px;">' + escapeHtml(guestDonation.receiver_name || '') + '</td>';
+                    html += '<td style="padding:4px 8px;">' + escapeHtml(guestDonation.comment || '-') + '</td>';
+                    html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(guestAmount) + ';">' + formatCurrency(guestAmount) + '</td>';
+                    if (canEditGuestDonations) {
+                        html += '<td style="text-align:center; padding:4px 8px; white-space:nowrap;">';
+                        html += '<button type="button" class="mini-button ' + guestDonationEditClass + '" data-guest-donation-id="' + escapeHtml(guestDonationId) + '" style="margin-right:6px;">Bearbeiten</button>';
+                        html += '<button type="button" class="mini-button ' + guestDonationDeleteClass + '" data-guest-donation-id="' + escapeHtml(guestDonationId) + '">Löschen</button>';
+                        html += '</td>';
+                    }
+                    html += '</tr>';
+                }
+            }
+            html += '</table>';
+            html += '<div style="margin-top:8px; padding:8px 6px; border-top:2px solid #1769aa; font-weight:bold; color:#1769aa; display:flex; justify-content:space-between; align-items:center; gap:20px;">';
+            if (canEditGuestDonations) {
+                html += '<button type="button" class="mini-button ' + guestDonationAddClass + '">Spende hinzufügen</button>';
+            } else {
+                html += '<div></div>';
+            }
+            html += '<div style="display:flex; gap:20px; align-items:center;">';
+            html += '<span>Gesamtsumme Gastspenden:</span>';
+            html += '<span style="color:' + amountColor(guestDonationTotal) + ';">' + formatCurrency(guestDonationTotal) + '</span>';
+            html += '</div>';
+            html += '</div>';
+            html += '</div>';
+
+            // Adjust member shares based on guest donations
+            // Guest donations REDUCE the pool to be split among members
+            // Pool = total expenses - guest donations
+            // Each member's base share is reduced proportionally
+            // Then, each receiver's obligation is increased by their guest donation amount
+            if (guestDonationTotal > 0 && activeMembers.length > 0) {
+                var totalSum = Math.abs(Number(data.total_sum || 0));
+                var poolAfterDonations = totalSum - guestDonationTotal;
+                var reductionFactor = poolAfterDonations / totalSum;  // e.g., 15/25 = 0.6
+
+                // Reduce all member shares proportionally
+                for (var memberIdx = 0; memberIdx < activeMemberIds.length; memberIdx++) {
+                    var mId = activeMemberIds[memberIdx];
+                    if (typeof memberSharesByUid[mId] !== 'undefined') {
+                        memberSharesByUid[mId] = memberSharesByUid[mId] * reductionFactor;
+                    }
+                }
+
+                // Add guest donation obligations to receivers
+                for (var gdIdx = 0; gdIdx < guestDonations.length; gdIdx++) {
+                    var gd = guestDonations[gdIdx] || {};
+                    var gdReceiverId = parseInt(gd.receiver_user_id || 0, 10);
+                    var gdAmount = Math.abs(parseFloat(gd.amount || 0));
+                    if (gdReceiverId > 0 && gdAmount > 0) {
+                        memberSharesByUid[gdReceiverId] = (memberSharesByUid[gdReceiverId] || 0) - gdAmount;
+                    }
+                }
+            }
 
             html += '<div style="margin-top:14px;">';
             html += '<h3 style="margin:0 0 8px 0; color:#1769aa;">Mitglieder und Beiträge</h3>';
             html += '<table class="default-table" style="width:100%; margin:0; margin-bottom:10px;">';
             html += '<tr style="background:#e3f0fa;">';
-            html += '<th style="text-align:left; padding:6px 8px;">Mitglied</th>';
-            html += '<th style="text-align:right; padding:6px 8px;">Bereits gezahlt</th>';
-            html += '<th style="text-align:right; padding:6px 8px;">Zu zahlen</th>';
-            html += '<th style="text-align:right; padding:6px 8px;">Rest</th>';
+            html += '<th style="text-align:left; padding:4px 8px;">Mitglied</th>';
+            html += '<th style="text-align:right; padding:4px 8px;">Bereits gezahlt</th>';
+            html += '<th style="text-align:right; padding:4px 8px;">Zu zahlen</th>';
+            html += '<th style="text-align:right; padding:4px 8px;">Rest</th>';
             if (canManageMembers) {
-                html += '<th style="text-align:center; padding:6px 8px; width:170px;">Aktion</th>';
+                html += '<th style="text-align:center; padding:4px 8px; width:170px;">Aktion</th>';
             }
             html += '</tr>';
 
@@ -391,34 +504,37 @@
                     if (depositComment) {
                         memberDisplay += ' - ' + depositComment;
                     }
-                    html += '<td style="padding:6px 8px;">' + memberDisplay + '</td>';
-                    html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(memberTotalPaid) + ';">' + formatCurrency(memberTotalPaid) + '</td>';
+                    html += '<td style="padding:4px 8px;">' + memberDisplay + '</td>';
+                    html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(memberTotalPaid) + ';">' + formatCurrency(memberTotalPaid) + '</td>';
                     if (isMember) {
                         var memberDue = memberSharesByUid[memberUid] || 0;
                         var restAmount = memberDue + memberTotalPaid;
-                        html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(memberDue) + ';">' + formatCurrency(memberDue) + '</td>';
-                        html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(restAmount) + ';">' + formatCurrency(restAmount) + '</td>';
+                        html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(memberDue) + ';">' + formatCurrency(memberDue) + '</td>';
+                        html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(restAmount) + ';">' + formatCurrency(restAmount) + '</td>';
                     } else {
-                        html += '<td style="text-align:right; padding:6px 8px; color:#999;">-</td>';
-                        html += '<td style="text-align:right; padding:6px 8px; color:#999;">-</td>';
+                        html += '<td style="text-align:right; padding:4px 8px; color:#999;">-</td>';
+                        html += '<td style="text-align:right; padding:4px 8px; color:#999;">-</td>';
                     }
                     if (canManageMembers) {
                         if (isMember) {
-                            html += '<td style="text-align:center; padding:6px 8px;"><button type="button" class="mini-button ' + config.removeButtonClass + '" data-member-uid="' + memberUid + '">Entfernen</button></td>';
+                            html += '<td style="text-align:center; padding:4px 8px;"><button type="button" class="mini-button ' + config.removeButtonClass + '" data-member-uid="' + memberUid + '">Entfernen</button></td>';
                         } else {
-                            html += '<td style="text-align:center; padding:6px 8px;"><button type="button" class="mini-button ' + config.addDirectButtonClass + '" data-member-uid="' + memberUid + '">Mitglied +</button></td>';
+                            html += '<td style="text-align:center; padding:4px 8px;"><button type="button" class="mini-button ' + config.addDirectButtonClass + '" data-member-uid="' + memberUid + '">Mitglied +</button></td>';
                         }
                     }
                     html += '</tr>';
                 }
                 html += '<tr style="font-weight:bold; background:#f5faff;">';
-                html += '<td colspan="' + (canManageMembers ? '4' : '3') + '" style="text-align:right; padding:6px 8px;">Gesamtsumme Einzahlungen</td>';
-                html += '<td style="text-align:right; padding:6px 8px; color:' + amountColor(membersTotalSum) + ';">' + formatCurrency(membersTotalSum) + '</td>';
+                html += '<td colspan="' + (canManageMembers ? '4' : '3') + '" style="text-align:right; padding:4px 8px;">Gesamtsumme Einzahlungen</td>';
+                html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(membersTotalSum) + ';">' + formatCurrency(membersTotalSum) + '</td>';
                 html += '</tr>';
             }
             html += '</table>';
 
-            var grandTotal = (data.total_sum || 0) + membersTotalSum;
+            var settlementBaseTotal = (typeof data.settlement_total_sum !== 'undefined')
+                ? Number(data.settlement_total_sum || 0)
+                : Number((data.total_sum || 0) + (data.guest_donation_due_total || 0));
+            var grandTotal = settlementBaseTotal + membersTotalSum;
             html += '<div style="margin-top:8px; padding:8px 6px; border-top:2px solid #1769aa; font-weight:bold; color:#1769aa; display:flex; justify-content:flex-end; gap:20px;">';
             html += '<span>Gesamtsumme (Ausgaben + Einzahlungen):</span>';
             html += '<span style="color:' + amountColor(grandTotal) + ';">' + formatCurrency(grandTotal) + '</span>';
@@ -580,6 +696,149 @@
             await loadCurrentSelection();
         }
 
+        async function createGuestDonation(payload) {
+            if (typeof config.buildGuestDonationCreateRequest !== 'function') {
+                throw new Error('Gastspenden-Create ist nicht konfiguriert.');
+            }
+            var requestData = config.buildGuestDonationCreateRequest(payload, state);
+            var resp = await fetch(requestData.url, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: requestData.body
+            });
+            var data = await resp.json();
+            if (!resp.ok || !data || !data.success) {
+                throw new Error((data && data.error) ? data.error : 'Fehler beim Speichern der Gastspende.');
+            }
+            await loadCurrentSelection();
+        }
+
+        async function updateGuestDonation(payload) {
+            if (typeof config.buildGuestDonationUpdateRequest !== 'function') {
+                throw new Error('Gastspenden-Update ist nicht konfiguriert.');
+            }
+            var requestData = config.buildGuestDonationUpdateRequest(payload, state);
+            var resp = await fetch(requestData.url, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: requestData.body
+            });
+            var data = await resp.json();
+            if (!resp.ok || !data || !data.success) {
+                throw new Error((data && data.error) ? data.error : 'Fehler beim Aktualisieren der Gastspende.');
+            }
+            await loadCurrentSelection();
+        }
+
+        async function deleteGuestDonation(guestDonationId) {
+            if (typeof config.buildGuestDonationDeleteRequest !== 'function') {
+                throw new Error('Gastspenden-Delete ist nicht konfiguriert.');
+            }
+            var requestData = config.buildGuestDonationDeleteRequest(guestDonationId, state);
+            var resp = await fetch(requestData.url, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: requestData.body
+            });
+            var data = await resp.json();
+            if (!resp.ok || !data || !data.success) {
+                throw new Error((data && data.error) ? data.error : 'Fehler beim Löschen der Gastspende.');
+            }
+            await loadCurrentSelection();
+        }
+
+        function ensureGuestDonationPopup() {
+            var popupId = config.guestDonationPopupId || 'team-stats-guest-donation-popup';
+            var overlay = byId(popupId);
+            if (overlay) {
+                return {
+                    overlay: overlay,
+                    title: byId(popupId + '-title'),
+                    receiver: byId(popupId + '-receiver'),
+                    amount: byId(popupId + '-amount'),
+                    comment: byId(popupId + '-comment'),
+                    saveBtn: byId(popupId + '-save'),
+                    cancelBtn: byId(popupId + '-cancel')
+                };
+            }
+
+            overlay = document.createElement('div');
+            overlay.id = popupId;
+            overlay.style.cssText = 'display:none; position:fixed; inset:0; background:rgba(0,0,0,0.38); z-index:100003; align-items:center; justify-content:center; padding:16px;';
+            overlay.innerHTML = '' +
+                '<div style="width:min(520px, 94vw); background:#fff; border-radius:12px; box-shadow:0 12px 32px rgba(0,0,0,0.22); overflow:hidden;">' +
+                '  <div style="padding:14px 16px; border-bottom:1px solid #e6edf5; font-weight:700; color:#1769aa;" id="' + popupId + '-title"></div>' +
+                '  <div style="padding:12px 16px; display:grid; gap:10px;">' +
+                '    <label style="display:grid; gap:4px;"><span>Empfänger</span><select id="' + popupId + '-receiver" style="padding:4px 8px; border:1px solid #c8d6e5; border-radius:6px;"></select></label>' +
+                '    <label style="display:grid; gap:4px;"><span>Kommentar</span><input id="' + popupId + '-comment" type="text" maxlength="255" style="padding:4px 8px; border:1px solid #c8d6e5; border-radius:6px;"></label>' +
+                '    <label style="display:grid; gap:4px;"><span>Betrag</span><input id="' + popupId + '-amount" type="number" step="0.01" min="0.01" style="padding:4px 8px; border:1px solid #c8d6e5; border-radius:6px;"></label>' +
+                '  </div>' +
+                '  <div style="padding:12px 16px; border-top:1px solid #e6edf5; display:flex; justify-content:flex-end; gap:8px;">' +
+                '    <button type="button" class="mini-button" id="' + popupId + '-cancel">Abbrechen</button>' +
+                '    <button type="button" class="default-button mini-button" id="' + popupId + '-save">Speichern</button>' +
+                '  </div>' +
+                '</div>';
+            document.body.appendChild(overlay);
+            overlay.addEventListener('click', function(e) {
+                if (e.target === overlay) {
+                    overlay.style.display = 'none';
+                }
+            });
+
+            return {
+                overlay: overlay,
+                title: byId(popupId + '-title'),
+                receiver: byId(popupId + '-receiver'),
+                amount: byId(popupId + '-amount'),
+                comment: byId(popupId + '-comment'),
+                saveBtn: byId(popupId + '-save'),
+                cancelBtn: byId(popupId + '-cancel')
+            };
+        }
+
+        function openGuestDonationPopup(guestDonationId) {
+            var popup = ensureGuestDonationPopup();
+            var payload = guestDonationId ? (state.guestDonationRows ? state.guestDonationRows[guestDonationId] : null) : null;
+
+            state.guestDonationEditorId = payload ? parseInt(payload.id || 0, 10) : 0;
+            popup.title.textContent = payload ? 'Gastspende bearbeiten' : 'Gastspende hinzufügen';
+
+            popup.receiver.innerHTML = '';
+            var receiverMembers = payload && payload.activeMembers
+                ? payload.activeMembers
+                : (Array.isArray(state.activeMembersForCurrentEvent) ? state.activeMembersForCurrentEvent : []);
+            var receiverLookup = {};
+            receiverMembers.forEach(function(member) {
+                var uid = parseInt(member.uid || 0, 10);
+                if (!uid || receiverLookup[uid]) return;
+                receiverLookup[uid] = true;
+                var option = document.createElement('option');
+                option.value = String(uid);
+                option.textContent = String(member.name || ('User ' + uid));
+                popup.receiver.appendChild(option);
+            });
+
+            popup.comment.value = payload ? String(payload.comment || '') : '';
+            popup.amount.value = payload ? String(Number(payload.amount || 0).toFixed(2)) : '';
+            if (payload && payload.receiverUserId) {
+                popup.receiver.value = String(payload.receiverUserId);
+            }
+
+            popup.overlay.style.display = 'flex';
+        }
+
         function ensureExtraCostPopup() {
             var popupId = config.extraCostPopupId || 'team-stats-extra-cost-popup';
             var overlay = byId(popupId);
@@ -605,9 +864,9 @@
                 '<div style="width:min(520px, 94vw); background:#fff; border-radius:12px; box-shadow:0 12px 32px rgba(0,0,0,0.22); overflow:hidden;">' +
                 '  <div style="padding:14px 16px; border-bottom:1px solid #e6edf5; font-weight:700; color:#1769aa;" id="' + popupId + '-title"></div>' +
                 '  <div style="padding:12px 16px; display:grid; gap:10px;">' +
-                '    <label style="display:grid; gap:4px;"><span>Bezahler</span><select id="' + popupId + '-payer" style="padding:6px 8px; border:1px solid #c8d6e5; border-radius:6px;"></select></label>' +
-                '    <label style="display:grid; gap:4px;"><span>Kommentar</span><input id="' + popupId + '-comment" type="text" maxlength="255" style="padding:6px 8px; border:1px solid #c8d6e5; border-radius:6px;"></label>' +
-                '    <label style="display:grid; gap:4px;"><span>Betrag</span><input id="' + popupId + '-amount" type="number" step="0.01" min="0.01" style="padding:6px 8px; border:1px solid #c8d6e5; border-radius:6px;"></label>' +
+                '    <label style="display:grid; gap:4px;"><span>Bezahler</span><select id="' + popupId + '-payer" style="padding:4px 8px; border:1px solid #c8d6e5; border-radius:6px;"></select></label>' +
+                '    <label style="display:grid; gap:4px;"><span>Kommentar</span><input id="' + popupId + '-comment" type="text" maxlength="255" style="padding:4px 8px; border:1px solid #c8d6e5; border-radius:6px;"></label>' +
+                '    <label style="display:grid; gap:4px;"><span>Betrag</span><input id="' + popupId + '-amount" type="number" step="0.01" min="0.01" style="padding:4px 8px; border:1px solid #c8d6e5; border-radius:6px;"></label>' +
                 '    <div style="font-weight:600; color:#1769aa; margin-top:2px;">Relevant für</div>' +
                 '    <div style="display:flex; gap:8px; margin-top:-4px;">' +
                 '      <button type="button" class="mini-button" id="' + popupId + '-all">Alle</button>' +
@@ -930,6 +1189,9 @@
                 var extraCostEditClass = config.extraCostEditClass || 'team-stats-extra-cost-edit';
                 var extraCostDeleteClass = config.extraCostDeleteClass || 'team-stats-extra-cost-delete';
                 var extraCostRelevanceTriggerClass = config.extraCostRelevanceTriggerClass || 'team-stats-extra-cost-relevance-trigger';
+                var guestDonationAddClass = config.guestDonationAddClass || 'team-stats-guest-donation-add';
+                var guestDonationEditClass = config.guestDonationEditClass || 'team-stats-guest-donation-edit';
+                var guestDonationDeleteClass = config.guestDonationDeleteClass || 'team-stats-guest-donation-delete';
 
                 document.querySelectorAll('.' + extraCostAddClass).forEach(function(btn) {
                     btn.addEventListener('click', function() {
@@ -1032,6 +1294,81 @@
                             alert(e && e.message ? e.message : 'Fehler beim Speichern der Extrakosten.');
                         } finally {
                             extraPopup.saveBtn.disabled = false;
+                        }
+                    };
+                }
+
+                document.querySelectorAll('.' + guestDonationAddClass).forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        openGuestDonationPopup(0);
+                    });
+                });
+
+                document.querySelectorAll('.' + guestDonationEditClass).forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        var guestDonationId = parseInt(btn.getAttribute('data-guest-donation-id') || '0', 10);
+                        if (!guestDonationId) return;
+                        openGuestDonationPopup(guestDonationId);
+                    });
+                });
+
+                document.querySelectorAll('.' + guestDonationDeleteClass).forEach(function(btn) {
+                    btn.addEventListener('click', async function() {
+                        var guestDonationId = parseInt(btn.getAttribute('data-guest-donation-id') || '0', 10);
+                        if (!guestDonationId) return;
+                        if (!window.confirm('Gastspenden-Eintrag wirklich löschen?')) {
+                            return;
+                        }
+                        btn.disabled = true;
+                        try {
+                            await deleteGuestDonation(guestDonationId);
+                        } catch (e) {
+                            btn.disabled = false;
+                            alert(e && e.message ? e.message : 'Fehler beim Löschen der Gastspende.');
+                        }
+                    });
+                });
+
+                var guestPopup = ensureGuestDonationPopup();
+                if (guestPopup.cancelBtn) {
+                    guestPopup.cancelBtn.onclick = function() {
+                        guestPopup.overlay.style.display = 'none';
+                    };
+                }
+                if (guestPopup.saveBtn) {
+                    guestPopup.saveBtn.onclick = async function() {
+                        var receiverUserId = parseInt(guestPopup.receiver.value || '0', 10);
+                        var amount = parseFloat(guestPopup.amount.value || '0');
+                        var comment = String(guestPopup.comment.value || '').trim();
+
+                        if (!receiverUserId) {
+                            alert('Bitte einen Empfänger auswählen.');
+                            return;
+                        }
+                        if (!amount || amount <= 0) {
+                            alert('Bitte einen gültigen Betrag eingeben.');
+                            return;
+                        }
+
+                        var payload = {
+                            guestDonationId: parseInt(state.guestDonationEditorId || 0, 10),
+                            receiverUserId: receiverUserId,
+                            amount: amount,
+                            comment: comment
+                        };
+
+                        guestPopup.saveBtn.disabled = true;
+                        try {
+                            if (payload.guestDonationId > 0) {
+                                await updateGuestDonation(payload);
+                            } else {
+                                await createGuestDonation(payload);
+                            }
+                            guestPopup.overlay.style.display = 'none';
+                        } catch (e) {
+                            alert(e && e.message ? e.message : 'Fehler beim Speichern der Gastspende.');
+                        } finally {
+                            guestPopup.saveBtn.disabled = false;
                         }
                     };
                 }

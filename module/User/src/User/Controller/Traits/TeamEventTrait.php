@@ -552,7 +552,7 @@ trait TeamEventTrait
         $teamAdminUserId = (int)$teamAdminUserId;
         $teamEventLabel = $this->normalizeTeamEventLabel($teamEventLabel);
         if ($teamAdminUserId <= 0 || $teamEventLabel === '') {
-            return ['rows' => [], 'total_sum' => 0.0, 'extra_costs' => []];
+            return ['rows' => [], 'total_sum' => 0.0, 'guest_donation_due_total' => 0.0, 'settlement_total_sum' => 0.0, 'extra_costs' => [], 'guest_donations' => []];
         }
 
         $selectedTeamEvent = $this->getTeamEventByLabel($teamAdminUserId, $teamEventLabel);
@@ -735,12 +735,51 @@ trait TeamEventTrait
             }
         }
 
+        $guestDonations = [];
+        $guestDonationDueTotal = 0.0;
+        if ($selectedTeamEventId > 0) {
+            $rawGuestDonations = $this->getTeamEventGuestDonations($selectedTeamEventId);
+            foreach ($rawGuestDonations as $guestDonation) {
+                $guestDonationId = isset($guestDonation['id']) ? (int)$guestDonation['id'] : 0;
+                $amount = isset($guestDonation['amount']) ? (float)$guestDonation['amount'] : 0.0;
+                if ($guestDonationId <= 0 || $amount <= 0) {
+                    continue;
+                }
+                $receiverUserId = isset($guestDonation['receiver_user_id']) ? (int)$guestDonation['receiver_user_id'] : 0;
+                if ($receiverUserId <= 0 || !isset($activeMemberNamesById[$receiverUserId])) {
+                    continue;
+                }
+
+                $comment = isset($guestDonation['comment']) ? trim((string)$guestDonation['comment']) : '';
+                $receiverName = isset($guestDonation['receiver_name']) ? trim((string)$guestDonation['receiver_name']) : '';
+
+                $guestDonations[] = [
+                    'id' => $guestDonationId,
+                    'team_event_id' => $selectedTeamEventId,
+                    'receiver_user_id' => $receiverUserId,
+                    'receiver_name' => $receiverName !== '' ? $receiverName : $activeMemberNamesById[$receiverUserId],
+                    'comment' => $comment,
+                    'amount' => abs($amount),
+                    // Receiver has to transfer this amount additionally to the account.
+                    'due_amount' => 0.0 - abs($amount),
+                ];
+                $guestDonationDueTotal += (0.0 - abs($amount));
+            }
+        }
+
         $totalSum = 0.0;
         foreach ($rows as $row) {
             $totalSum += (float)$row['total_price'];
         }
 
-        return ['rows' => $rows, 'total_sum' => $totalSum, 'extra_costs' => $extraCosts];
+        return [
+            'rows' => $rows,
+            'total_sum' => $totalSum,
+            'guest_donation_due_total' => $guestDonationDueTotal,
+            'settlement_total_sum' => $totalSum,
+            'extra_costs' => $extraCosts,
+            'guest_donations' => $guestDonations,
+        ];
     }
 
     protected function buildTeamStatsPayload($teamAdminUserId, $teamEventLabel, array $extra = [])
@@ -759,7 +798,10 @@ trait TeamEventTrait
             'can_close_team_event' => true,
             'rows' => $stats['rows'],
             'total_sum' => $stats['total_sum'],
+            'guest_donation_due_total' => isset($stats['guest_donation_due_total']) ? (float)$stats['guest_donation_due_total'] : 0.0,
+            'settlement_total_sum' => isset($stats['settlement_total_sum']) ? (float)$stats['settlement_total_sum'] : (float)$stats['total_sum'],
             'extra_costs' => isset($stats['extra_costs']) ? $stats['extra_costs'] : [],
+            'guest_donations' => isset($stats['guest_donations']) ? $stats['guest_donations'] : [],
             'members' => $this->getTeamEventMembersWithContribution($teamAdminUserId, $selectedTeamEventId, $teamEventLabel),
             'member_candidates' => $this->getTeamEventMemberCandidates($teamAdminUserId, $selectedTeamEventId),
             'can_manage_members' => true,
@@ -1020,6 +1062,26 @@ trait TeamEventTrait
         return $hasTable;
     }
 
+    protected function canUseTeamEventGuestDonationsTable()
+    {
+        static $hasTable = null;
+        if ($hasTable !== null) {
+            return $hasTable;
+        }
+
+        try {
+            $tableRow = $this->getTeamEventDbAdapter()->query(
+                "SHOW TABLES LIKE 'drinks_teamevent_guest_donations'",
+                []
+            )->current();
+            $hasTable = (bool)$tableRow;
+        } catch (\Exception $e) {
+            $hasTable = false;
+        }
+
+        return $hasTable;
+    }
+
     protected function getTeamEventExtraCosts($teamEventId, $includeSoftDeleted = false)
     {
         if (!$this->canUseTeamEventExtraCostsTable()) {
@@ -1222,6 +1284,137 @@ trait TeamEventTrait
             $dbAdapter->query(
                 'DELETE FROM drinks_teamevent_extra_costs WHERE id = ?',
                 [$extraCostId]
+            );
+        }
+    }
+
+    protected function getTeamEventGuestDonations($teamEventId, $includeSoftDeleted = false)
+    {
+        if (!$this->canUseTeamEventGuestDonationsTable()) {
+            return [];
+        }
+
+        $teamEventId = (int)$teamEventId;
+        if ($teamEventId <= 0) {
+            return [];
+        }
+
+        $deleteFilter = $includeSoftDeleted ? '' : ' AND (gd.deleted IS NULL OR gd.deleted = 0)';
+        $rows = $this->getTeamEventDbAdapter()->query(
+            'SELECT gd.id, gd.team_event_id, gd.receiver_user_id, gd.amount, gd.comment, gd.created_at, gd.updated_at, gd.deleted, u.alias, u.email
+             FROM drinks_teamevent_guest_donations gd
+             JOIN bs_users u ON u.uid = gd.receiver_user_id
+             WHERE gd.team_event_id = ?' . $deleteFilter . '
+             ORDER BY gd.created_at ASC',
+            [$teamEventId]
+        )->toArray();
+
+        $result = [];
+        foreach ($rows as $row) {
+            $guestDonationId = isset($row['id']) ? (int)$row['id'] : 0;
+            if ($guestDonationId <= 0) {
+                continue;
+            }
+
+            $receiverUid = isset($row['receiver_user_id']) ? (int)$row['receiver_user_id'] : 0;
+            $result[] = [
+                'id' => $guestDonationId,
+                'team_event_id' => isset($row['team_event_id']) ? (int)$row['team_event_id'] : 0,
+                'receiver_user_id' => $receiverUid,
+                'receiver_name' => isset($row['alias']) && trim($row['alias']) !== '' ? (string)$row['alias'] : ('User ' . $receiverUid),
+                'receiver_email' => isset($row['email']) ? (string)$row['email'] : '',
+                'amount' => isset($row['amount']) ? (float)$row['amount'] : 0.0,
+                'comment' => isset($row['comment']) ? (string)$row['comment'] : '',
+                'created_at' => isset($row['created_at']) ? (string)$row['created_at'] : '',
+                'updated_at' => isset($row['updated_at']) ? (string)$row['updated_at'] : '',
+                'deleted' => isset($row['deleted']) ? (int)$row['deleted'] : 0,
+            ];
+        }
+
+        return $result;
+    }
+
+    protected function saveTeamEventGuestDonation($teamEventId, $receiverUserId, $amount, $comment = '')
+    {
+        if (!$this->canUseTeamEventGuestDonationsTable()) {
+            throw new \Exception('Guest donations table not available');
+        }
+
+        $teamEventId = (int)$teamEventId;
+        $receiverUserId = (int)$receiverUserId;
+        $amount = (float)$amount;
+        $comment = trim((string)($comment ?? ''));
+
+        if ($teamEventId <= 0) {
+            throw new \Exception('Invalid team event ID');
+        }
+        if ($receiverUserId <= 0) {
+            throw new \Exception('Invalid receiver user ID');
+        }
+        if ($amount <= 0) {
+            throw new \Exception('Invalid amount');
+        }
+
+        $dbAdapter = $this->getTeamEventDbAdapter();
+        $dbAdapter->query(
+            'INSERT INTO drinks_teamevent_guest_donations (team_event_id, receiver_user_id, amount, comment)
+             VALUES (?, ?, ?, ?)',
+            [$teamEventId, $receiverUserId, $amount, $comment]
+        );
+
+        $guestDonationId = $dbAdapter->getDriver()->getLastGeneratedValue();
+        if (!$guestDonationId) {
+            throw new \Exception('Failed to insert guest donation');
+        }
+
+        return (int)$guestDonationId;
+    }
+
+    protected function updateTeamEventGuestDonation($guestDonationId, $teamEventId, $receiverUserId, $amount, $comment = '')
+    {
+        if (!$this->canUseTeamEventGuestDonationsTable()) {
+            throw new \Exception('Guest donations table not available');
+        }
+
+        $guestDonationId = (int)$guestDonationId;
+        $teamEventId = (int)$teamEventId;
+        $receiverUserId = (int)$receiverUserId;
+        $amount = (float)$amount;
+        $comment = trim((string)($comment ?? ''));
+
+        if ($guestDonationId <= 0 || $teamEventId <= 0 || $receiverUserId <= 0 || $amount <= 0) {
+            throw new \Exception('Invalid parameters');
+        }
+
+        $this->getTeamEventDbAdapter()->query(
+            'UPDATE drinks_teamevent_guest_donations
+             SET receiver_user_id = ?, amount = ?, comment = ?, updated_at = NOW()
+             WHERE id = ? AND team_event_id = ?',
+            [$receiverUserId, $amount, $comment, $guestDonationId, $teamEventId]
+        );
+    }
+
+    protected function deleteTeamEventGuestDonation($guestDonationId, $softDelete = true)
+    {
+        if (!$this->canUseTeamEventGuestDonationsTable()) {
+            throw new \Exception('Guest donations table not available');
+        }
+
+        $guestDonationId = (int)$guestDonationId;
+        if ($guestDonationId <= 0) {
+            throw new \Exception('Invalid guest donation ID');
+        }
+
+        $dbAdapter = $this->getTeamEventDbAdapter();
+        if ($softDelete) {
+            $dbAdapter->query(
+                'UPDATE drinks_teamevent_guest_donations SET deleted = 1 WHERE id = ?',
+                [$guestDonationId]
+            );
+        } else {
+            $dbAdapter->query(
+                'DELETE FROM drinks_teamevent_guest_donations WHERE id = ?',
+                [$guestDonationId]
             );
         }
     }
