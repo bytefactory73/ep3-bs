@@ -25,10 +25,14 @@ class IndexController extends AbstractActionController
             if ($email !== '') {
                 try {
                     $dbAdapter = $this->getServiceLocator()->get('Zend\\Db\\Adapter\\Adapter');
-                    $teamLeadRow = $dbAdapter->query(
-                        'SELECT da.user_id, da.alias FROM drink_aliases da WHERE da.is_team = 1 AND LOWER(TRIM(COALESCE(da.teamlead_email, ""))) = LOWER(TRIM(?)) ORDER BY da.user_id ASC LIMIT 1',
-                        [$email]
-                    )->current();
+                                        $teamLeadRow = $dbAdapter->query(
+                                                'SELECT da.user_id, da.alias
+                                                 FROM drink_aliases da
+                                                 WHERE da.is_team = 1
+                                                     AND FIND_IN_SET(LOWER(TRIM(?)), REPLACE(REPLACE(LOWER(COALESCE(da.teamlead_email, "")), " ", ""), ";", ",")) > 0
+                                                 ORDER BY da.user_id ASC LIMIT 1',
+                                                [$email]
+                                        )->current();
                     if ($teamLeadRow && !empty($teamLeadRow['user_id'])) {
                         $teamLeadTeamUserId = (int)$teamLeadRow['user_id'];
                         $teamLeadTeamAlias = isset($teamLeadRow['alias']) ? trim((string)$teamLeadRow['alias']) : '';

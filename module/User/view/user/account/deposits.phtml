@@ -60,13 +60,10 @@ $this->setup([
                         <button type="button" id="set-alias-btn" class="mini-button">Theken ID speichern</button>
                     </span>
 
-                        <label for="deposit_teamlead_search" id="teamlead-label" style="grid-column:1; display:none;">Mannschaftführer:</label>
-                        <span id="teamlead-row" style="grid-column:2; display:none; align-items:center; gap:4px; position:relative; flex-wrap:wrap;">
-                            <input type="text" id="deposit_teamlead_search" autocomplete="off" placeholder="<?= $this->t('Benutzer suchen...') ?>" style="width:200px;">
-                            <button type="button" id="clear-teamlead-btn" title="<?= $this->t('Feld leeren') ?>" style="background:none; border:none; padding:0 6px; font-size:18px; color:#888; cursor:pointer; line-height:1;">&times;</button>
-                            <div id="teamlead-search-list" style="position:absolute; top:100%; left:0; z-index:20; min-width:200px;"></div>
+                        <label for="teamlead-rows" id="teamlead-label" style="grid-column:1; display:none;">Mannschaftsführer:</label>
+                        <span id="teamlead-row" style="grid-column:2; display:none; align-items:flex-start; gap:8px; position:relative; flex-wrap:nowrap;">
+                            <div id="teamlead-rows" style="display:flex; flex-direction:column; gap:6px; width:100%; max-width:380px;"></div>
                         </span>
-                    <input type="hidden" id="deposit_teamlead_uid" name="deposit_teamlead_uid">
 
                     <label for="deposit_order_email_option" style="grid-column:1;">Bestell-Emails:</label>
                     <select id="deposit_order_email_option" name="deposit_order_email_option" style="grid-column:2; max-width:235px; justify-self:start;">
@@ -184,10 +181,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var selectedTeamEventIdInContext = '';
     var aliasRow = document.getElementById('alias-row');
     var aliasInput = document.getElementById('deposit_alias');
-    var teamleadSearchInput = document.getElementById('deposit_teamlead_search');
-    var teamleadUidInput = document.getElementById('deposit_teamlead_uid');
-    var teamleadSearchList = document.getElementById('teamlead-search-list');
-    var clearTeamleadBtn = document.getElementById('clear-teamlead-btn');
+    var teamleadRowsContainer = document.getElementById('teamlead-rows');
     var teamleadRow = document.getElementById('teamlead-row');
     var teamleadLabel = document.getElementById('teamlead-label');
     var balanceBox = document.getElementById('current-balance-box');
@@ -876,18 +870,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (teamleadLabel) {
             teamleadLabel.style.display = isTeam ? '' : 'none';
         }
-        // Mannschaftführer: show matched user name/email or raw stored email
-        if (teamleadSearchInput) {
-            teamleadSearchInput.disabled = !user || !drinksEnabled || !isTeam;
-            if (teamleadEmail !== '') {
-                var tlu = users.find(function(u) { return u.email === teamleadEmail; });
-                teamleadSearchInput.value = tlu ? (tlu.alias + ' (' + tlu.email + ')') : teamleadEmail;
-                if (teamleadUidInput) teamleadUidInput.value = tlu ? tlu.uid : '';
-            } else {
-                teamleadSearchInput.value = '';
-                if (teamleadUidInput) teamleadUidInput.value = '';
-            }
-        }
+        renderTeamleadRows(teamleadEmail);
+        setTeamleadControlsDisabled(!user || !drinksEnabled || !isTeam);
         updateTeamSpieltagVisibility();
         if (!isTeam && teamNewSpieltagInput) {
             teamNewSpieltagInput.value = '';
@@ -924,9 +908,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (orderEmailOptionSelect) {
             orderEmailOptionSelect.disabled = !uid || !drinksEnabled;
         }
-        if (teamleadSearchInput) {
-            teamleadSearchInput.disabled = !uid || !drinksEnabled || !isTeamCheckbox.checked;
-        }
+        setTeamleadControlsDisabled(!uid || !drinksEnabled || !isTeamCheckbox.checked);
         if (uid) {
             try {
                 const resp = await fetch('<?= $this->url('user/set-user-drinks-settings') ?>', {
@@ -986,9 +968,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (teamleadLabel) {
             teamleadLabel.style.display = isTeam ? '' : 'none';
         }
-        if (teamleadSearchInput) {
-            teamleadSearchInput.disabled = !uid || !drinksEnabledCheckbox.checked || !isTeam;
-        }
+        setTeamleadControlsDisabled(!uid || !drinksEnabledCheckbox.checked || !isTeam);
         if (uid) {
             try {
                 const resp = await fetch('<?= $this->url('user/set-user-drinks-settings') ?>', {
@@ -1013,75 +993,67 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     var setAliasBtn = document.getElementById('set-alias-btn');
 
-    // Mannschaftführer autocomplete
-    var teamleadMatches = [];
-    var teamleadSelectedIndex = -1;
-
-    function highlightTeamleadSelection() {
-        var items = teamleadSearchList ? teamleadSearchList.querySelectorAll('[data-teamlead-index]') : [];
-        items.forEach(function(item, idx) {
-            if (idx === teamleadSelectedIndex) {
-                item.style.background = '#e3f0fa';
-                item.scrollIntoView({ block: 'nearest' });
-            } else {
-                item.style.background = '';
-            }
-        });
+    function splitTeamleadEmails(rawValue) {
+        var raw = String(rawValue || '').trim();
+        if (!raw) return [];
+        var parts = raw.split(/[;,]+/);
+        var unique = [];
+        for (var i = 0; i < parts.length; i++) {
+            var email = String(parts[i] || '').trim().toLowerCase();
+            if (!email) continue;
+            if (unique.indexOf(email) === -1) unique.push(email);
+        }
+        return unique;
     }
 
-    function selectTeamleadMatch(u) {
-        if (!u) return;
-        teamleadSearchInput.value = u.alias + ' (' + u.email + ')';
-        teamleadUidInput.value = u.uid;
-        teamleadSearchList.innerHTML = '';
-        teamleadMatches = [];
-        teamleadSelectedIndex = -1;
-        saveTeamleadEmail(u.email);
+    function isValidEmail(email) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
     }
 
-    function renderTeamleadList(filter) {
-        if (!teamleadSearchList) return;
-        teamleadSearchList.innerHTML = '';
-        teamleadMatches = [];
-        teamleadSelectedIndex = -1;
-        if (!filter) return;
-        var matches = users.filter(function(u) {
-            return u.alias.toLowerCase().includes(filter) || u.email.toLowerCase().includes(filter);
-        });
-        teamleadMatches = matches;
-        if (matches.length === 0) return;
-        var list = document.createElement('div');
-        list.style.cssText = 'background:#fff; border:1px solid #ccc; width:100%; max-height:180px; overflow-y:auto;';
-        matches.forEach(function(u, idx) {
-            var item = document.createElement('div');
-            item.setAttribute('data-teamlead-index', String(idx));
-            item.textContent = u.alias + ' (' + u.email + ')';
-            item.style.cssText = 'padding:4px 8px; cursor:pointer;';
-            item.addEventListener('mouseover', function() { item.style.background = '#e3f0fa'; });
-            item.addEventListener('mouseout', function() { item.style.background = ''; });
-            item.addEventListener('mousedown', function(e) {
-                e.preventDefault();
-                selectTeamleadMatch(u);
-            });
-            item.addEventListener('mouseenter', function() {
-                teamleadSelectedIndex = idx;
-                highlightTeamleadSelection();
-            });
-            list.appendChild(item);
-        });
-        teamleadSearchList.appendChild(list);
+    function extractEmailFromInputValue(value) {
+        var text = String(value || '').trim();
+        if (!text) return '';
+        var bracketMatch = text.match(/\(([^()]+@[^()]+)\)\s*$/);
+        if (bracketMatch && bracketMatch[1]) {
+            return String(bracketMatch[1]).trim().toLowerCase();
+        }
+        return text.toLowerCase();
     }
-    async function saveTeamleadEmail(email) {
+
+    function formatTeamleadInputValueByEmail(email) {
+        var normalized = String(email || '').trim().toLowerCase();
+        if (!normalized) return '';
+        var matchedUser = users.find(function(u) {
+            return String(u.email || '').trim().toLowerCase() === normalized;
+        });
+        return matchedUser ? (matchedUser.alias + ' (' + matchedUser.email + ')') : normalized;
+    }
+
+    function getTeamleadEmailsFromRows() {
+        if (!teamleadRowsContainer) return [];
+        var inputs = teamleadRowsContainer.querySelectorAll('.teamlead-input');
+        var unique = [];
+        inputs.forEach(function(input) {
+            var email = extractEmailFromInputValue(input.value);
+            if (!email || !isValidEmail(email)) return;
+            if (unique.indexOf(email) === -1) unique.push(email);
+        });
+        return unique;
+    }
+
+    async function saveTeamleadEmailList(emails) {
         var uid = userIdInput.value;
         var user = findUserByUid(uid);
         if (!uid) return;
-        if (user) user.teamlead_email = email;
+        var normalizedEmails = Array.isArray(emails) ? emails : [];
+        var storedValue = normalizedEmails.join(', ');
+        if (user) user.teamlead_email = storedValue;
         try {
             const resp = await fetch('<?= $this->url('user/set-user-drinks-settings') ?>', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 credentials: 'same-origin',
-                body: new URLSearchParams({ uid: uid, teamlead_email: email })
+                body: new URLSearchParams({ uid: uid, teamlead_email: storedValue })
             });
             const data = await resp.json();
             if (!data.success) {
@@ -1091,52 +1063,196 @@ document.addEventListener('DOMContentLoaded', function() {
             alert('Netzwerkfehler beim Speichern des Mannschaftführers.');
         }
     }
-    if (teamleadSearchInput) {
-        teamleadSearchInput.addEventListener('input', function() {
-            teamleadUidInput.value = '';
-            renderTeamleadList(teamleadSearchInput.value.trim().toLowerCase());
-        });
-        teamleadSearchInput.addEventListener('keydown', function(e) {
-            if (e.key === 'ArrowDown') {
-                if (teamleadMatches.length === 0) return;
-                e.preventDefault();
-                teamleadSelectedIndex = Math.min(teamleadSelectedIndex + 1, teamleadMatches.length - 1);
-                highlightTeamleadSelection();
-            } else if (e.key === 'ArrowUp') {
-                if (teamleadMatches.length === 0) return;
-                e.preventDefault();
-                teamleadSelectedIndex = Math.max(teamleadSelectedIndex - 1, -1);
-                highlightTeamleadSelection();
-            } else if (e.key === 'Enter') {
-                if (teamleadMatches.length === 0) return;
-                e.preventDefault();
-                var idx = teamleadSelectedIndex >= 0 ? teamleadSelectedIndex : 0;
-                selectTeamleadMatch(teamleadMatches[idx]);
-            } else if (e.key === 'Escape') {
-                if (teamleadSearchList) teamleadSearchList.innerHTML = '';
-                teamleadMatches = [];
-                teamleadSelectedIndex = -1;
+
+    function setTeamleadControlsDisabled(disabled) {
+        if (!teamleadRowsContainer) return;
+        var inputs = teamleadRowsContainer.querySelectorAll('.teamlead-input');
+        var removeButtons = teamleadRowsContainer.querySelectorAll('.teamlead-remove-btn');
+        inputs.forEach(function(input) { input.disabled = !!disabled; });
+        removeButtons.forEach(function(btn) { btn.disabled = !!disabled; });
+    }
+
+    function ensureTrailingEmptyTeamleadRow() {
+        if (!teamleadRowsContainer) return;
+        var inputs = teamleadRowsContainer.querySelectorAll('.teamlead-input');
+        var hasEmpty = false;
+        inputs.forEach(function(input) {
+            if (String(input.value || '').trim() === '') {
+                hasEmpty = true;
             }
         });
-        teamleadSearchInput.addEventListener('blur', function() {
-            setTimeout(function() {
-                if (teamleadSearchList) teamleadSearchList.innerHTML = '';
-                // If field is cleared, save empty
-                if (teamleadSearchInput.value.trim() === '') {
-                    teamleadUidInput.value = '';
-                    saveTeamleadEmail('');
+        if (!hasEmpty) {
+            createTeamleadRow('');
+        }
+    }
+
+    function renderTeamleadPopupForInput(input, popup, filter) {
+        var term = String(filter || '').trim().toLowerCase();
+        popup.innerHTML = '';
+        input._teamleadMatches = [];
+        input._teamleadSelectedIndex = -1;
+        if (!term) return;
+
+        var matches = users.filter(function(u) {
+            var alias = String(u.alias || '').toLowerCase();
+            var email = String(u.email || '').toLowerCase();
+            return alias.indexOf(term) !== -1 || email.indexOf(term) !== -1;
+        });
+        input._teamleadMatches = matches;
+        if (matches.length === 0) return;
+
+        var list = document.createElement('div');
+        list.style.cssText = 'background:#fff; border:1px solid #ccc; width:100%; max-height:180px; overflow-y:auto;';
+        matches.forEach(function(u, idx) {
+            var item = document.createElement('div');
+            item.setAttribute('data-teamlead-index', String(idx));
+            item.textContent = u.alias + ' (' + u.email + ')';
+            item.style.cssText = 'padding:4px 8px; cursor:pointer;';
+            item.addEventListener('mouseenter', function() {
+                input._teamleadSelectedIndex = idx;
+                highlightTeamleadPopupSelection(input, popup);
+            });
+            item.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                applyTeamleadMatchSelection(input, popup, u);
+            });
+            list.appendChild(item);
+        });
+        popup.appendChild(list);
+    }
+
+    function highlightTeamleadPopupSelection(input, popup) {
+        var items = popup.querySelectorAll('[data-teamlead-index]');
+        items.forEach(function(item, idx) {
+            item.style.background = (idx === input._teamleadSelectedIndex) ? '#e3f0fa' : '';
+            if (idx === input._teamleadSelectedIndex) {
+                item.scrollIntoView({ block: 'nearest' });
+            }
+        });
+    }
+
+    function applyTeamleadMatchSelection(input, popup, userMatch) {
+        if (!input || !userMatch) return;
+        input.value = userMatch.alias + ' (' + userMatch.email + ')';
+        popup.innerHTML = '';
+        input._teamleadMatches = [];
+        input._teamleadSelectedIndex = -1;
+        persistTeamleadRows();
+    }
+
+    function createTeamleadRow(initialEmail) {
+        if (!teamleadRowsContainer) return;
+        var row = document.createElement('div');
+        row.style.cssText = 'display:flex; align-items:center; gap:6px; position:relative;';
+
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'teamlead-input';
+        input.autocomplete = 'off';
+        input.placeholder = '<?= $this->t('Benutzer suchen...') ?>';
+        input.style.cssText = 'width:280px;';
+        input.value = formatTeamleadInputValueByEmail(initialEmail);
+        input._teamleadMatches = [];
+        input._teamleadSelectedIndex = -1;
+
+        var removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'teamlead-remove-btn';
+        removeBtn.title = '<?= $this->t('Entfernen') ?>';
+        removeBtn.style.cssText = 'background:none; border:none; padding:0 6px; font-size:18px; color:#888; cursor:pointer; line-height:1;';
+        removeBtn.textContent = '×';
+
+        var popup = document.createElement('div');
+        popup.className = 'teamlead-search-list';
+        popup.style.cssText = 'position:absolute; top:100%; left:0; z-index:20; min-width:280px;';
+
+        input.addEventListener('input', function() {
+            renderTeamleadPopupForInput(input, popup, input.value);
+        });
+
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowDown') {
+                if (!input._teamleadMatches || input._teamleadMatches.length === 0) return;
+                e.preventDefault();
+                input._teamleadSelectedIndex = Math.min((input._teamleadSelectedIndex || -1) + 1, input._teamleadMatches.length - 1);
+                highlightTeamleadPopupSelection(input, popup);
+            } else if (e.key === 'ArrowUp') {
+                if (!input._teamleadMatches || input._teamleadMatches.length === 0) return;
+                e.preventDefault();
+                input._teamleadSelectedIndex = Math.max((input._teamleadSelectedIndex || -1) - 1, -1);
+                highlightTeamleadPopupSelection(input, popup);
+            } else if (e.key === 'Enter') {
+                if (!input._teamleadMatches || input._teamleadMatches.length === 0) {
+                    persistTeamleadRows();
+                    return;
                 }
+                e.preventDefault();
+                var idx = input._teamleadSelectedIndex >= 0 ? input._teamleadSelectedIndex : 0;
+                applyTeamleadMatchSelection(input, popup, input._teamleadMatches[idx]);
+            } else if (e.key === 'Escape') {
+                popup.innerHTML = '';
+                input._teamleadMatches = [];
+                input._teamleadSelectedIndex = -1;
+            }
+        });
+
+        input.addEventListener('blur', function() {
+            setTimeout(function() {
+                popup.innerHTML = '';
+                persistTeamleadRows();
             }, 150);
         });
-    }
-    if (clearTeamleadBtn) {
-        clearTeamleadBtn.addEventListener('click', function() {
-            teamleadSearchInput.value = '';
-            teamleadUidInput.value = '';
-            if (teamleadSearchList) teamleadSearchList.innerHTML = '';
-            saveTeamleadEmail('');
+
+        removeBtn.addEventListener('click', function() {
+            row.remove();
+            ensureTrailingEmptyTeamleadRow();
+            persistTeamleadRows();
         });
+
+        row.appendChild(input);
+        row.appendChild(removeBtn);
+        row.appendChild(popup);
+        teamleadRowsContainer.appendChild(row);
+        return row;
     }
+
+    function renderTeamleadRows(teamleadEmailValue) {
+        if (!teamleadRowsContainer) return;
+        teamleadRowsContainer.innerHTML = '';
+        var emails = splitTeamleadEmails(teamleadEmailValue);
+        if (emails.length === 0) {
+            createTeamleadRow('');
+            return;
+        }
+        emails.forEach(function(email) { createTeamleadRow(email); });
+        ensureTrailingEmptyTeamleadRow();
+    }
+
+    function persistTeamleadRows() {
+        var emails = getTeamleadEmailsFromRows();
+        var invalidInputs = [];
+        if (teamleadRowsContainer) {
+            var inputs = teamleadRowsContainer.querySelectorAll('.teamlead-input');
+            inputs.forEach(function(input) {
+                var rawValue = String(input.value || '').trim();
+                if (!rawValue) return;
+                var email = extractEmailFromInputValue(rawValue);
+                if (!isValidEmail(email)) {
+                    invalidInputs.push(input);
+                } else {
+                    input.value = formatTeamleadInputValueByEmail(email);
+                }
+            });
+        }
+        if (invalidInputs.length > 0) {
+            alert('Bitte gültige E-Mail-Adresse auswählen oder eingeben.');
+            invalidInputs[0].focus();
+            return;
+        }
+        ensureTrailingEmptyTeamleadRow();
+        saveTeamleadEmailList(emails);
+    }
+
     setAliasBtn.addEventListener('click', async function() {
         var uid = userIdInput.value;
         var user = findUserByUid(uid);

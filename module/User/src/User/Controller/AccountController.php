@@ -83,7 +83,7 @@ class AccountController extends AbstractActionController
 
         $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
         $teamAliasRow = $dbAdapter->query(
-            'SELECT user_id, alias FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND LOWER(TRIM(COALESCE(teamlead_email, ""))) = LOWER(TRIM(?))',
+            'SELECT user_id, alias FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND FIND_IN_SET(LOWER(TRIM(?)), REPLACE(REPLACE(LOWER(COALESCE(teamlead_email, "")), " ", ""), ";", ",")) > 0',
             [$teamUserId, $sessionEmail]
         )->current();
         if (!$teamAliasRow) {
@@ -159,7 +159,7 @@ class AccountController extends AbstractActionController
 
         $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
         $teamAliasRow = $dbAdapter->query(
-            'SELECT user_id FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND LOWER(TRIM(COALESCE(teamlead_email, ""))) = LOWER(TRIM(?))',
+            'SELECT user_id FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND FIND_IN_SET(LOWER(TRIM(?)), REPLACE(REPLACE(LOWER(COALESCE(teamlead_email, "")), " ", ""), ";", ",")) > 0',
             [$teamUserId, $sessionEmail]
         )->current();
         if (!$teamAliasRow) {
@@ -201,7 +201,7 @@ class AccountController extends AbstractActionController
 
         $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
         $teamAliasRow = $dbAdapter->query(
-            'SELECT user_id FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND LOWER(TRIM(COALESCE(teamlead_email, ""))) = LOWER(TRIM(?))',
+            'SELECT user_id FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND FIND_IN_SET(LOWER(TRIM(?)), REPLACE(REPLACE(LOWER(COALESCE(teamlead_email, "")), " ", ""), ";", ",")) > 0',
             [$teamUserId, $sessionEmail]
         )->current();
         if (!$teamAliasRow) {
@@ -259,7 +259,7 @@ class AccountController extends AbstractActionController
 
         $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
         $teamAliasRow = $dbAdapter->query(
-            'SELECT user_id, alias FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND LOWER(TRIM(COALESCE(teamlead_email, ""))) = LOWER(TRIM(?))',
+            'SELECT user_id, alias FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND FIND_IN_SET(LOWER(TRIM(?)), REPLACE(REPLACE(LOWER(COALESCE(teamlead_email, "")), " ", ""), ";", ",")) > 0',
             [$teamUserId, $sessionEmail]
         )->current();
         if (!$teamAliasRow) {
@@ -775,8 +775,22 @@ class AccountController extends AbstractActionController
         }
         if ($teamleadEmail !== null) {
             $teamleadEmail = trim((string)$teamleadEmail);
-            if ($teamleadEmail !== '' && !filter_var($teamleadEmail, FILTER_VALIDATE_EMAIL)) {
-                return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'Invalid teamlead email address']));
+            if ($teamleadEmail !== '') {
+                $rawEmails = preg_split('/[;,]+/', $teamleadEmail);
+                $normalizedEmails = [];
+                foreach ((array)$rawEmails as $rawEmail) {
+                    $email = strtolower(trim((string)$rawEmail));
+                    if ($email === '') {
+                        continue;
+                    }
+                    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                        return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'Invalid teamlead email address']));
+                    }
+                    if (!in_array($email, $normalizedEmails, true)) {
+                        $normalizedEmails[] = $email;
+                    }
+                }
+                $teamleadEmail = implode(', ', $normalizedEmails);
             }
         }
         // Normalize is_team
@@ -2513,7 +2527,7 @@ class AccountController extends AbstractActionController
 
         $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
         $teamAliasRow = $dbAdapter->query(
-            'SELECT user_id, alias FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND LOWER(TRIM(COALESCE(teamlead_email, ""))) = LOWER(TRIM(?))',
+            'SELECT user_id, alias FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND FIND_IN_SET(LOWER(TRIM(?)), REPLACE(REPLACE(LOWER(COALESCE(teamlead_email, "")), " ", ""), ";", ",")) > 0',
             [$teamUserId, $sessionEmail]
         )->current();
         if (!$teamAliasRow) {
@@ -2627,7 +2641,7 @@ class AccountController extends AbstractActionController
 
         $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
         $teamAliasRow = $dbAdapter->query(
-            'SELECT user_id, alias FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND LOWER(TRIM(COALESCE(teamlead_email, ""))) = LOWER(TRIM(?))',
+            'SELECT user_id, alias FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND FIND_IN_SET(LOWER(TRIM(?)), REPLACE(REPLACE(LOWER(COALESCE(teamlead_email, "")), " ", ""), ";", ",")) > 0',
             [$teamUserId, $sessionEmail]
         )->current();
         if (!$teamAliasRow) {
@@ -2705,7 +2719,7 @@ class AccountController extends AbstractActionController
 
         $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
         $teamAliasRow = $dbAdapter->query(
-            'SELECT user_id, alias FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND LOWER(TRIM(COALESCE(teamlead_email, ""))) = LOWER(TRIM(?))',
+            'SELECT user_id, alias FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND FIND_IN_SET(LOWER(TRIM(?)), REPLACE(REPLACE(LOWER(COALESCE(teamlead_email, "")), " ", ""), ";", ",")) > 0',
             [$teamUserId, $sessionEmail]
         )->current();
         if (!$teamAliasRow) {
@@ -2764,7 +2778,7 @@ class AccountController extends AbstractActionController
 
         $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
         $teamAliasRow = $dbAdapter->query(
-            'SELECT user_id, alias FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND LOWER(TRIM(COALESCE(teamlead_email, ""))) = LOWER(TRIM(?))',
+            'SELECT user_id, alias FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND FIND_IN_SET(LOWER(TRIM(?)), REPLACE(REPLACE(LOWER(COALESCE(teamlead_email, "")), " ", ""), ";", ",")) > 0',
             [$teamUserId, $sessionEmail]
         )->current();
         if (!$teamAliasRow) {
@@ -2865,7 +2879,7 @@ class AccountController extends AbstractActionController
 
         $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
         $teamAliasRow = $dbAdapter->query(
-            'SELECT user_id, alias FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND LOWER(TRIM(COALESCE(teamlead_email, ""))) = LOWER(TRIM(?))',
+            'SELECT user_id, alias FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND FIND_IN_SET(LOWER(TRIM(?)), REPLACE(REPLACE(LOWER(COALESCE(teamlead_email, "")), " ", ""), ";", ",")) > 0',
             [$teamUserId, $sessionEmail]
         )->current();
         if (!$teamAliasRow) {
@@ -2934,7 +2948,7 @@ class AccountController extends AbstractActionController
 
         $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
         $teamAliasRow = $dbAdapter->query(
-            'SELECT user_id, alias FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND LOWER(TRIM(COALESCE(teamlead_email, ""))) = LOWER(TRIM(?))',
+            'SELECT user_id, alias FROM drink_aliases WHERE user_id = ? AND is_team = 1 AND FIND_IN_SET(LOWER(TRIM(?)), REPLACE(REPLACE(LOWER(COALESCE(teamlead_email, "")), " ", ""), ";", ",")) > 0',
             [$teamUserId, $sessionEmail]
         )->current();
         if (!$teamAliasRow) {
