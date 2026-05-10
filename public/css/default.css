@@ -237,7 +237,7 @@ a#logo:active { top: 1px; }
 .calendar-date-row { height: 42px; overflow: hidden;}
 .calendar-time-row { height: 42px; overflow: hidden;}
 .calendar-square-row { height: 28px; overflow: hidden;}
-.calendar-core-row { height: 25px; overflow: hidden;}
+.calendar-core-row { height: 40px; overflow: hidden;}
 .calendar-core-row td { position: relative; }
 
 .cts-label, .day-label, .square-label { font-weight: bold; }
