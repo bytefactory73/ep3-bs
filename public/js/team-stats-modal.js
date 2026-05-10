@@ -110,7 +110,7 @@
         function resetBalanceHeader() {
             var r = refs();
             if (r.balanceHeader) {
-                r.balanceHeader.innerHTML = 'Gesamtsaldo Konto: -';
+                r.balanceHeader.innerHTML = 'Gesamtsaldo Mannschaftskonto: -';
             }
         }
 
@@ -1424,7 +1424,7 @@
 
                 var accountBalance = Number(data.account_balance || 0);
                 if (r.balanceHeader) {
-                    r.balanceHeader.innerHTML = 'Gesamtsaldo Konto: <span style="color:' + amountColor(accountBalance) + ';">' + formatCurrency(accountBalance) + '</span>';
+                    r.balanceHeader.innerHTML = 'Gesamtsaldo Mannschaftskonto: <span style="color:' + amountColor(accountBalance) + ';">' + formatCurrency(accountBalance) + '</span>';
                 }
 
                 var canManageMembers = !!data.can_manage_members && !data.team_event_closed;

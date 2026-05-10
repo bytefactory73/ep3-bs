@@ -75,7 +75,7 @@ if ($partyModeEnabled) {
         <button onclick="closeTeamStatsModal()" style="position:absolute;top:10px;right:12px;z-index:10;background:#eee;border:none;border-radius:50%;width:34px;height:34px;font-size:20px;cursor:pointer;">&times;</button>
         <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin:2px 42px 12px 4px; flex-wrap:wrap;">
             <h2 style="margin:0; color:#1769aa;">Kostenübersicht</h2>
-            <div id="team-stats-account-balance-header" style="font-weight:bold; text-align:right; color:#333;">Gesamtsaldo Konto: -</div>
+            <div id="team-stats-account-balance-header" style="font-weight:bold; text-align:right; color:#333;">Gesamtsaldo Mannschaftskonto: -</div>
         </div>
         <div style="display:flex; align-items:center; gap:8px; margin:0 4px 12px 4px; flex-wrap:wrap;">
             <label for="team-stats-spieltag-select" style="color:#1769aa; font-weight:bold;">Spieltag:</label>
@@ -84,7 +84,7 @@ if ($partyModeEnabled) {
         <div id="teamStatsContent" style="padding:2px 4px 8px 4px;"></div>
     </div>
 </div>
-<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260510-6') ?>"></script>
+<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260510-7') ?>"></script>
 <script>
 function getTeamStatsSpieltagOptions() {
     var bookingSelect = document.getElementById('spieltag-select');
