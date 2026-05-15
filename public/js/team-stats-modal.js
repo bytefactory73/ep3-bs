@@ -277,8 +277,8 @@
                     var relevanceDisplay = renderRelevantMemberLabels(relevantMembers, activeMemberIds);
                     for (var ri = 0; ri < relevanceDisplay.ids.length; ri++) {
                         var relId = relevanceDisplay.ids[ri];
-                        var orderShare = roundAwayFromZero(row.share_per_member || 0);
-                        memberSharesByUid[relId] = roundMoney((memberSharesByUid[relId] || 0) + orderShare);
+                        var orderShare = Number(row.share_per_member || 0);
+                        memberSharesByUid[relId] = (memberSharesByUid[relId] || 0) + orderShare;
                     }
 
                     var rowKey = String(row.drink_id || '') + '|' + String(row.unit_price || '');
@@ -340,8 +340,8 @@
                     var extraRelevanceDisplay = renderRelevantMemberLabels(extraRelevantMembers, activeMemberIds);
                     for (var eri = 0; eri < extraRelevanceDisplay.ids.length; eri++) {
                         var extraRelId = extraRelevanceDisplay.ids[eri];
-                        var extraShare = roundAwayFromZero(extraCost.share_per_member || 0);
-                        memberSharesByUid[extraRelId] = roundMoney((memberSharesByUid[extraRelId] || 0) + extraShare);
+                        var extraShare = Number(extraCost.share_per_member || 0);
+                        memberSharesByUid[extraRelId] = (memberSharesByUid[extraRelId] || 0) + extraShare;
                     }
 
                     state.extraCostRows[extraCostId] = {
@@ -494,6 +494,10 @@
                 }
             }
 
+            var settlementBaseTotal = (typeof data.settlement_total_sum !== 'undefined')
+                ? Number(data.settlement_total_sum || 0)
+                : Number((data.total_sum || 0) + (data.guest_donation_due_total || 0));
+
             html += '<div style="margin-top:14px;">';
             html += '<h3 style="margin:0 0 8px 0; color:#1769aa;">Mitglieder und Beiträge</h3>';
             html += '<table class="default-table" style="width:100%; margin:0; margin-bottom:10px;">';
@@ -534,7 +538,7 @@
                     }
                     html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(memberTotalPaid) + ';">' + paidCell + '</td>';
                     if (isMember) {
-                        var memberDue = roundMoney(memberSharesByUid[memberUid] || 0);
+                        var memberDue = roundAwayFromZero(memberSharesByUid[memberUid] || 0);
                         var restAmount = roundMoney(memberDue + memberNetPaid);
                         html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(memberDue) + ';">' + formatCurrency(memberDue) + '</td>';
                         html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(restAmount) + ';">' + formatCurrency(restAmount) + '</td>';
@@ -571,9 +575,6 @@
             }
             html += '</table>';
 
-            var settlementBaseTotal = (typeof data.settlement_total_sum !== 'undefined')
-                ? Number(data.settlement_total_sum || 0)
-                : Number((data.total_sum || 0) + (data.guest_donation_due_total || 0));
             var accountBalance = Number(data.account_balance || 0);
             var totalRefund = 0;
             for (var sr = 0; sr < settlementRefunds.length; sr++) {

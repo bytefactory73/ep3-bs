@@ -2173,6 +2173,74 @@ class AccountController extends AbstractActionController
         ]));
     }
 
+    public function getUserTeamEventStatsDataAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $admin = $userSessionManager->getSessionUser();
+        if (!$admin || $admin->get('status') !== 'admin') {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'No permission']));
+        }
+
+        $uid = (int)$this->params()->fromQuery('uid', 0);
+        $teamEventId = (int)$this->params()->fromQuery('team_event_id', 0);
+        if ($uid <= 0) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'No user selected']));
+        }
+
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+        $aliasRow = $dbAdapter->query('SELECT is_team FROM drink_aliases WHERE user_id = ?', [$uid])->current();
+        $isTeam = ($aliasRow && isset($aliasRow['is_team']) && (int)$aliasRow['is_team'] === 1);
+        if (!$isTeam) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Selected user is not a team account']));
+        }
+
+        $teamEvents = $this->getTeamEventsWithBalances($uid, true, true);
+        if (empty($teamEvents)) {
+            return $this->getResponse()->setContent(json_encode([
+                'success' => true,
+                'team_uid' => $uid,
+                'team_events' => [],
+                'team_event_id' => 0,
+                'spieltag' => '',
+                'rows' => [],
+                'members' => [],
+                'total_sum' => 0.0,
+                'settlement_total_sum' => 0.0,
+            ]));
+        }
+
+        $selectedTeamEvent = null;
+        foreach ($teamEvents as $eventRow) {
+            if ((int)$eventRow['id'] === $teamEventId) {
+                $selectedTeamEvent = $eventRow;
+                break;
+            }
+        }
+        if (!$selectedTeamEvent) {
+            $selectedTeamEvent = $teamEvents[0];
+            $teamEventId = (int)$selectedTeamEvent['id'];
+        }
+
+        $teamEventLabel = isset($selectedTeamEvent['label']) ? trim((string)$selectedTeamEvent['label']) : '';
+        if ($teamEventLabel === '') {
+            return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'Team event not found']));
+        }
+
+        $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
+        $accountBalance = (float)$drinkManager->calculateUserDrinkBalance($uid, $serviceManager);
+
+        return $this->getResponse()->setContent(json_encode(array_merge([
+            'success' => true,
+            'team_uid' => $uid,
+            'team_event_id' => $teamEventId,
+            'team_events' => $teamEvents,
+            'account_balance' => $accountBalance,
+        ], $this->buildTeamStatsPayload($uid, $teamEventLabel))));
+    }
+
     public function drinksSummaryAction()
     {
         $serviceManager = @$this->getServiceLocator();

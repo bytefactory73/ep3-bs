@@ -33,6 +33,7 @@ $this->setup([
             <button type="button" id="deposit-tab-einzahlung" class="mini-button" data-tab="einzahlung" style="border:1px solid #1769aa; background:#fff; color:#1769aa; font-size:1rem; padding:8px 16px; min-height:40px; border-radius:8px;">Einzahlung</button>
             <button type="button" id="deposit-tab-buchungen" class="mini-button" data-tab="buchungen" style="border:1px solid #1769aa; background:#1769aa; color:#fff; font-size:1rem; padding:8px 16px; min-height:40px; border-radius:8px;">Buchungen</button>
             <button type="button" id="deposit-tab-options" class="mini-button" data-tab="options" style="border:1px solid #1769aa; background:#fff; color:#1769aa; font-size:1rem; padding:8px 16px; min-height:40px; border-radius:8px;">Optionen</button>
+            <button type="button" id="deposit-tab-spieltage" class="mini-button" data-tab="spieltage" style="display:none; border:1px solid #1769aa; background:#fff; color:#1769aa; font-size:1rem; padding:8px 16px; min-height:40px; border-radius:8px;">Spieltage</button>
         </div>
 
         <div id="team-spieltag-row" style="display:none; grid-column:1 / span 2; margin-top:2px; margin-bottom:8px;">
@@ -108,15 +109,50 @@ $this->setup([
                 </button>
             </div>
         </div>
+
+        <div id="tab-panel-spieltage" style="grid-column:1 / span 2; display:none;">
+            <div style="display:grid; gap:10px;">
+                <div id="team-events-list" style="display:grid; gap:6px;"></div>
+                <div style="border:1px solid #d9e7f7; border-radius:8px; background:#fff; padding:10px; color:#445;">Klicken Sie auf einen Spieltag, um die Auswertung im Popup zu öffnen.</div>
+            </div>
+        </div>
     </form>
 </div>
 
 <div id="user-history-section"></div>
 
+<div id="depositsTeamEventStatsModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:100010; align-items:center; justify-content:center;">
+    <div style="position:relative; width:min(980px,96vw); height:90vh; max-height:90vh; background:#fff; border-radius:10px; box-shadow:0 10px 28px rgba(0,0,0,0.25); overflow:auto; padding:18px 16px 16px 16px;">
+        <button type="button" onclick="closeDepositsTeamEventStatsModal()" style="position:absolute;top:10px;right:12px;z-index:10;background:#eee;border:none;border-radius:50%;width:34px;height:34px;font-size:20px;cursor:pointer;">&times;</button>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin:2px 42px 12px 4px; flex-wrap:wrap;">
+            <h2 id="deposits-team-event-stats-title" style="margin:0; color:#1769aa;">Kostenübersicht</h2>
+            <div id="deposits-team-event-stats-balance-header" style="font-weight:bold; text-align:right; color:#333;">Gesamtsaldo Mannschaftskonto: -</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; margin:0 4px 12px 4px; flex-wrap:wrap;">
+            <label for="deposits-team-event-stats-select" style="color:#1769aa; font-weight:bold;">Spieltag:</label>
+            <select id="deposits-team-event-stats-select" style="font-size:1em; max-width:100%; min-width:220px; padding:4px 6px; border:1px solid #2196f3; border-radius:6px; color:#1769aa;"></select>
+        </div>
+        <div id="depositsTeamEventStatsContent" style="padding:2px 4px 8px 4px;"></div>
+    </div>
+</div>
+
+<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260511-18') ?>"></script>
 <script>
 function formatCurrency(amount) {
     return amount != null ? amount.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) : '';
 }
+
+function closeDepositsTeamEventStatsModal() {
+    if (window.__depositsTeamStatsModalController && typeof window.__depositsTeamStatsModalController.close === 'function') {
+        window.__depositsTeamStatsModalController.close();
+        return;
+    }
+    var modal = document.getElementById('depositsTeamEventStatsModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     var clearUserSearchBtn = document.getElementById('clear-user-search-btn');
     var userSearch = document.getElementById('deposit_user_search');
@@ -195,13 +231,19 @@ document.addEventListener('DOMContentLoaded', function() {
     var tabButtons = {
         options: document.getElementById('deposit-tab-options'),
         einzahlung: document.getElementById('deposit-tab-einzahlung'),
-        buchungen: document.getElementById('deposit-tab-buchungen')
+        buchungen: document.getElementById('deposit-tab-buchungen'),
+        spieltage: document.getElementById('deposit-tab-spieltage')
     };
     var tabPanels = {
         options: document.getElementById('tab-panel-options'),
         einzahlung: document.getElementById('tab-panel-einzahlung'),
-        buchungen: document.getElementById('tab-panel-buchungen')
+        buchungen: document.getElementById('tab-panel-buchungen'),
+        spieltage: document.getElementById('tab-panel-spieltage')
     };
+    var teamEventsList = document.getElementById('team-events-list');
+    var depositsTeamStatsModalController = null;
+    var currentTeamEventsForPanel = [];
+    var currentSelectedTeamEventIdForPanel = '';
     var depositTabStorageKey = 'deposits_active_tab';
     var activeDepositTab = 'buchungen';
 
@@ -226,11 +268,15 @@ document.addEventListener('DOMContentLoaded', function() {
             localStorage.setItem(depositTabStorageKey, tabName);
         }
 
-        ['einzahlung', 'buchungen', 'options'].forEach(function(name) {
+        ['einzahlung', 'buchungen', 'options', 'spieltage'].forEach(function(name) {
             var panel = tabPanels[name];
             var button = tabButtons[name];
             if (panel) {
-                panel.style.display = (name === tabName) ? (name === 'buchungen' ? 'block' : 'grid') : 'none';
+                if (name === tabName) {
+                    panel.style.display = (name === 'buchungen' || name === 'spieltage') ? 'block' : 'grid';
+                } else {
+                    panel.style.display = 'none';
+                }
             }
             if (button) {
                 if (name === tabName) {
@@ -255,6 +301,9 @@ document.addEventListener('DOMContentLoaded', function() {
     if (tabButtons.buchungen) {
         tabButtons.buchungen.addEventListener('click', function() { setActiveDepositTab('buchungen'); });
     }
+    if (tabButtons.spieltage) {
+        tabButtons.spieltage.addEventListener('click', function() { setActiveDepositTab('spieltage'); });
+    }
     var initialDepositTab = 'einzahlung';
     if (typeof localStorage !== 'undefined') {
         var storedDepositTab = localStorage.getItem(depositTabStorageKey);
@@ -263,6 +312,77 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     setActiveDepositTab(initialDepositTab);
+
+    if (typeof createTeamStatsModal === 'function') {
+        depositsTeamStatsModalController = createTeamStatsModal({
+            modalId: 'depositsTeamEventStatsModal',
+            contentId: 'depositsTeamEventStatsContent',
+            balanceHeaderId: 'deposits-team-event-stats-balance-header',
+            selectId: 'deposits-team-event-stats-select',
+            titleId: 'deposits-team-event-stats-title',
+            rowClass: 'deposits-team-stats-member-row',
+            closeEventBtnId: 'deposits-team-stats-close-event-btn',
+            getTitle: function(teamAlias) {
+                var alias = String(teamAlias || '').trim();
+                return alias ? ('Kostenübersicht - ' + alias) : 'Kostenübersicht';
+            },
+            onOpen: function(args, state) {
+                var uid = parseInt(args[0] || 0, 10);
+                if (uid > 0) {
+                    state.teamUid = uid;
+                    var user = findUserByUid(String(uid));
+                    if (user && user.alias) {
+                        state.teamAlias = String(user.alias);
+                    }
+                }
+                state.preferredTeamEventId = args[1] ? String(args[1]) : '';
+            },
+            getInitialSpieltag: function(args, state) {
+                return String(state.preferredTeamEventId || '');
+            },
+            buildStatsUrl: function(spieltag, state) {
+                var uid = parseInt(state.teamUid || 0, 10);
+                if (!uid) {
+                    throw new Error('Ungültiger Team-Account.');
+                }
+                var url = '<?= $this->url('user/get-user-team-event-stats-data') ?>?uid=' + encodeURIComponent(String(uid));
+                var teamEventId = String(spieltag || state.preferredTeamEventId || '').trim();
+                if (teamEventId !== '') {
+                    url += '&team_event_id=' + encodeURIComponent(teamEventId);
+                }
+                return url;
+            },
+            afterLoadData: function(data, state, refs) {
+                state.preferredTeamEventId = String(data.team_event_id || '');
+                if (!refs.select) return;
+
+                while (refs.select.firstChild) {
+                    refs.select.removeChild(refs.select.firstChild);
+                }
+
+                var teamEvents = Array.isArray(data.team_events) ? data.team_events : [];
+                for (var i = 0; i < teamEvents.length; i++) {
+                    var eventRow = teamEvents[i] || {};
+                    var eventId = String(eventRow.id || '').trim();
+                    var label = String(eventRow.label || '').trim();
+                    if (!eventId || !label) continue;
+                    var option = document.createElement('option');
+                    option.value = eventId;
+                    option.textContent = label + (eventRow.closed ? ' (abgeschlossen)' : ' (offen)');
+                    refs.select.appendChild(option);
+                }
+
+                if (state.preferredTeamEventId && refs.select.querySelector('option[value="' + state.preferredTeamEventId.replace(/"/g, '\\"') + '"]')) {
+                    refs.select.value = state.preferredTeamEventId;
+                } else if (refs.select.options.length > 0) {
+                    refs.select.selectedIndex = 0;
+                    state.preferredTeamEventId = refs.select.value || '';
+                }
+                refs.select.disabled = refs.select.options.length === 0;
+            }
+        });
+        window.__depositsTeamStatsModalController = depositsTeamStatsModalController;
+    }
 
     function clearActiveTeamEventContext() {
         pendingNewSpieltagName = '';
@@ -870,6 +990,12 @@ document.addEventListener('DOMContentLoaded', function() {
         if (teamleadLabel) {
             teamleadLabel.style.display = isTeam ? '' : 'none';
         }
+        if (tabButtons.spieltage) {
+            tabButtons.spieltage.style.display = isTeam ? '' : 'none';
+        }
+        if (!isTeam && activeDepositTab === 'spieltage') {
+            setActiveDepositTab('buchungen');
+        }
         renderTeamleadRows(teamleadEmail);
         setTeamleadControlsDisabled(!user || !drinksEnabled || !isTeam);
         updateTeamSpieltagVisibility();
@@ -1329,12 +1455,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data && data.is_team && Array.isArray(data.team_events)) {
                     var selectedTeamEventId = selectedTeamEventIdInContext || (data.current_teamevent_id ? String(data.current_teamevent_id) : '');
                     fillTeamSpieltagOptions(data.team_events, selectedTeamEventId);
+                    renderTeamEventsPanelList(data.team_events, selectedTeamEventId);
                     if (teamSpieltagSelect && teamSpieltagSelect.value && teamSpieltagSelect.value !== '__new__') {
                         selectedTeamEventIdInContext = teamSpieltagSelect.value;
                     }
                 } else {
                     selectedTeamEventIdInContext = '';
                     fillTeamSpieltagOptions([], null);
+                    renderTeamEventsPanelList([], '');
                 }
                 if (typeof data.balance !== 'undefined' && data.balance !== null) {
                     balanceBox.style.display = '';
@@ -1563,6 +1691,127 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     // Only update if a user is preselected
     if (userIdInput.value) updateUserInfo();
+
+    function computeMemberSharesFromRows(rows, guestDonations) {
+        var sharesByUid = {};
+        var safeRows = Array.isArray(rows) ? rows : [];
+        for (var i = 0; i < safeRows.length; i++) {
+            var row = safeRows[i] || {};
+            var share = Number(row.share_per_member || 0);
+            var relevantMembers = Array.isArray(row.relevant_members) ? row.relevant_members : [];
+            for (var m = 0; m < relevantMembers.length; m++) {
+                var uid = parseInt((relevantMembers[m] || {}).uid || 0, 10);
+                if (!uid) continue;
+                sharesByUid[uid] = (sharesByUid[uid] || 0) + share;
+            }
+        }
+
+        var safeDonations = Array.isArray(guestDonations) ? guestDonations : [];
+        for (var g = 0; g < safeDonations.length; g++) {
+            var donation = safeDonations[g] || {};
+            var receiverId = parseInt(donation.receiver_user_id || 0, 10);
+            var amount = Math.abs(Number(donation.amount || 0));
+            if (receiverId > 0 && amount > 0) {
+                sharesByUid[receiverId] = (sharesByUid[receiverId] || 0) - amount;
+            }
+        }
+
+        return sharesByUid;
+    }
+
+    function renderTeamEventStatsTable(data) {
+        if (!data || !Array.isArray(data.rows)) {
+            return '<div style="color:#c62828;">Keine Auswertungsdaten verfügbar.</div>';
+        }
+
+        var rows = data.rows;
+        var members = Array.isArray(data.members) ? data.members : [];
+        var guestDonations = Array.isArray(data.guest_donations) ? data.guest_donations : [];
+        var memberSharesByUid = computeMemberSharesFromRows(rows, guestDonations);
+        var totalSum = Number(typeof data.settlement_total_sum !== 'undefined' ? data.settlement_total_sum : data.total_sum || 0);
+
+        var html = '';
+        html += '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px;">';
+        html += '<div style="font-weight:700; color:#1769aa;">Auswertung: ' + (data.spieltag ? String(data.spieltag) : '-') + '</div>';
+        html += '<div style="font-weight:700; color:' + (totalSum >= 0 ? '#2e7d32' : '#c62828') + ';">Saldo: ' + formatCurrency(totalSum) + '</div>';
+        html += '</div>';
+
+        html += '<table class="default-table" style="width:100%; margin:0 0 10px 0;">';
+        html += '<tr style="background:#e3f0fa;"><th style="text-align:left;">Artikel</th><th style="text-align:right;">Menge</th><th style="text-align:right;">Einzelpreis</th><th style="text-align:right;">Anteil p.P.</th><th style="text-align:right;">Gesamtpreis</th></tr>';
+        for (var i = 0; i < rows.length; i++) {
+            var row = rows[i] || {};
+            html += '<tr>';
+            html += '<td>' + String(row.article || '-') + '</td>';
+            html += '<td style="text-align:right;">' + String(row.quantity || 0) + '</td>';
+            html += '<td style="text-align:right;">' + formatCurrency(Number(row.single_price || 0)) + '</td>';
+            html += '<td style="text-align:right;">' + formatCurrency(Number(row.share_per_member || 0)) + '</td>';
+            html += '<td style="text-align:right;">' + formatCurrency(Number(row.total_price || 0)) + '</td>';
+            html += '</tr>';
+        }
+        html += '<tr style="font-weight:bold; background:#f5faff;"><td colspan="4" style="text-align:right;">Gesamtsumme Ausgaben</td><td style="text-align:right;">' + formatCurrency(totalSum) + '</td></tr>';
+        html += '</table>';
+
+        html += '<table class="default-table" style="width:100%; margin:0;">';
+        html += '<tr style="background:#e3f0fa;"><th style="text-align:left;">Mitglied</th><th style="text-align:right;">Bereits gezahlt</th><th style="text-align:right;">Zu zahlen</th><th style="text-align:right;">Rest</th></tr>';
+        for (var m = 0; m < members.length; m++) {
+            var member = members[m] || {};
+            if (!member.is_member) continue;
+            var memberUid = parseInt(member.uid || 0, 10);
+            var paid = Number(member.total_paid || 0) - Math.abs(Number(member.total_refunded || 0));
+            var due = Number(memberSharesByUid[memberUid] || 0);
+            var rest = paid + due;
+            html += '<tr>';
+            html += '<td>' + String(member.name || ('User ' + memberUid)) + '</td>';
+            html += '<td style="text-align:right;">' + formatCurrency(paid) + '</td>';
+            html += '<td style="text-align:right;">' + formatCurrency(due) + '</td>';
+            html += '<td style="text-align:right;">' + formatCurrency(rest) + '</td>';
+            html += '</tr>';
+        }
+        html += '</table>';
+        return html;
+    }
+
+    function renderTeamEventsPanelList(teamEvents, selectedTeamEventId) {
+        currentTeamEventsForPanel = Array.isArray(teamEvents) ? teamEvents : [];
+        currentSelectedTeamEventIdForPanel = String(selectedTeamEventId || '');
+        if (!teamEventsList) return;
+
+        if (!currentTeamEventsForPanel.length) {
+            teamEventsList.innerHTML = '<div style="color:#666;">Keine Spieltage vorhanden.</div>';
+            return;
+        }
+
+        var html = '<div style="display:grid; gap:6px;">';
+        for (var i = 0; i < currentTeamEventsForPanel.length; i++) {
+            var evt = currentTeamEventsForPanel[i] || {};
+            var eventId = String(evt.id || '');
+            if (!eventId) continue;
+            var isSelected = currentSelectedTeamEventIdForPanel !== '' && eventId === currentSelectedTeamEventIdForPanel;
+            var statusLabel = evt.closed ? 'abgeschlossen' : 'offen';
+            var lineStyle = isSelected
+                ? 'border:1px solid #1769aa; background:#eaf4ff;'
+                : 'border:1px solid #d9e7f7; background:#fff;';
+            html += '<button type="button" class="team-event-panel-item" data-team-event-id="' + eventId + '" style="display:flex; justify-content:space-between; align-items:center; gap:8px; text-align:left; padding:8px 10px; border-radius:8px; ' + lineStyle + '">';
+            html += '<span><strong>' + String(evt.label || ('Spieltag ' + eventId)) + '</strong> <span style="color:#607d8b; font-size:12px;">(' + statusLabel + ')</span></span>';
+            html += '<span style="font-weight:700; color:' + (Number(evt.balance || 0) >= 0 ? '#2e7d32' : '#c62828') + ';">' + formatCurrency(Number(evt.balance || 0)) + '</span>';
+            html += '</button>';
+        }
+        html += '</div>';
+        teamEventsList.innerHTML = html;
+
+        teamEventsList.querySelectorAll('.team-event-panel-item').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var selectedId = btn.getAttribute('data-team-event-id') || '';
+                if (!selectedId) return;
+                currentSelectedTeamEventIdForPanel = selectedId;
+                renderTeamEventsPanelList(currentTeamEventsForPanel, selectedId);
+                if (depositsTeamStatsModalController && typeof depositsTeamStatsModalController.open === 'function') {
+                    depositsTeamStatsModalController.open(userIdInput.value, selectedId);
+                }
+            });
+        });
+    }
+
 // Ensure attachEntryCancelHandlers is defined to prevent JS errors
 function attachEntryCancelHandlers() {
     var buttons = document.querySelectorAll('.entry-cancel-btn');

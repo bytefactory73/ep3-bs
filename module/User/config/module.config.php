@@ -552,6 +552,16 @@ return array(
                             ),
                         ),
                     ),
+                    'get-user-team-event-stats-data' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/get-user-team-event-stats-data',
+                            'defaults' => array(
+                                'controller' => 'User\Controller\Account',
+                                'action' => 'getUserTeamEventStatsData',
+                            ),
+                        ),
+                    ),
                     'create-team-event' => array(
                         'type' => 'Literal',
                         'options' => array(

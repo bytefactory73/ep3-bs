@@ -727,7 +727,7 @@ trait TeamEventTrait
                 'total_price' => MoneyCalculator::roundMoney($totalPrice),
                 'relevant_members' => $rowRelevantMembers,
                 'relevant_member_count' => $rowRelevantMemberCount,
-                'share_per_member' => MoneyCalculator::splitAwayFromZero($totalPrice, $rowRelevantMemberCount),
+                'share_per_member' => $rowRelevantMemberCount > 0 ? ((float)$totalPrice / (float)$rowRelevantMemberCount) : 0.0,
             ];
         }
 
@@ -789,7 +789,7 @@ trait TeamEventTrait
                     'relevant_member_ids' => $selectedRelevantIds,
                     'relevant_members' => $rowRelevantMembers,
                     'relevant_member_count' => $rowRelevantMemberCount,
-                    'share_per_member' => MoneyCalculator::splitAwayFromZero($signedAmount, $rowRelevantMemberCount),
+                    'share_per_member' => $rowRelevantMemberCount > 0 ? ((float)$signedAmount / (float)$rowRelevantMemberCount) : 0.0,
                 ];
                 $extraCosts[] = $extraRowsEntry;
 
@@ -805,7 +805,7 @@ trait TeamEventTrait
                     'total_price' => $signedAmount,
                     'relevant_members' => $rowRelevantMembers,
                     'relevant_member_count' => $rowRelevantMemberCount,
-                    'share_per_member' => MoneyCalculator::splitAwayFromZero($signedAmount, $rowRelevantMemberCount),
+                    'share_per_member' => $rowRelevantMemberCount > 0 ? ((float)$signedAmount / (float)$rowRelevantMemberCount) : 0.0,
                 ];
             }
         }
