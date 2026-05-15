@@ -3,6 +3,7 @@
 namespace Base\View\Helper;
 
 use Base\Manager\OptionManager;
+use Base\Service\MoneyCalculator;
 use Zend\View\Helper\AbstractHelper;
 
 class PriceFormat extends AbstractHelper
@@ -25,9 +26,9 @@ class PriceFormat extends AbstractHelper
         }
 
         if ($bold) {
-            $html .= '<b>' . $view->currencyFormat($price / 100) . '</b>';
+            $html .= '<b>' . $view->currencyFormat(MoneyCalculator::fromCents($price)) . '</b>';
         } else {
-            $html .= $view->currencyFormat($price / 100);
+            $html .= $view->currencyFormat(MoneyCalculator::fromCents($price));
         }
 
         if ($perText) {

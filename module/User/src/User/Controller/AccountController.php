@@ -190,6 +190,7 @@ class AccountController extends AbstractActionController
 
         $teamUserId = (int)$this->params()->fromPost('team_uid', 0);
         $teamEventId = (int)$this->params()->fromPost('team_event_id', 0);
+        $settlementRefundsRaw = $this->params()->fromPost('settlement_refunds', '');
         if ($teamUserId <= 0 || $teamEventId <= 0) {
             return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültige Eingabe.']));
         }
@@ -220,9 +221,25 @@ class AccountController extends AbstractActionController
             return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültige Eingabe.']));
         }
 
+        $settlementRefunds = [];
+        if (is_string($settlementRefundsRaw) && trim($settlementRefundsRaw) !== '') {
+            $decodedRefunds = json_decode($settlementRefundsRaw, true);
+            if (is_array($decodedRefunds)) {
+                $settlementRefunds = $decodedRefunds;
+            }
+        } elseif (is_array($settlementRefundsRaw)) {
+            $settlementRefunds = $settlementRefundsRaw;
+        }
+
+        $settlementResult = ['success' => true, 'total_refund' => 0.0, 'transfers' => []];
+        if (!empty($settlementRefunds)) {
+            $settlementResult = $this->processTeamEventSettlementRefunds($teamUserId, $teamEventId, $settlementRefunds, true);
+        }
+
         return $this->getResponse()->setContent(json_encode([
             'success' => true,
-            'already_closed' => !empty($closeResult['already_closed'])
+            'already_closed' => !empty($closeResult['already_closed']),
+            'settlement' => $settlementResult,
         ]));
     }
 
@@ -379,20 +396,24 @@ class AccountController extends AbstractActionController
                 ];
             }
         }
+
         // Sort by balance ascending
         usort($userList, function($a, $b) {
             return $a['balance'] <=> $b['balance'];
         });
+
         // Calculate total sum of all balances
         $totalBalance = 0;
         foreach ($userList as $user) {
             $totalBalance += $user['balance'];
         }
+
         return [
             'users' => $userList,
             'total_balance' => $totalBalance,
         ];
     }
+
     /**
      * POST: entry_id
      * Returns JSON: { success: true } or { error: ... }
@@ -1379,40 +1400,83 @@ class AccountController extends AbstractActionController
     public function moneyRecipientTeamEventsAction()
     {
         $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
-        $serviceManager = @$this->getServiceLocator();
-        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
-        $sessionUser = $userSessionManager->getSessionUser();
-
-        if (!$sessionUser) {
-            $sessionManager = $serviceManager->get('Zend\Session\SessionManager');
-            $sessionManager->start();
-            $simpleSession = new \Zend\Session\Container('SimpleLogin');
-            if (empty($simpleSession->user_id)) {
-                return $this->getResponse()->setStatusCode(401)->setContent(json_encode(['success' => false, 'error' => 'Not authenticated.']));
+        try {
+            $serviceManager = @$this->getServiceLocator();
+            if (!is_object($serviceManager) || !method_exists($serviceManager, 'get')) {
+                return $this->getResponse()->setContent(json_encode([
+                    'success' => true,
+                    'is_team' => false,
+                    'team_events' => [],
+                ]));
             }
-        }
 
-        $receiverUserId = (int)$this->params()->fromQuery('receiver_user_id', $this->params()->fromPost('receiver_user_id', 0));
-        if ($receiverUserId <= 0) {
-            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Empfänger fehlt.']));
-        }
+            $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+            $sessionUser = $userSessionManager->getSessionUser();
 
-        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
-        $aliasRow = $dbAdapter->query('SELECT is_team FROM drink_aliases WHERE user_id = ?', [$receiverUserId])->current();
-        $isTeam = ($aliasRow && !empty($aliasRow['is_team'])) ? true : false;
-        if (!$isTeam) {
+            if (!$sessionUser) {
+                $sessionManager = $serviceManager->get('Zend\Session\SessionManager');
+                $sessionManager->start();
+                $simpleSession = new \Zend\Session\Container('SimpleLogin');
+                if (empty($simpleSession->user_id)) {
+                    return $this->getResponse()->setStatusCode(401)->setContent(json_encode(['success' => false, 'error' => 'Not authenticated.']));
+                }
+            }
+
+            $receiverUserId = (int)$this->params()->fromQuery('receiver_user_id', $this->params()->fromPost('receiver_user_id', 0));
+            if ($receiverUserId <= 0) {
+                return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Empfänger fehlt.']));
+            }
+
+            $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+            $aliasRow = $dbAdapter->query('SELECT is_team FROM drink_aliases WHERE user_id = ?', [$receiverUserId])->current();
+            $isTeam = ($aliasRow && !empty($aliasRow['is_team'])) ? true : false;
+            if (!$isTeam) {
+                return $this->getResponse()->setContent(json_encode([
+                    'success' => true,
+                    'is_team' => false,
+                    'team_events' => [],
+                ]));
+            }
+
+            // Keep this endpoint intentionally minimal and schema-tolerant:
+            // for recipient selection we only need event id/label; balance is optional.
+            $teamEvents = [];
+            try {
+                $rows = $dbAdapter->query(
+                    'SELECT id, comment FROM drinks_teamevents WHERE team_admin_user_id = ? ORDER BY id DESC',
+                    [$receiverUserId]
+                )->toArray();
+
+                foreach ($rows as $row) {
+                    $eventId = isset($row['id']) ? (int)$row['id'] : 0;
+                    $eventLabel = isset($row['comment']) ? trim((string)$row['comment']) : '';
+                    if ($eventId <= 0 || $eventLabel === '') {
+                        continue;
+                    }
+                    $teamEvents[] = [
+                        'id' => $eventId,
+                        'label' => $eventLabel,
+                        'balance' => 0.0,
+                        'closed' => 0,
+                    ];
+                }
+            } catch (\Throwable $e) {
+                $teamEvents = [];
+            }
+
+            return $this->getResponse()->setContent(json_encode([
+                'success' => true,
+                'is_team' => true,
+                'team_events' => is_array($teamEvents) ? $teamEvents : [],
+            ]));
+        } catch (\Throwable $e) {
+            // Prevent hard 500 on recipient lookup; UI can still continue without team-event selection.
             return $this->getResponse()->setContent(json_encode([
                 'success' => true,
                 'is_team' => false,
                 'team_events' => [],
             ]));
         }
-
-        return $this->getResponse()->setContent(json_encode([
-            'success' => true,
-            'is_team' => true,
-            'team_events' => $this->getTeamEventsWithBalances($receiverUserId),
-        ]));
     }
 
     public function billsAction()
@@ -2000,7 +2064,7 @@ class AccountController extends AbstractActionController
         $currentTeamEventId = null;
         $preferredTeamEventId = (int)$this->params()->fromQuery('selected_teamevent_id', 0);
         if ($isTeam) {
-            $teamEvents = $this->getTeamEventsWithBalances($uid, true);
+            $teamEvents = $this->getTeamEventsWithBalances($uid, true, true);
             foreach ($teamEvents as $teamEvent) {
                 $eventId = $teamEvent['id'];
                 $label = $teamEvent['label'];

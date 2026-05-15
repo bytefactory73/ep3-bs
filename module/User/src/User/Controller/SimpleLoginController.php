@@ -847,6 +847,7 @@ class SimpleLoginController extends AbstractActionController
 
         $teamAdminUserId = (int)$session->user_id;
         $teamEventId = (int)$this->params()->fromPost('team_event_id', 0);
+        $settlementRefundsRaw = $this->params()->fromPost('settlement_refunds', '');
         if ($teamEventId <= 0) {
             return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültiger Spieltag.']));
         }
@@ -869,6 +870,21 @@ class SimpleLoginController extends AbstractActionController
             return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültiger Spieltag.']));
         }
 
+        $settlementRefunds = [];
+        if (is_string($settlementRefundsRaw) && trim($settlementRefundsRaw) !== '') {
+            $decodedRefunds = json_decode($settlementRefundsRaw, true);
+            if (is_array($decodedRefunds)) {
+                $settlementRefunds = $decodedRefunds;
+            }
+        } elseif (is_array($settlementRefundsRaw)) {
+            $settlementRefunds = $settlementRefundsRaw;
+        }
+
+        $settlementResult = ['success' => true, 'total_refund' => 0.0, 'transfers' => []];
+        if (!empty($settlementRefunds)) {
+            $settlementResult = $this->processTeamEventSettlementRefunds($teamAdminUserId, $teamEventId, $settlementRefunds, true);
+        }
+
         $eventRow = isset($closeResult['event']) ? $closeResult['event'] : null;
 
         // If the closed event is currently selected, move session selection to latest open event.
@@ -889,7 +905,8 @@ class SimpleLoginController extends AbstractActionController
 
         return $this->getResponse()->setContent(json_encode([
             'success' => true,
-            'already_closed' => !empty($closeResult['already_closed'])
+            'already_closed' => !empty($closeResult['already_closed']),
+            'settlement' => $settlementResult
         ]));
     }
 

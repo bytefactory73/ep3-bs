@@ -2,6 +2,8 @@
 
 namespace User\Controller\Traits;
 
+use Base\Service\MoneyCalculator;
+
 trait TeamEventTrait
 {
     protected function getTeamEventSelectColumnsSql()
@@ -69,7 +71,11 @@ trait TeamEventTrait
 
     protected function getTeamEventDbAdapter()
     {
-        return $this->getServiceLocator()->get('Zend\\Db\\Adapter\\Adapter');
+        $serviceLocator = $this->getServiceLocator();
+        if (!is_object($serviceLocator) || !method_exists($serviceLocator, 'get')) {
+            throw new \Exception('Service locator unavailable');
+        }
+        return $serviceLocator->get('Zend\\Db\\Adapter\\Adapter');
     }
 
     protected function normalizeTeamEventLabel($value)
@@ -492,7 +498,8 @@ trait TeamEventTrait
                 'uid' => $uid,
                 'name' => $name,
                 'email' => $email,
-                'total_paid' => isset($row['total_paid']) ? (float)$row['total_paid'] : 0.0,
+                'total_paid' => MoneyCalculator::roundMoney(isset($row['total_paid']) ? (float)$row['total_paid'] : 0.0),
+                'total_refunded' => 0.0,
                 'is_member' => $isMember,
                 'deposit_comment' => $depositComment,
             ];
@@ -518,7 +525,7 @@ trait TeamEventTrait
 
                 if (isset($resultByUid[$payerUid])) {
                     $idx = (int)$resultByUid[$payerUid];
-                    $result[$idx]['total_paid'] = (float)$result[$idx]['total_paid'] + $amount;
+                    $result[$idx]['total_paid'] = MoneyCalculator::add($result[$idx]['total_paid'], $amount);
                     continue;
                 }
 
@@ -536,11 +543,78 @@ trait TeamEventTrait
                     'uid' => $payerUid,
                     'name' => $alias !== '' ? $alias : ('User ' . $payerUid),
                     'email' => $email,
-                    'total_paid' => $amount,
+                    'total_paid' => MoneyCalculator::roundMoney($amount),
+                    'total_refunded' => 0.0,
                     'is_member' => false,
                     'deposit_comment' => 'Extrakosten',
                 ];
                 $resultByUid[$payerUid] = count($result) - 1;
+            }
+        }
+
+        // Reduce contributed amount by refunds paid out from the team account for this event.
+        if (!empty($result)) {
+            $memberUids = [];
+            foreach ($result as $row) {
+                $uid = isset($row['uid']) ? (int)$row['uid'] : 0;
+                if ($uid > 0 && !in_array($uid, $memberUids, true)) {
+                    $memberUids[] = $uid;
+                }
+            }
+
+            if (!empty($memberUids)) {
+                $placeholders = implode(',', array_fill(0, count($memberUids), '?'));
+                $refundTotalsByUid = [];
+
+                try {
+                    $refundRows = $this->getTeamEventDbAdapter()->query(
+                        'SELECT d.user_id AS uid, COALESCE(SUM(d.amount), 0) AS total_refunded
+                         FROM drink_deposits d
+                         JOIN drink_orders o ON o.transfer_reference = d.transfer_reference
+                         WHERE d.user_id IN (' . $placeholders . ')
+                           AND d.createdbyuserid = ?
+                           AND (d.deleted IS NULL OR d.deleted = 0)
+                           AND o.user_id = ?
+                           AND o.drink_id = -1
+                           AND (o.deleted IS NULL OR o.deleted = 0)
+                           AND (
+                                o.teamevent_id = ?
+                                OR (o.teamevent_id IS NULL AND TRIM(COALESCE(o.comment, "")) = ?)
+                           )
+                         GROUP BY d.user_id',
+                        array_merge($memberUids, [$teamAdminUserId, $teamAdminUserId, $teamEventId, $teamEventLabel])
+                    )->toArray();
+                } catch (\Exception $e) {
+                    // Fallback for installations without transfer_reference columns.
+                    $refundRows = $this->getTeamEventDbAdapter()->query(
+                        'SELECT d.user_id AS uid, COALESCE(SUM(d.amount), 0) AS total_refunded
+                         FROM drink_deposits d
+                         WHERE d.user_id IN (' . $placeholders . ')
+                           AND d.createdbyuserid = ?
+                           AND (d.deleted IS NULL OR d.deleted = 0)
+                           AND (
+                                d.teamevent_id = ?
+                                OR (d.teamevent_id IS NULL AND TRIM(COALESCE(d.comment, "")) = ?)
+                           )
+                           AND LOWER(TRIM(COALESCE(d.comment, ""))) LIKE ?
+                         GROUP BY d.user_id',
+                        array_merge($memberUids, [$teamAdminUserId, $teamEventId, $teamEventLabel, 'geld empfangen von %'])
+                    )->toArray();
+                }
+
+                foreach ($refundRows as $refundRow) {
+                    $uid = isset($refundRow['uid']) ? (int)$refundRow['uid'] : 0;
+                    $totalRefunded = MoneyCalculator::roundMoney(isset($refundRow['total_refunded']) ? (float)$refundRow['total_refunded'] : 0.0);
+                    if ($uid > 0 && $totalRefunded > 0) {
+                        $refundTotalsByUid[$uid] = $totalRefunded;
+                    }
+                }
+
+                foreach ($result as $index => $row) {
+                    $uid = isset($row['uid']) ? (int)$row['uid'] : 0;
+                    $totalRefunded = isset($refundTotalsByUid[$uid]) ? (float)$refundTotalsByUid[$uid] : 0.0;
+                    $result[$index]['total_refunded'] = MoneyCalculator::roundMoney($totalRefunded);
+                }
             }
         }
 
@@ -596,6 +670,7 @@ trait TeamEventTrait
              LEFT JOIN drink_categories c ON c.id = d.category
              WHERE o.user_id = ?
                AND o.deleted = 0
+                             AND o.drink_id <> -1
                AND (
                    o.teamevent_id IN (
                        SELECT e.id
@@ -648,11 +723,11 @@ trait TeamEventTrait
                 'category' => isset($orderRow['category_name']) ? (string)$orderRow['category_name'] : '',
                 'article' => isset($orderRow['article']) ? (string)$orderRow['article'] : '',
                 'quantity' => isset($orderRow['quantity']) ? (int)$orderRow['quantity'] : 0,
-                'single_price' => isset($orderRow['single_price']) ? (float)$orderRow['single_price'] : 0.0,
-                'total_price' => $totalPrice,
+                'single_price' => MoneyCalculator::roundMoney(isset($orderRow['single_price']) ? (float)$orderRow['single_price'] : 0.0),
+                'total_price' => MoneyCalculator::roundMoney($totalPrice),
                 'relevant_members' => $rowRelevantMembers,
                 'relevant_member_count' => $rowRelevantMemberCount,
-                'share_per_member' => $rowRelevantMemberCount > 0 ? ($totalPrice / $rowRelevantMemberCount) : 0.0,
+                'share_per_member' => MoneyCalculator::splitAwayFromZero($totalPrice, $rowRelevantMemberCount),
             ];
         }
 
@@ -665,7 +740,7 @@ trait TeamEventTrait
                 if ($extraCostId <= 0 || $amount <= 0) {
                     continue;
                 }
-                $signedAmount = 0.0 - abs($amount);
+                $signedAmount = MoneyCalculator::roundMoney(0.0 - abs($amount));
 
                 $selectedRelevantIds = [];
                 if (!empty($extraCost['relevant_member_ids']) && is_array($extraCost['relevant_member_ids'])) {
@@ -709,12 +784,12 @@ trait TeamEventTrait
                     'payer_user_id' => isset($extraCost['payer_user_id']) ? (int)$extraCost['payer_user_id'] : 0,
                     'payer_name' => $payerName,
                     'comment' => $comment,
-                    'amount' => $amount,
+                    'amount' => MoneyCalculator::roundMoney($amount),
                     'total_price' => $signedAmount,
                     'relevant_member_ids' => $selectedRelevantIds,
                     'relevant_members' => $rowRelevantMembers,
                     'relevant_member_count' => $rowRelevantMemberCount,
-                    'share_per_member' => $rowRelevantMemberCount > 0 ? ($signedAmount / $rowRelevantMemberCount) : 0.0,
+                    'share_per_member' => MoneyCalculator::splitAwayFromZero($signedAmount, $rowRelevantMemberCount),
                 ];
                 $extraCosts[] = $extraRowsEntry;
 
@@ -730,7 +805,7 @@ trait TeamEventTrait
                     'total_price' => $signedAmount,
                     'relevant_members' => $rowRelevantMembers,
                     'relevant_member_count' => $rowRelevantMemberCount,
-                    'share_per_member' => $rowRelevantMemberCount > 0 ? ($signedAmount / $rowRelevantMemberCount) : 0.0,
+                    'share_per_member' => MoneyCalculator::splitAwayFromZero($signedAmount, $rowRelevantMemberCount),
                 ];
             }
         }
@@ -759,23 +834,23 @@ trait TeamEventTrait
                     'receiver_user_id' => $receiverUserId,
                     'receiver_name' => $receiverName !== '' ? $receiverName : $activeMemberNamesById[$receiverUserId],
                     'comment' => $comment,
-                    'amount' => abs($amount),
+                    'amount' => MoneyCalculator::roundMoney(abs($amount)),
                     // Receiver has to transfer this amount additionally to the account.
-                    'due_amount' => 0.0 - abs($amount),
+                    'due_amount' => MoneyCalculator::roundMoney(0.0 - abs($amount)),
                 ];
-                $guestDonationDueTotal += (0.0 - abs($amount));
+                $guestDonationDueTotal = MoneyCalculator::add($guestDonationDueTotal, 0.0 - abs($amount));
             }
         }
 
         $totalSum = 0.0;
         foreach ($rows as $row) {
-            $totalSum += (float)$row['total_price'];
+            $totalSum = MoneyCalculator::add($totalSum, $row['total_price']);
         }
 
         return [
             'rows' => $rows,
             'total_sum' => $totalSum,
-            'guest_donation_due_total' => $guestDonationDueTotal,
+            'guest_donation_due_total' => MoneyCalculator::roundMoney($guestDonationDueTotal),
             'settlement_total_sum' => $totalSum,
             'extra_costs' => $extraCosts,
             'guest_donations' => $guestDonations,
@@ -798,8 +873,8 @@ trait TeamEventTrait
             'can_close_team_event' => true,
             'rows' => $stats['rows'],
             'total_sum' => $stats['total_sum'],
-            'guest_donation_due_total' => isset($stats['guest_donation_due_total']) ? (float)$stats['guest_donation_due_total'] : 0.0,
-            'settlement_total_sum' => isset($stats['settlement_total_sum']) ? (float)$stats['settlement_total_sum'] : (float)$stats['total_sum'],
+            'guest_donation_due_total' => MoneyCalculator::roundMoney(isset($stats['guest_donation_due_total']) ? (float)$stats['guest_donation_due_total'] : 0.0),
+            'settlement_total_sum' => MoneyCalculator::roundMoney(isset($stats['settlement_total_sum']) ? (float)$stats['settlement_total_sum'] : (float)$stats['total_sum']),
             'extra_costs' => isset($stats['extra_costs']) ? $stats['extra_costs'] : [],
             'guest_donations' => isset($stats['guest_donations']) ? $stats['guest_donations'] : [],
             'members' => $this->getTeamEventMembersWithContribution($teamAdminUserId, $selectedTeamEventId, $teamEventLabel),
@@ -956,11 +1031,12 @@ trait TeamEventTrait
         return null;
     }
 
-    protected function calculateTeamEventBalance($teamAdminUserId, $teamEventId, $teamEventLabel)
+    protected function calculateTeamEventBalance($teamAdminUserId, $teamEventId, $teamEventLabel, $includeTransferOrders = false)
     {
         $teamAdminUserId = (int)$teamAdminUserId;
         $teamEventId = (int)$teamEventId;
         $teamEventLabel = $this->normalizeTeamEventLabel($teamEventLabel);
+        $includeTransferOrders = (bool)$includeTransferOrders;
         if ($teamAdminUserId <= 0 || $teamEventId <= 0 || $teamEventLabel === '') {
             return 0.0;
         }
@@ -978,30 +1054,143 @@ trait TeamEventTrait
             [$teamAdminUserId, $teamEventId, $teamEventLabel]
         )->current();
 
-        $orderRow = $dbAdapter->query(
+        $orderSql =
             'SELECT COALESCE(SUM(quantity * price), 0) AS total
              FROM drink_orders
              WHERE user_id = ?
-               AND (deleted IS NULL OR deleted = 0)
-               AND (
+               AND (deleted IS NULL OR deleted = 0)';
+        if (!$includeTransferOrders) {
+            $orderSql .= ' AND drink_id <> -1';
+        }
+        $orderSql .=
+            ' AND (
                     teamevent_id = ?
                     OR (teamevent_id IS NULL AND TRIM(COALESCE(comment, "")) = ?)
-               )',
+               )';
+
+        $orderRow = $dbAdapter->query(
+            $orderSql,
             [$teamAdminUserId, $teamEventId, $teamEventLabel]
         )->current();
 
         $depositTotal = $depositRow && isset($depositRow['total']) ? (float)$depositRow['total'] : 0.0;
         $orderTotal = $orderRow && isset($orderRow['total']) ? (float)$orderRow['total'] : 0.0;
-        return $depositTotal - $orderTotal;
+        return MoneyCalculator::subtract($depositTotal, $orderTotal);
     }
 
-    protected function getTeamEventsWithBalances($teamAdminUserId, $includeClosed = false)
+    protected function processTeamEventSettlementRefunds($teamAdminUserId, $teamEventId, array $refunds, $allowClosed = false)
+    {
+        $teamAdminUserId = (int)$teamAdminUserId;
+        $teamEventId = (int)$teamEventId;
+        if ($teamAdminUserId <= 0 || $teamEventId <= 0) {
+            return ['success' => false, 'error' => 'invalid_input'];
+        }
+
+        $teamEvent = $this->getTeamEventById($teamAdminUserId, $teamEventId);
+        if (!$teamEvent) {
+            return ['success' => false, 'error' => 'not_found'];
+        }
+        if ($this->isTeamEventClosedRow($teamEvent) && !$allowClosed) {
+            return ['success' => false, 'error' => 'already_closed'];
+        }
+        if (!method_exists($this, 'executeMoneyTransfer')) {
+            return ['success' => false, 'error' => 'transfer_unavailable'];
+        }
+
+        $allowedMemberIds = array_fill_keys($this->getTeamEventMemberUserIds($teamEventId), true);
+        $validRefunds = [];
+        foreach ($refunds as $refundRow) {
+            if (!is_array($refundRow)) {
+                continue;
+            }
+            $receiverUserId = isset($refundRow['receiver_user_id']) ? (int)$refundRow['receiver_user_id'] : 0;
+            $amountRaw = isset($refundRow['amount']) ? (string)$refundRow['amount'] : '0';
+            $amountRaw = str_replace(',', '.', trim($amountRaw));
+            $amount = MoneyCalculator::roundMoney((float)$amountRaw);
+            if ($receiverUserId <= 0 || $amount <= 0) {
+                continue;
+            }
+            if (!isset($allowedMemberIds[$receiverUserId])) {
+                continue;
+            }
+
+            $validRefunds[] = [
+                'receiver_user_id' => $receiverUserId,
+                'amount' => $amount,
+            ];
+        }
+
+        if (empty($validRefunds)) {
+            return ['success' => true, 'total_refund' => 0.0, 'transfers' => []];
+        }
+
+        $serviceManager = $this->getServiceLocator();
+        $teamEventLabel = isset($teamEvent['comment']) ? trim((string)$teamEvent['comment']) : '';
+        $teamBalance = 0.0;
+        if ($teamEventLabel !== '') {
+            $teamBalance = (float)$this->calculateTeamEventBalance($teamAdminUserId, $teamEventId, $teamEventLabel);
+        } else {
+            $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
+            $teamBalance = (float)$drinkManager->calculateUserDrinkBalance($teamAdminUserId, $serviceManager);
+        }
+        $totalRefund = 0.0;
+        foreach ($validRefunds as $refundRow) {
+            $totalRefund = MoneyCalculator::add($totalRefund, $refundRow['amount']);
+        }
+        if (MoneyCalculator::roundMoney($teamBalance) < MoneyCalculator::roundMoney($totalRefund)) {
+            return ['success' => false, 'error' => 'insufficient_team_balance', 'balance' => $teamBalance, 'total_refund' => $totalRefund];
+        }
+
+        $transfers = [];
+        foreach ($validRefunds as $refundRow) {
+            $receiverUserId = (int)$refundRow['receiver_user_id'];
+            $amount = MoneyCalculator::roundMoney((float)$refundRow['amount']);
+            $transferResult = $this->executeMoneyTransfer($teamAdminUserId, $receiverUserId, $amount, $teamEventId);
+            $statusCode = isset($transferResult['statusCode']) ? (int)$transferResult['statusCode'] : 500;
+            $payload = isset($transferResult['payload']) && is_array($transferResult['payload']) ? $transferResult['payload'] : [];
+            if ($statusCode !== 200 || empty($payload['success'])) {
+                return [
+                    'success' => false,
+                    'error' => 'transfer_failed',
+                    'receiver_user_id' => $receiverUserId,
+                    'amount' => $amount,
+                    'transfer_result' => $payload,
+                    'transfers' => $transfers,
+                ];
+            }
+            $transfers[] = [
+                'receiver_user_id' => $receiverUserId,
+                'amount' => $amount,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'total_refund' => $totalRefund,
+            'transfers' => $transfers,
+        ];
+    }
+
+    protected function getTeamEventsWithBalances($teamAdminUserId, $includeClosed = false, $includeTransferOrders = false)
     {
         $includeClosed = (bool)$includeClosed;
-        $rows = $this->getTeamEventDbAdapter()->query(
-            'SELECT ' . $this->getTeamEventSelectColumnsSql() . ' FROM drinks_teamevents WHERE team_admin_user_id = ?' . $this->getTeamEventOpenFilterSql($includeClosed) . ' ORDER BY created_at DESC, id DESC',
-            [$teamAdminUserId]
-        )->toArray();
+        $includeTransferOrders = (bool)$includeTransferOrders;
+        $dbAdapter = $this->getTeamEventDbAdapter();
+        try {
+            $rows = $dbAdapter->query(
+                'SELECT ' . $this->getTeamEventSelectColumnsSql() . ' FROM drinks_teamevents WHERE team_admin_user_id = ?' . $this->getTeamEventOpenFilterSql($includeClosed) . ' ORDER BY created_at DESC, id DESC',
+                [$teamAdminUserId]
+            )->toArray();
+        } catch (\Exception $e) {
+            try {
+                $rows = $dbAdapter->query(
+                    'SELECT ' . $this->getTeamEventSelectColumnsSql() . ' FROM drinks_teamevents WHERE team_admin_user_id = ?' . $this->getTeamEventOpenFilterSql($includeClosed) . ' ORDER BY id DESC',
+                    [$teamAdminUserId]
+                )->toArray();
+            } catch (\Exception $inner) {
+                return [];
+            }
+        }
 
         $result = [];
         foreach ($rows as $row) {
@@ -1011,10 +1200,17 @@ trait TeamEventTrait
                 continue;
             }
 
+            $balance = 0.0;
+            try {
+                $balance = $this->calculateTeamEventBalance($teamAdminUserId, $teamEventId, $teamEventLabel, $includeTransferOrders);
+            } catch (\Exception $e) {
+                $balance = 0.0;
+            }
+
             $result[] = [
                 'id' => $teamEventId,
                 'label' => $teamEventLabel,
-                'balance' => $this->calculateTeamEventBalance($teamAdminUserId, $teamEventId, $teamEventLabel),
+                'balance' => $balance,
                 'closed' => $this->canUseTeamEventClosedColumn() ? ((isset($row['closed']) && (int)$row['closed'] === 1) ? 1 : 0) : 0,
             ];
         }

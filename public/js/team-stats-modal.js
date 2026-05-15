@@ -9,10 +9,23 @@
     }
 
     function formatCurrency(value) {
-        return Number(value || 0).toLocaleString('de-DE', {
+        return roundMoney(value).toLocaleString('de-DE', {
             style: 'currency',
             currency: 'EUR'
         });
+    }
+
+    function roundMoney(value) {
+        return Math.round(Number(value || 0) * 100) / 100;
+    }
+
+    function roundAwayFromZero(value) {
+        var amount = Number(value || 0);
+        if (amount === 0) return 0;
+        if (amount > 0) {
+            return Math.ceil(amount * 100) / 100;
+        }
+        return Math.floor(amount * 100) / 100;
     }
 
     function amountColor(value) {
@@ -81,7 +94,8 @@
             selectedIndex: -1,
             teamUid: 0,
             teamAlias: config.initialTeamAlias || '',
-            isCurrentEventClosed: false
+            isCurrentEventClosed: false,
+            settlementPreview: null
         };
 
         function refs() {
@@ -193,6 +207,8 @@
             });
             var html = '';
             var memberSharesByUid = {};
+            var settlementRefunds = [];
+            var settlementDebtors = [];
             var canEditRelevance = canManageMembers && typeof config.buildOrderRelevanceUpdateRequest === 'function';
             var canEditExtraCosts = canManageMembers
                 && typeof config.buildExtraCostCreateRequest === 'function'
@@ -229,6 +245,7 @@
             state.relevanceEditorRows = {};
             state.extraCostRows = {};
             state.guestDonationRows = {};
+            state.settlementPreview = null;
 
             if (orderRows.length === 0) {
                 html += '<div style="color:#555;">Keine Eintraege fuer diesen Spieltag.</div>';
@@ -260,7 +277,8 @@
                     var relevanceDisplay = renderRelevantMemberLabels(relevantMembers, activeMemberIds);
                     for (var ri = 0; ri < relevanceDisplay.ids.length; ri++) {
                         var relId = relevanceDisplay.ids[ri];
-                        memberSharesByUid[relId] = (memberSharesByUid[relId] || 0) + parseFloat(row.share_per_member || 0);
+                        var orderShare = roundAwayFromZero(row.share_per_member || 0);
+                        memberSharesByUid[relId] = roundMoney((memberSharesByUid[relId] || 0) + orderShare);
                     }
 
                     var rowKey = String(row.drink_id || '') + '|' + String(row.unit_price || '');
@@ -322,7 +340,8 @@
                     var extraRelevanceDisplay = renderRelevantMemberLabels(extraRelevantMembers, activeMemberIds);
                     for (var eri = 0; eri < extraRelevanceDisplay.ids.length; eri++) {
                         var extraRelId = extraRelevanceDisplay.ids[eri];
-                        memberSharesByUid[extraRelId] = (memberSharesByUid[extraRelId] || 0) + parseFloat(extraCost.share_per_member || 0);
+                        var extraShare = roundAwayFromZero(extraCost.share_per_member || 0);
+                        memberSharesByUid[extraRelId] = roundMoney((memberSharesByUid[extraRelId] || 0) + extraShare);
                     }
 
                     state.extraCostRows[extraCostId] = {
@@ -488,7 +507,8 @@
             }
             html += '</tr>';
 
-            var membersTotalSum = 0;
+            var membersGrossTotalSum = 0;
+            var membersNetTotalSum = 0;
             if (members.length === 0) {
                 html += '<tr><td colspan="' + (canManageMembers ? '5' : '4') + '" style="padding:8px; color:#666;">Keine Mitglieder hinterlegt.</td></tr>';
             } else {
@@ -496,8 +516,11 @@
                     var member = members[m] || {};
                     var memberUid = parseInt(member.uid || 0, 10);
                     var isMember = !!member.is_member;
-                    var memberTotalPaid = parseFloat(member.total_paid || 0);
-                    membersTotalSum += memberTotalPaid;
+                    var memberTotalPaid = roundMoney(member.total_paid || 0);
+                    var memberTotalRefunded = roundMoney(Math.abs(Number(member.total_refunded || 0)));
+                    var memberNetPaid = roundMoney(memberTotalPaid - memberTotalRefunded);
+                    membersGrossTotalSum = roundMoney(membersGrossTotalSum + memberTotalPaid);
+                    membersNetTotalSum = roundMoney(membersNetTotalSum + memberNetPaid);
                     html += '<tr class="' + config.rowClass + '" data-member-uid="' + memberUid + '">';
                     var memberDisplay = escapeHtml(member.name || '');
                     var depositComment = member.deposit_comment ? escapeHtml(member.deposit_comment.trim()) : '';
@@ -505,12 +528,29 @@
                         memberDisplay += ' - ' + depositComment;
                     }
                     html += '<td style="padding:4px 8px;">' + memberDisplay + '</td>';
-                    html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(memberTotalPaid) + ';">' + formatCurrency(memberTotalPaid) + '</td>';
+                    var paidCell = formatCurrency(memberTotalPaid);
+                    if (memberTotalRefunded > 0.00001) {
+                        paidCell += ' <span style="color:#666; font-size:12px;">(' + formatCurrency(memberTotalRefunded) + ' zurückgezahlt)</span>';
+                    }
+                    html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(memberTotalPaid) + ';">' + paidCell + '</td>';
                     if (isMember) {
-                        var memberDue = memberSharesByUid[memberUid] || 0;
-                        var restAmount = memberDue + memberTotalPaid;
+                        var memberDue = roundMoney(memberSharesByUid[memberUid] || 0);
+                        var restAmount = roundMoney(memberDue + memberNetPaid);
                         html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(memberDue) + ';">' + formatCurrency(memberDue) + '</td>';
                         html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(restAmount) + ';">' + formatCurrency(restAmount) + '</td>';
+                        if (restAmount > 0.00001 && memberUid !== state.teamUid) {
+                            settlementRefunds.push({
+                                receiver_user_id: memberUid,
+                                name: String(member.name || ''),
+                                amount: restAmount
+                            });
+                        } else if (restAmount < -0.00001) {
+                            settlementDebtors.push({
+                                receiver_user_id: memberUid,
+                                name: String(member.name || ''),
+                                amount: restAmount
+                            });
+                        }
                     } else {
                         html += '<td style="text-align:right; padding:4px 8px; color:#999;">-</td>';
                         html += '<td style="text-align:right; padding:4px 8px; color:#999;">-</td>';
@@ -526,7 +566,7 @@
                 }
                 html += '<tr style="font-weight:bold; background:#f5faff;">';
                 html += '<td colspan="' + (canManageMembers ? '4' : '3') + '" style="text-align:right; padding:4px 8px;">Gesamtsumme Einzahlungen</td>';
-                html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(membersTotalSum) + ';">' + formatCurrency(membersTotalSum) + '</td>';
+                html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(membersNetTotalSum) + ';">' + formatCurrency(membersNetTotalSum) + '</td>';
                 html += '</tr>';
             }
             html += '</table>';
@@ -534,7 +574,20 @@
             var settlementBaseTotal = (typeof data.settlement_total_sum !== 'undefined')
                 ? Number(data.settlement_total_sum || 0)
                 : Number((data.total_sum || 0) + (data.guest_donation_due_total || 0));
-            var grandTotal = settlementBaseTotal + membersTotalSum;
+            var accountBalance = Number(data.account_balance || 0);
+            var totalRefund = 0;
+            for (var sr = 0; sr < settlementRefunds.length; sr++) {
+                totalRefund += Number(settlementRefunds[sr].amount || 0);
+            }
+            var grandTotal = roundMoney(settlementBaseTotal + membersNetTotalSum);
+            state.settlementPreview = {
+                refunds: settlementRefunds,
+                debtors: settlementDebtors,
+                totalRefund: totalRefund,
+                accountBalance: accountBalance,
+                dayBalance: grandTotal,
+                canSettle: grandTotal >= 0
+            };
             html += '<div style="margin-top:8px; padding:8px 6px; border-top:2px solid #1769aa; font-weight:bold; color:#1769aa; display:flex; justify-content:flex-end; gap:20px;">';
             html += '<span>Gesamtsumme (Ausgaben + Einzahlungen):</span>';
             html += '<span style="color:' + amountColor(grandTotal) + ';">' + formatCurrency(grandTotal) + '</span>';
@@ -555,9 +608,18 @@
                 if (data.team_event_closed) {
                     html += '<span style="font-weight:600; color:#607d8b;">Abrechnung ist bereits beendet.</span>';
                 } else {
-                    var disableClose = (grandTotal < 0);
-                    var closeTitle = disableClose ? 'Abrechnung kann nur beendet werden, wenn die Gesamtsumme (Ausgaben + Einzahlungen) mindestens 0 € ist.' : '';
-                    html += '<button type="button" id="' + (config.closeEventBtnId || 'team-stats-close-event-btn') + '" class="default-button mini-button" style="background:#d32f2f; border-color:#d32f2f; color:#fff;"' + (disableClose ? ' disabled title="' + closeTitle + '"' : '') + '>Abrechnung Beenden</button>';
+                    var disableClose = grandTotal < 0;
+                    var closeTitle = '';
+                    if (grandTotal < 0) {
+                        closeTitle = 'Der Spieltagssaldo ist negativ. Abrechnung kann nicht beendet werden.';
+                    }
+                    if (typeof console !== 'undefined' && console.log) {
+                        console.log('[DEBUG] Close button state:', { grandTotal: grandTotal, accountBalance: accountBalance, settlementDebtors: settlementDebtors.length, disableClose: disableClose, closeTitle: closeTitle });
+                    }
+                    var closeButtonStyle = disableClose
+                        ? 'background:#bdbdbd; border-color:#9e9e9e; color:#666; cursor:not-allowed; opacity:0.72;'
+                        : 'background:#d32f2f; border-color:#d32f2f; color:#fff;';
+                    html += '<button type="button" id="' + (config.closeEventBtnId || 'team-stats-close-event-btn') + '" class="default-button mini-button" style="' + closeButtonStyle + '"' + (disableClose ? ' disabled title="' + closeTitle + '"' : '') + '>Abrechnung Beenden</button>';
                 }
                 html += '</div>';
             }
@@ -573,7 +635,26 @@
                 throw new Error('Kein Spieltag ausgewählt.');
             }
 
-            var requestData = config.buildCloseEventRequest(state);
+            var settlement = state.settlementPreview || { refunds: [], debtors: [], totalRefund: 0, accountBalance: 0, canSettle: false };
+            if (Number(settlement.dayBalance || 0) < 0) {
+                throw new Error('Der Spieltagssaldo ist negativ. Abrechnung kann nicht beendet werden.');
+            }
+
+            if (Array.isArray(settlement.refunds) && settlement.refunds.length > 0) {
+                var approved = await openSettlementPopup(settlement);
+                if (!approved) {
+                    return;
+                }
+                if (state.selectedRefundPayload && state.selectedRefundPayload.length > 0) {
+                    settlement = Object.assign({}, settlement, { refunds: state.selectedRefundPayload });
+                } else {
+                    settlement = Object.assign({}, settlement, { refunds: [] });
+                }
+            } else if (!window.confirm('Abrechnung für diesen Spieltag wirklich beenden?')) {
+                return;
+            }
+
+            var requestData = config.buildCloseEventRequest(state, settlement);
             var resp = await fetch(requestData.url, {
                 method: 'POST',
                 credentials: 'same-origin',
@@ -808,6 +889,216 @@
             };
         }
 
+        function ensureSettlementPopup() {
+            var popupId = config.settlementPopupId || 'team-stats-settlement-popup';
+            var overlay = byId(popupId);
+            if (overlay) {
+                return {
+                    overlay: overlay,
+                    title: byId(popupId + '-title'),
+                    body: byId(popupId + '-body'),
+                    okBtn: byId(popupId + '-ok'),
+                    cancelBtn: byId(popupId + '-cancel')
+                };
+            }
+
+            overlay = document.createElement('div');
+            overlay.id = popupId;
+            overlay.style.cssText = 'display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:100004; align-items:center; justify-content:center; padding:16px;';
+            overlay.innerHTML = '' +
+                '<div style="width:min(680px, 96vw); background:#fff; border-radius:12px; box-shadow:0 14px 36px rgba(0,0,0,0.24); overflow:hidden;">' +
+                '  <div style="padding:14px 16px; border-bottom:1px solid #e6edf5; font-weight:700; color:#1769aa;" id="' + popupId + '-title"></div>' +
+                '  <div id="' + popupId + '-body" style="padding:14px 16px; display:grid; gap:12px;"></div>' +
+                '  <div style="padding:12px 16px; border-top:1px solid #e6edf5; display:flex; justify-content:flex-end; gap:8px;">' +
+                '    <button type="button" class="mini-button" id="' + popupId + '-cancel">Abbrechen</button>' +
+                '    <button type="button" class="default-button mini-button" id="' + popupId + '-ok">Okay</button>' +
+                '  </div>' +
+                '</div>';
+            document.body.appendChild(overlay);
+            overlay.addEventListener('click', function(e) {
+                if (e.target === overlay) {
+                    overlay.style.display = 'none';
+                }
+            });
+
+            return {
+                overlay: overlay,
+                title: byId(popupId + '-title'),
+                body: byId(popupId + '-body'),
+                okBtn: byId(popupId + '-ok'),
+                cancelBtn: byId(popupId + '-cancel')
+            };
+        }
+
+        function openSettlementPopup(settlement) {
+            var popup = ensureSettlementPopup();
+            if (!popup.overlay || !popup.body || !popup.title || !popup.okBtn || !popup.cancelBtn) {
+                return Promise.resolve(false);
+            }
+
+            var refunds = Array.isArray(settlement && settlement.refunds) ? settlement.refunds : [];
+            var dayBalance = (settlement && typeof settlement.dayBalance !== 'undefined')
+                ? Number(settlement.dayBalance || 0)
+                : Number(settlement && settlement.accountBalance ? settlement.accountBalance : 0);
+
+            popup.title.textContent = 'Abrechnung beenden und Ausgleichszahlungen auslösen';
+            popup.body.style.color = '#222';
+            var bodyHtml = '';
+            bodyHtml += '<div style="color:#455a64; margin-bottom:2px;">Wählen Sie die Spieler, die Geld zurückbekommen sollen. Nach Bestätigung werden die Zahlungen ausgelöst und der Spieltag wird abgeschlossen.</div>';
+            bodyHtml += '<table class="default-table" style="width:100%; margin:0;">';
+            bodyHtml += '<tr style="background:#e3f0fa;">';
+            bodyHtml += '<th style="text-align:center; padding:4px 8px; width:40px; color:#222;"><input type="checkbox" id="settlement-select-all" style="cursor:pointer;" /></th>';
+            bodyHtml += '<th style="text-align:left; padding:4px 8px; color:#222;">Spieler</th>';
+            bodyHtml += '<th style="text-align:right; padding:4px 8px; color:#222;">Rückzahlung</th>';
+            bodyHtml += '<th style="text-align:right; padding:4px 8px; color:#222;">Auszahlung</th>';
+            bodyHtml += '</tr>';
+            if (refunds.length === 0) {
+                bodyHtml += '<tr><td colspan="4" style="padding:8px; color:#666;">Keine Rückzahlungen erforderlich.</td></tr>';
+            } else {
+                for (var i = 0; i < refunds.length; i++) {
+                    var refund = refunds[i] || {};
+                    var refundName = String(refund.name || refund.receiver_name || ('User ' + (refund.receiver_user_id || '')));
+                    var refundAmount = Math.abs(Number(refund.amount || 0));
+                    bodyHtml += '<tr>';
+                    bodyHtml += '<td style="text-align:center; padding:4px 8px; color:#222;"><input type="checkbox" class="settlement-refund-checkbox" data-refund-index="' + i + '" style="cursor:pointer;" checked /></td>';
+                    bodyHtml += '<td style="padding:4px 8px; color:#222;">' + escapeHtml(refundName) + '</td>';
+                    bodyHtml += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(refundAmount) + ';">' + formatCurrency(refundAmount) + '</td>';
+                    bodyHtml += '<td style="text-align:right; padding:4px 8px; color:#222;" data-payout-cell="' + i + '">' + formatCurrency(refundAmount) + '</td>';
+                    bodyHtml += '</tr>';
+                }
+            }
+            bodyHtml += '</table>';
+            bodyHtml += '<div id="settlement-summary" style="display:grid; gap:6px; padding-top:2px; border-top:1px solid #e6edf5;">';
+            bodyHtml += '<div style="display:flex; justify-content:space-between; gap:12px; color:#222;"><span>Ausgewählte Rückzahlung</span><strong id="settlement-selected-total" style="color:#c62828;">0,00 €</strong></div>';
+            bodyHtml += '<div style="display:flex; justify-content:space-between; gap:12px; color:#222;"><span>Auszuzahlen</span><strong id="settlement-distributed-total" style="color:#c62828;">0,00 €</strong></div>';
+            bodyHtml += '<div style="display:flex; justify-content:space-between; gap:12px; color:#222;"><span>Spieltagssaldo</span><strong id="settlement-balance" style="color:' + amountColor(dayBalance) + ';">' + formatCurrency(dayBalance) + '</strong></div>';
+            bodyHtml += '<div style="display:flex; justify-content:space-between; gap:12px; color:#222;"><span>Danach</span><strong id="settlement-remaining" style="color:' + amountColor(dayBalance) + ';">' + formatCurrency(dayBalance) + '</strong></div>';
+            bodyHtml += '</div>';
+            popup.body.innerHTML = bodyHtml;
+
+            state.settlementRefundsData = {
+                all: refunds,
+                dayBalance: dayBalance
+            };
+
+            function updateSettlementSummary() {
+                var checkboxes = popup.body.querySelectorAll('.settlement-refund-checkbox:checked');
+                var selectedRefunds = [];
+                checkboxes.forEach(function(cb) {
+                    var idx = parseInt(cb.getAttribute('data-refund-index') || -1, 10);
+                    if (idx >= 0 && idx < refunds.length) {
+                        var refundAmount = Math.abs(Number((refunds[idx] || {}).amount || 0));
+                        selectedRefunds.push({
+                            index: idx,
+                            refund: refunds[idx],
+                            amount: refundAmount
+                        });
+                    }
+                });
+
+                var selectedTotal = 0;
+                for (var s = 0; s < selectedRefunds.length; s++) {
+                    selectedTotal = roundMoney(selectedTotal + selectedRefunds[s].amount);
+                }
+
+                var payoutTotal = 0;
+                var remainingBalance = roundMoney(dayBalance);
+                var allocations = [];
+                if (selectedRefunds.length > 0 && selectedTotal > 0 && dayBalance > 0) {
+                    var payoutCentsTarget = Math.round(Math.min(selectedTotal, dayBalance) * 100);
+                    for (var r = 0; r < selectedRefunds.length; r++) {
+                        var requestedAmount = selectedRefunds[r].amount;
+                        var exactCents = (requestedAmount / selectedTotal) * payoutCentsTarget;
+                        var floorCents = Math.floor(exactCents + 1e-9);
+                        allocations.push({
+                            index: selectedRefunds[r].index,
+                            refund: selectedRefunds[r].refund,
+                            requestedAmount: requestedAmount,
+                            floorCents: floorCents,
+                            fraction: exactCents - floorCents
+                        });
+                    }
+                    for (var a = 0; a < allocations.length; a++) {
+                        var payoutAmount = roundMoney(allocations[a].floorCents / 100);
+                        allocations[a].amount = payoutAmount;
+                        payoutTotal = roundMoney(payoutTotal + payoutAmount);
+                    }
+                    remainingBalance = roundMoney(dayBalance - payoutTotal);
+                }
+
+                state.selectedRefundPayload = allocations.map(function(item) {
+                    var originalRefund = item.refund || {};
+                    return Object.assign({}, originalRefund, { amount: item.amount });
+                });
+
+                var displayBalance = payoutTotal > 0 ? payoutTotal : dayBalance;
+                var summaryEl = popup.body.querySelector('#settlement-selected-total');
+                if (summaryEl) {
+                    summaryEl.textContent = formatCurrency(selectedTotal);
+                    summaryEl.style.color = amountColor(selectedTotal);
+                }
+                var distributedEl = popup.body.querySelector('#settlement-distributed-total');
+                if (distributedEl) {
+                    distributedEl.textContent = formatCurrency(payoutTotal);
+                    distributedEl.style.color = amountColor(payoutTotal);
+                }
+                var balanceEl = popup.body.querySelector('#settlement-balance');
+                if (balanceEl) {
+                    balanceEl.textContent = formatCurrency(displayBalance);
+                    balanceEl.style.color = amountColor(displayBalance);
+                }
+                var remainingEl = popup.body.querySelector('#settlement-remaining');
+                if (remainingEl) {
+                    remainingEl.textContent = formatCurrency(remainingBalance);
+                    remainingEl.style.color = amountColor(remainingBalance);
+                }
+                popup.body.querySelectorAll('[data-payout-cell]').forEach(function(cell) {
+                    var idx = parseInt(cell.getAttribute('data-payout-cell') || '-1', 10);
+                    var payoutAmount = 0;
+                    var requestedAmount = 0;
+                    for (var c = 0; c < allocations.length; c++) {
+                        if (allocations[c].index === idx) {
+                            payoutAmount = Number(allocations[c].amount || 0);
+                            requestedAmount = Math.abs(Number((refunds[idx] || {}).amount || 0));
+                            break;
+                        }
+                    }
+                    cell.textContent = formatCurrency(payoutAmount);
+                    cell.style.color = payoutAmount < requestedAmount ? '#ef6c00' : '#222';
+                });
+                popup.okBtn.disabled = selectedTotal <= 0;
+            }
+
+            var selectAllCb = popup.body.querySelector('#settlement-select-all');
+            if (selectAllCb) {
+                selectAllCb.addEventListener('change', function() {
+                    popup.body.querySelectorAll('.settlement-refund-checkbox').forEach(function(cb) {
+                        cb.checked = selectAllCb.checked;
+                    });
+                    updateSettlementSummary();
+                });
+            }
+            popup.body.querySelectorAll('.settlement-refund-checkbox').forEach(function(cb) {
+                cb.addEventListener('change', updateSettlementSummary);
+            });
+            updateSettlementSummary();
+
+            return new Promise(function(resolve) {
+                var done = false;
+                function finish(result) {
+                    if (done) return;
+                    done = true;
+                    popup.overlay.style.display = 'none';
+                    popup.okBtn.onclick = null;
+                    popup.cancelBtn.onclick = null;
+                    resolve(!!result);
+                }
+                popup.okBtn.onclick = function() { finish(true); };
+                popup.cancelBtn.onclick = function() { finish(false); };
+                popup.overlay.style.display = 'flex';
+            });
+        }
+
         function openGuestDonationPopup(guestDonationId) {
             var popup = ensureGuestDonationPopup();
             var payload = guestDonationId ? (state.guestDonationRows ? state.guestDonationRows[guestDonationId] : null) : null;
@@ -1031,6 +1322,41 @@
             });
 
             popup.overlay.style.display = 'flex';
+        }
+
+        function bindCloseEventButton(r) {
+            var closeBtn = document.getElementById(config.closeEventBtnId || 'team-stats-close-event-btn');
+            if (!closeBtn) return;
+            
+            if (!r.content._closeBtnListener) {
+                r.content.addEventListener('click', async function(e) {
+                    var btn = e.target;
+                    if (btn.id !== (config.closeEventBtnId || 'team-stats-close-event-btn')) {
+                        return;
+                    }
+                    if (btn.disabled) {
+                        return;
+                    }
+                    e.preventDefault();
+                    if (!window.confirm('Abrechnung für diesen Spieltag wirklich beenden?')) {
+                        return;
+                    }
+                    btn.disabled = true;
+                    try {
+                        await closeCurrentTeamEvent();
+                    } catch (err) {
+                        btn.disabled = false;
+                        alert(err && err.message ? err.message : 'Fehler beim Schließen der Abrechnung.');
+                    }
+                });
+                r.content._closeBtnListener = true;
+            }
+            
+            var shouldDisable = closeBtn.hasAttribute('disabled');
+            closeBtn.disabled = shouldDisable;
+            if (typeof console !== 'undefined' && console.log) {
+                console.log('[DEBUG] Close button bound:', { hasDisabledAttr: shouldDisable, buttonDisabledProp: closeBtn.disabled, clickable: !closeBtn.disabled });
+            }
         }
 
         function bindMemberControls(canManageMembers) {
@@ -1376,27 +1702,45 @@
 
             var closeBtn = document.getElementById(config.closeEventBtnId || 'team-stats-close-event-btn');
             if (closeBtn) {
-                closeBtn.addEventListener('click', async function() {
-                    if (!window.confirm('Abrechnung für diesen Spieltag wirklich beenden?')) {
-                        return;
+                if (closeBtn._boundForClose !== true) {
+                    var r = refs();
+                    if (r.content && !r.content._closeBtnDelegateListener) {
+                        r.content.addEventListener('click', async function(e) {
+                            var btn = e.target;
+                            if (btn.id !== (config.closeEventBtnId || 'team-stats-close-event-btn')) {
+                                return;
+                            }
+                            if (btn.disabled) {
+                                return;
+                            }
+                            e.preventDefault();
+                            if (!window.confirm('Abrechnung für diesen Spieltag wirklich beenden?')) {
+                                return;
+                            }
+                            btn.disabled = true;
+                            try {
+                                await closeCurrentTeamEvent();
+                            } catch (err) {
+                                btn.disabled = false;
+                                alert(err && err.message ? err.message : 'Fehler beim Schließen der Abrechnung.');
+                            }
+                        });
+                        r.content._closeBtnDelegateListener = true;
                     }
-                    closeBtn.disabled = true;
-                    try {
-                        await closeCurrentTeamEvent();
-                    } catch (e) {
-                        closeBtn.disabled = false;
-                        alert(e && e.message ? e.message : 'Fehler beim Schließen der Abrechnung.');
-                    }
-                });
+                    closeBtn._boundForClose = true;
+                }
+                var shouldDisable = closeBtn.hasAttribute('disabled');
+                closeBtn.disabled = shouldDisable;
+                if (typeof console !== 'undefined' && console.log) {
+                    console.log('[DEBUG] Button binding:', { hasDisabledAttr: shouldDisable, buttonDisabledProp: closeBtn.disabled, clickable: !closeBtn.disabled });
+                }
             }
         }
 
         async function load(spieltag) {
             var r = refs();
             if (!r.content) return;
-
             r.content.innerHTML = '<div style="color:#1769aa;">Lade Daten...</div>';
-
             try {
                 if (typeof config.beforeLoad === 'function') {
                     config.beforeLoad(spieltag, state, r);
@@ -1429,6 +1773,8 @@
 
                 var canManageMembers = !!data.can_manage_members && !data.team_event_closed;
                 r.content.innerHTML = buildStatsHtml(data, canManageMembers);
+                
+                bindCloseEventButton(r);
                 bindMemberControls(canManageMembers);
             } catch (err) {
                 r.content.innerHTML = '<div style="color:#d32f2f;">' + escapeHtml(err && err.message ? err.message : 'Fehler beim Laden der Statistik.') + '</div>';

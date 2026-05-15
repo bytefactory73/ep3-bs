@@ -70,7 +70,7 @@ $teamLeadTeamAlias = isset($this->teamLeadTeamAlias) ? (string)$this->teamLeadTe
         <div id="frontendTeamStatsContent" style="padding:2px 4px 8px 4px;"></div>
     </div>
 </div>
-<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260510-7') ?>"></script>
+<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260511-18') ?>"></script>
 <script>
 window.__frontendTeamStatsTeamAlias = <?= json_encode($teamLeadTeamAlias, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 window.__frontendTeamStatsTeamUid = 0;
@@ -205,13 +205,17 @@ var frontendTeamStatsModalController = createTeamStatsModal({
             })
         };
     },
-    buildCloseEventRequest: function(state) {
+    buildCloseEventRequest: function(state, settlement) {
+        var body = new URLSearchParams({
+            team_uid: String(state.teamUid),
+            team_event_id: String(state.currentEventId)
+        });
+        if (settlement && Array.isArray(settlement.refunds) && settlement.refunds.length > 0) {
+            body.set('settlement_refunds', JSON.stringify(settlement.refunds));
+        }
         return {
             url: '<?= $this->url('user/teamlead-close-team-event') ?>',
-            body: new URLSearchParams({
-                team_uid: String(state.teamUid),
-                team_event_id: String(state.currentEventId)
-            })
+            body: body
         };
     },
     afterLoadData: function(data, state, refs) {

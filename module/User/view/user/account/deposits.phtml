@@ -1414,7 +1414,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     var reversedDays = history.slice().reverse();
                     for (var day of reversedDays) {
                         // Only render if there are any non-deleted entries (or deleted if showStorno)
-                        var hasEntries = day.entries.some(e => (!e.deleted) || (showStorno && e.type !== 'Einzahlung' && e.deleted));
+                        var hasEntries = day.entries.some(function(e) {
+                            return (!e.deleted) || (showStorno && !!e.deleted);
+                        });
                         if (!hasEntries) continue;
                         var daySum = day.entries
                             .filter(e => !e.deleted)
@@ -1440,9 +1442,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             if (entry.type !== 'Einzahlung') continue;
                             // Show deleted deposits only when explicitly requested.
                             if (entry.deleted && !showStorno) continue;
-                            // Keep old behavior: hide already consumed deposits unless they are deleted rows.
-                            if (!entry.deleted && entry.displayBalance <= 0) continue;
-
                             var isDeleted = entry.deleted;
                             var style = 'color:#1769aa;';
                             if (isDeleted) style += ' text-decoration:line-through;color:#b0b0b0;';

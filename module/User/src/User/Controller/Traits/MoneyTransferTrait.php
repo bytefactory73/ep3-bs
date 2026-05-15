@@ -116,7 +116,7 @@ trait MoneyTransferTrait
         $dbAdapter = $serviceManager->get('Zend\\Db\\Adapter\\Adapter');
         $receiverAliasRow = $dbAdapter->query('SELECT is_team FROM drink_aliases WHERE user_id = ?', [$receiverUserId])->current();
         $receiverIsTeam = ($receiverAliasRow && !empty($receiverAliasRow['is_team'])) ? true : false;
-        $receiverResolvedTeamEventId = null;
+        $transferTeamEventId = ($receiverTeamEventId > 0) ? $receiverTeamEventId : null;
         if ($receiverIsTeam) {
             if ($receiverTeamEventId <= 0) {
                 return [
@@ -137,7 +137,7 @@ trait MoneyTransferTrait
                     'payload' => ['success' => false, 'error' => 'Bitte gültigen Spieltag auswählen.'],
                 ];
             }
-            $receiverResolvedTeamEventId = (int)$receiverTeamEvent['id'];
+            $transferTeamEventId = (int)$receiverTeamEvent['id'];
         }
         $transferReference = $this->createMoneyTransferReference();
         $canUseTransferReference = $this->canUseTransferReferenceColumns($dbAdapter);
@@ -152,9 +152,12 @@ trait MoneyTransferTrait
                 0,
                 'Geld senden an ' . $receiverName,
                 $amount,
-                null
+                $transferTeamEventId
             );
             $orderId = $this->getInsertIdFromResult($orderInsertResult);
+            if ($transferTeamEventId !== null && $transferTeamEventId > 0 && $orderId > 0) {
+                $dbAdapter->query('UPDATE drink_orders SET teamevent_id = ? WHERE id = ? AND (teamevent_id IS NULL OR teamevent_id = 0)', [$transferTeamEventId, $orderId]);
+            }
             if ($canUseTransferReference && $orderId > 0) {
                 $dbAdapter->query('UPDATE drink_orders SET transfer_reference = ? WHERE id = ?', [$transferReference, $orderId]);
             }
@@ -166,9 +169,12 @@ trait MoneyTransferTrait
                 'Geld empfangen von ' . $senderName,
                 $senderUserId,
                 null,
-                $receiverResolvedTeamEventId
+                $transferTeamEventId
             );
             $depositId = $this->getInsertIdFromResult($depositInsertResult);
+            if ($transferTeamEventId !== null && $transferTeamEventId > 0 && $depositId > 0) {
+                $dbAdapter->query('UPDATE drink_deposits SET teamevent_id = ? WHERE id = ? AND (teamevent_id IS NULL OR teamevent_id = 0)', [$transferTeamEventId, $depositId]);
+            }
             if ($canUseTransferReference && $depositId > 0) {
                 $dbAdapter->query('UPDATE drink_deposits SET transfer_reference = ? WHERE id = ?', [$transferReference, $depositId]);
             }

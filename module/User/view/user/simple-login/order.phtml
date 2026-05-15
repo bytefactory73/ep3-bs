@@ -84,7 +84,7 @@ if ($partyModeEnabled) {
         <div id="teamStatsContent" style="padding:2px 4px 8px 4px;"></div>
     </div>
 </div>
-<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260510-7') ?>"></script>
+<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260511-18') ?>"></script>
 <script>
 function getTeamStatsSpieltagOptions() {
     var bookingSelect = document.getElementById('spieltag-select');
@@ -259,12 +259,16 @@ var teamStatsModalController = createTeamStatsModal({
             })
         };
     },
-    buildCloseEventRequest: function(state) {
+    buildCloseEventRequest: function(state, settlement) {
+        var body = new URLSearchParams({
+            team_event_id: String(state.currentEventId)
+        });
+        if (settlement && Array.isArray(settlement.refunds) && settlement.refunds.length > 0) {
+            body.set('settlement_refunds', JSON.stringify(settlement.refunds));
+        }
         return {
             url: 'simple-order/close-team-event',
-            body: new URLSearchParams({
-                team_event_id: String(state.currentEventId)
-            })
+            body: body
         };
     },
     onTeamEventClosed: function() {
