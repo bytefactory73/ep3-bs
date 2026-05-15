@@ -1757,6 +1757,11 @@
                     throw new Error((data && data.error) ? data.error : 'Fehler beim Laden der Statistik.');
                 }
 
+                if (typeof data.team_alias !== 'undefined') {
+                    state.teamAlias = String(data.team_alias || '').trim();
+                }
+                setTitle();
+
                 state.currentEventId = parseInt(data.team_event_id || 0, 10);
                 state.memberCandidates = Array.isArray(data.member_candidates) ? data.member_candidates : [];
                 state.selectedMemberId = 0;
@@ -1795,11 +1800,11 @@
             var args = Array.prototype.slice.call(arguments);
             r.modal.style.display = 'flex';
             resetBalanceHeader();
-            setTitle();
 
             if (typeof config.onOpen === 'function') {
                 config.onOpen(args, state, r);
             }
+            setTitle();
 
             var selectedSpieltag = '';
             if (typeof config.getInitialSpieltag === 'function') {
