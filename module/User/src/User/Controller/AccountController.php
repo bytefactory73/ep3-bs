@@ -365,6 +365,10 @@ class AccountController extends AbstractActionController
             $ordersTotal = 0.0;
             foreach ($orders as $o) {
                 if (empty($o['deleted'])) {
+                    // Skip "Geld senden" items (drink_id == -1) from Umsatz calculation
+                    if ((int)($o['drink_id'] ?? 0) === -1) {
+                        continue;
+                    }
                     if (!$lastOrder || (isset($o['order_time']) && $o['order_time'] > $lastOrder)) {
                         $lastOrder = $o['order_time'];
                     }
@@ -2459,7 +2463,8 @@ class AccountController extends AbstractActionController
         }
         $sql = 'SELECT ' . $groupSql . ' as grp, user_id, drink_id, SUM(quantity) as quantity, MIN(order_time) as min_time, SUM(quantity * price) as total_amount
                 FROM drink_orders
-                WHERE deleted = 0';
+                WHERE deleted = 0
+                  AND drink_id <> -1';
         $params = [];
     if ($from) {
             // Treat $from as local time, no conversion
