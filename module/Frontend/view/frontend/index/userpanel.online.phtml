@@ -38,6 +38,10 @@ $teamLeadTeamAlias = isset($this->teamLeadTeamAlias) ? (string)$this->teamLeadTe
         <?php endif; ?>
 
         <td>
+            <a href="<?= $this->url('user/drinks') ?>" class="default-button">🍺 <?= $this->t('Theke') ?></a>
+        </td>
+
+        <td>
             <a href="<?= $this->url('user/bookings') ?>" class="default-button" data-tooltip="<?= $this->userLastBookings($this->user) ?>"><span class="symbolic symbolic-booking"><?= $this->t('My bookings') ?></span></a>
         </td>
 

@@ -120,6 +120,39 @@ return array(
                             ),
                         ),
                     ),
+                    'drinks' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/drinks',
+                            'defaults' => array(
+                                'controller' => 'User\Controller\Account',
+                                'action' => 'drinks',
+                            ),
+                        ),
+                        'may_terminate' => true,
+                        'child_routes' => array(
+                            'add-drink' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/add-drink',
+                                    'defaults' => array(
+                                        'controller' => 'User\Controller\Account',
+                                        'action' => 'addDrink',
+                                    ),
+                                ),
+                            ),
+                            'cancel-order' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/cancel-order',
+                                    'defaults' => array(
+                                        'controller' => 'User\Controller\Account',
+                                        'action' => 'cancelOrder',
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
                     'bookings' => array(
                         'type' => 'Literal',
                         'options' => array(

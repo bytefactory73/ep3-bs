@@ -2,6 +2,8 @@
 
 namespace User\Controller;
 
+use DateTime;
+use RuntimeException;
 use User\Controller\Traits\MoneyTransferTrait;
 use User\Controller\Traits\TeamEventTrait;
 use Zend\Mvc\Controller\AbstractActionController;
@@ -1252,23 +1254,45 @@ class AccountController extends AbstractActionController
         $squareValidator = $serviceManager->get('Square\Service\SquareValidator');
         $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
 
-        // Drinks managers
-        $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
-        $drinkCategoryManager = $serviceManager->get('Drinks\Manager\DrinkCategoryManager');
-        $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
-        $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
-        $userManager = $serviceManager->get('User\Manager\UserManager'); // Ensure userManager is defined
-
         $user = $userSessionManager->getSessionUser();
 
         if (! $user) {
             $this->redirectBack()->setOrigin('user/bookings');
+
             return $this->redirect()->toRoute('user/login');
         }
 
         $bookings = $bookingManager->getByValidity(array('uid' => $user->need('uid')));
         $reservations = $reservationManager->getByBookings($bookings, 'date DESC, time_start DESC');
+
         $bookingBillManager->getByBookings($bookings);
+
+        return array(
+            'now' => new DateTime(),
+            'bookings' => $bookings,
+            'reservations' => $reservations,
+            'squareManager' => $squareManager,
+            'squareValidator' => $squareValidator,
+        );
+    }
+
+    public function drinksAction()
+    {
+        $serviceManager = @$this->getServiceLocator();
+
+        $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
+        $drinkCategoryManager = $serviceManager->get('Drinks\Manager\DrinkCategoryManager');
+        $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
+        $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
+        $userManager = $serviceManager->get('User\Manager\UserManager');
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+
+        $user = $userSessionManager->getSessionUser();
+
+        if (! $user) {
+            $this->redirectBack()->setOrigin('user/drinks');
+            return $this->redirect()->toRoute('user/login');
+        }
 
         // Fetch drinks, drink categories, and drink orders for this user
         $drinks = $drinkManager->getAll($user->need('uid'));
@@ -1282,6 +1306,10 @@ class AccountController extends AbstractActionController
         $aliasRow = $dbAdapter->query('SELECT enabled, thekenadmin FROM drink_aliases WHERE user_id = ?', [$userId])->current();
         $drinksEnabled = ($aliasRow && isset($aliasRow['enabled']) && (int)$aliasRow['enabled'] === 1);
         $thekenadmin = ($aliasRow && isset($aliasRow['thekenadmin']) && (int)$aliasRow['thekenadmin'] === 1);
+        
+        // Check if user is a team account
+        $isTeamAccount = ($aliasRow && isset($aliasRow['is_team']) && (int)$aliasRow['is_team'] === 1);
+
         // Merge and sort by date descending
         $drinkHistory = [];
         foreach ($drinkOrders as $order) {
@@ -1315,6 +1343,7 @@ class AccountController extends AbstractActionController
                     $creatorName = $creatorUser->get('alias') ?: $creatorUser->get('name');
                 }
             }
+            $deleted = isset($deposit['deleted']) ? (int)$deposit['deleted'] : 0;
             $drinkHistory[] = [
                 'type' => 'deposit',
                 'amount' => $deposit['amount'],
@@ -1382,12 +1411,83 @@ class AccountController extends AbstractActionController
 
         // Pass cancel window from backend constant
         $drinkOrderCancelWindow = \Drinks\Manager\DrinkOrderManager::CANCEL_WINDOW_SECONDS;
+        
+        // Get current Spieltag for team accounts
+        $currentSpieltag = '';
+        $availableSpieltage = [];
+        if ($isTeamAccount) {
+            try {
+                $teamAdminUserId = (int)$dbAdapter->query('SELECT team_admin_user_id FROM drink_teamevents GROUP BY team_admin_user_id ORDER BY MAX(id) DESC LIMIT 1')->current();
+                if ($teamAdminUserId) {
+                    $teamAliasRow = $dbAdapter->query('SELECT alias FROM drink_aliases WHERE user_id = ?', [$userId])->current();
+                    if ($teamAliasRow) {
+                        $teamAlias = trim((string)$teamAliasRow['alias']);
+                        if ($teamAlias !== '') {
+                            $eventRows = $dbAdapter->query(
+                                'SELECT DISTINCT te.id, te.comment FROM drink_teamevents te INNER JOIN drink_teamevent_members tm ON te.id = tm.team_event_id WHERE te.team_admin_user_id = ? AND tm.user_id = ? ORDER BY te.id DESC',
+                                [$teamAdminUserId, $userId]
+                            )->toArray();
+                            foreach ($eventRows as $er) {
+                                $label = isset($er['comment']) ? trim((string)$er['comment']) : '';
+                                if ($label !== '') {
+                                    $availableSpieltage[] = $label;
+                                    if ($currentSpieltag === '') {
+                                        $currentSpieltag = $label;
+                                    }
+                                }
+                            }
+                            // Also check direct team event assignments
+                            $directEvents = $dbAdapter->query(
+                                'SELECT DISTINCT comment FROM drink_teamevents WHERE team_admin_user_id = ? AND LENGTH(comment) > 0 ORDER BY id DESC',
+                                [$userId]
+                            )->toArray();
+                            foreach ($directEvents as $de) {
+                                $label = trim((string)$de['comment']);
+                                if ($label !== '' && !in_array($label, $availableSpieltage)) {
+                                    $availableSpieltage[] = $label;
+                                    if ($currentSpieltag === '') {
+                                        $currentSpieltag = $label;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                // Leave defaults
+            }
+        }
+
+        // Calculate user drink balance
+        $currentBalance = 0;
+        try {
+            $currentBalance = $drinkManager->calculateUserDrinkBalance($userId, $serviceManager);
+        } catch (\Exception $e) {
+            // Leave default
+        }
+
+        // Check keepLoggedIn setting
+        $keepLoggedInActive = false;
+        try {
+            $keepLoggedInVal = $dbAdapter->query(
+                'SELECT meta_value FROM drink_user_meta WHERE user_id = ? AND meta_key = \'keep_logged_in_active\'',
+                [$userId]
+            )->current();
+            $keepLoggedInActive = $keepLoggedInVal && (int)$keepLoggedInVal['meta_value'] === 1;
+        } catch (\Exception $e) {
+            // Leave default
+        }
+
+        // Get party_mode settings
+        $partyModeEnabled = false;
+        try {
+            $partyModeEnabled = (string)$this->option('party_mode.enabled', '0') === '1';
+        } catch (\Exception $e) {
+            // Leave default
+        }
+
         return array(
             'now' => new \DateTime(),
-            'bookings' => $bookings,
-            'reservations' => $reservations,
-            'squareManager' => $squareManager,
-            'squareValidator' => $squareValidator,
             'drinks' => $drinks,
             'drinkCategories' => $drinkCategories,
             'drinkOrders' => $drinkOrders,
@@ -1398,6 +1498,13 @@ class AccountController extends AbstractActionController
             'drinkOrderCancelWindow' => $drinkOrderCancelWindow,
             'drinksEnabled' => $drinksEnabled,
             'moneyRecipients' => $moneyRecipients,
+            'thekenadmin' => $thekenadmin,
+            'isTeamAccount' => $isTeamAccount,
+            'currentSpieltag' => $currentSpieltag,
+            'availableSpieltage' => $availableSpieltage,
+            'currentBalance' => $currentBalance,
+            'keepLoggedInActive' => $keepLoggedInActive,
+            'partyModeEnabled' => $partyModeEnabled,
         );
     }
 

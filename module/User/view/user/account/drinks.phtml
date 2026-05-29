@@ -1,0 +1,2405 @@
+<?php
+
+$this->setup(array(
+    'title' => $this->t('Drinks'),
+    'panel' => 'centered-panel',
+    'back' => true,
+    'links' => array(
+        'My account' => $this->url('user/settings'),
+    ),
+));
+
+?>
+<?php
+// Cleaned up: removed unused variables and redundant code, improved formatting
+$simpleOrderMode = $simpleOrderMode ?? ($this->simpleOrderMode ?? false);
+$drinks = $this->drinks ?? [];
+// drinksEnabled: should be set by controller, fallback to true for BC
+$drinksEnabled = isset($this->drinksEnabled) ? (bool)$this->drinksEnabled : true;
+$isTeamAccount = isset($this->isTeamAccount) ? (bool)$this->isTeamAccount : false;
+$showFullBalanceInSimple = ($simpleOrderMode && !empty($this->thekenadmin));
+$showBalanceColumn = (!$simpleOrderMode || $showFullBalanceInSimple || $isTeamAccount);
+
+// Party Mode early block (with timeframe gating) - uses option() helper per key
+$__partyModeEnabled = false; $__partyModeMessage = ''; $__partyModeStart=''; $__partyModeEnd='';
+try {
+    try { $__partyModeEnabledRaw = $this->option('party_mode.enabled', false); } catch (RuntimeException $e) { $__partyModeEnabledRaw = false; }
+    $__partyModeEnabledBase = ($__partyModeEnabledRaw === '1' || $__partyModeEnabledRaw === 1 || $__partyModeEnabledRaw === true);
+    try { $__partyModeMessage = (string)$this->option('party_mode.message', ''); } catch (RuntimeException $e) {}
+    try { $__partyModeStart = (string)$this->option('party_mode.start', ''); } catch (RuntimeException $e) {}
+    try { $__partyModeEnd = (string)$this->option('party_mode.end', ''); } catch (RuntimeException $e) {}
+    $now = time(); $activeWithin = true;
+    $sTs = $__partyModeStart && ($ts=strtotime($__partyModeStart))!==false ? $ts : null;
+    $eTs = $__partyModeEnd && ($ts=strtotime($__partyModeEnd))!==false ? $ts : null;
+    if ($sTs && $now < $sTs) $activeWithin = false;
+    if ($eTs && $now > $eTs) $activeWithin = false;
+    $__partyModeEnabled = $__partyModeEnabledBase && $activeWithin;
+} catch (Exception $e) { $__partyModeEnabled = false; }
+if ($__partyModeEnabled) {
+    echo '<div class="party-mode-block" style="margin:20px 0;font-size:1.2em;line-height:1.4;">' . nl2br($this->escapeHtml($__partyModeMessage ?: $this->t('Ordering is currently disabled.'))) . '</div>';
+    return;
+}
+?>
+
+<!-- Display user name at the top if available -->
+<?php if (!empty($this->userName) && $drinksEnabled) : ?>
+    <div class="user-info-bar<?= $simpleOrderMode ? ' sticky-user-info-bar' : '' ?>"
+        style="
+            display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start;
+            color:#2196f3; font-weight:bold; margin-bottom:0; background:#fff;
+            box-shadow:0 4px 8px rgba(33,150,243,0.12); padding: 8px 0px 8px 0px;
+            <?= $simpleOrderMode ? 'position:sticky; top:0; left:0; right:0; width:100%; z-index:2000;' : '' ?>
+        ">
+        <div style="font-size:<?= $simpleOrderMode ? '2.0em' : '1.5em' ?>; margin-left: 16px; margin-right: 16px; margin-bottom: 8px; width: 100%-32px; display: flex; align-items: center;">
+            <span style="flex:1; text-align:left; display:block; text-overflow:ellipsis; overflow:hidden; min-width:0; white-space:nowrap;">
+                <?= $this->escapeHtml($this->userName) ?>
+            </span>
+            <?php if ($simpleOrderMode && $isTeamAccount): ?>
+                <span id="spieltag-select-wrap" style="display:inline-flex; margin-left:8px;">
+                    <select id="spieltag-select" style="font-size:0.5em; max-width:280px; padding:4px 6px; border:1px solid #2196f3; border-radius:6px; color:#1769aa;">
+                        <?php
+                        $currentSpieltagValue = isset($this->currentSpieltag) ? trim((string)$this->currentSpieltag) : '';
+                        $availableSpieltageValues = isset($this->availableSpieltage) && is_array($this->availableSpieltage) ? $this->availableSpieltage : [];
+                        foreach ($availableSpieltageValues as $spieltagValue):
+                            $spieltagLabel = trim((string)$spieltagValue);
+                            if ($spieltagLabel === '') continue;
+                        ?>
+                            <option value="<?= $this->escapeHtmlAttr($spieltagLabel) ?>"<?= $currentSpieltagValue === $spieltagLabel ? ' selected' : '' ?>>
+                                <?= $this->escapeHtml($spieltagLabel) ?>
+                            </option>
+                        <?php endforeach; ?>
+                        <option value="__new__"><?= $this->t('Neuen Spieltag anlegen') ?></option>
+                    </select>
+                </span>
+            <?php endif; ?>
+            <?php if (!$simpleOrderMode || $showFullBalanceInSimple): ?>
+                <div id="current-balance-display" class="<?= $currentBalance < 0 ? 'negative-balance' : '' ?>" style="color: #2196f3; display: inline-flex; align-items: center;">
+                    <?= $this->t('Guthaben:') ?>
+                    <span id="current-balance-value" style="margin-left: 8px"></span>
+                </div>
+            <?php endif; ?>
+            <?php if ($simpleOrderMode): ?>
+                <div style="display: inline-flex; align-items: center; margin-left: 16px; gap: 8px;">
+                    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85em; color: #333; margin: 0; cursor: pointer; white-space: nowrap;">
+                        <input type="checkbox" id="keep-logged-in-header" <?= (!empty($this->keepLoggedInActive) ? 'checked' : '') ?> style="width: 16px; height: 16px; cursor: pointer;">
+                        <span>Eingeloggt bleiben</span>
+                    </label>
+                    <span id="logout-timer" style="display:inline-flex; align-items:center; margin-left:8px; font-size:0.85em; color:#d32f2f; background:#fff3f3; border:1px solid #d32f2f; border-radius:6px; padding:2px 10px; display:none; white-space:nowrap;"></span>
+                </div>
+            <?php endif; ?>
+        </div>
+        <?php if (isset($drinks) && $drinksEnabled): ?>
+            <div style="margin-left:16px; margin-right:16px; margin-bottom: 8px; width: 100%-32px; min-height: 24px; display: flex; align-items: center;">
+                <!-- Placeholder for line 2 (e.g., navigation, info, etc.) -->
+                <?php if ($simpleOrderMode && !$isTeamAccount): ?>
+                    <!-- Guthaben aufladen ribbon overlay (cleaned up, CSS classes only) -->
+                    <div id="balance-recharge-btn-container" class="balance-recharge-ribbon-container">
+                        <div class="balance-recharge-ribbon">
+                            <span class="balance-recharge-ribbon-label">
+                                Guthaben aufladen
+                            </span>
+                            <span class="balance-recharge-ribbon-subtext">
+                                Du kannst die Bestellung trotzdem abschließen
+                            </span>
+                        </div>
+                    </div>
+                <?php endif; ?>
+                <div class="drink-order-top-bar" style="width: 100%; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0 8px;">
+                    <div class="order-actions" style="flex: 1 1 auto; display: flex; justify-content: center; align-items: center;">
+                <?php if (!empty($this->thekenadmin)) : ?>
+                        <button id="drinks-summary-btn" type="button" class="default-button" title="<?= $this->t('Gesamtauswertung') ?>" style="font-size: 1.1em; font-weight: bold; background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; padding: 4px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 0; width: 52px; height: 44px; justify-content: center;" onclick="event.preventDefault(); openDrinksSummaryModal();">
+                            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <rect x="6" y="8" width="20" height="16" rx="4" fill="#f7fbff" stroke="#2196f3" stroke-width="2"/>
+                                <line x1="6" y1="14.67" x2="26" y2="14.67" stroke="#2196f3" stroke-width="1.5"/>
+                                <line x1="6" y1="21.33" x2="26" y2="21.33" stroke="#2196f3" stroke-width="1.5"/>
+                                <line x1="12" y1="8" x2="12" y2="24" stroke="#2196f3" stroke-width="1.5"/>
+                                <line x1="20" y1="8" x2="20" y2="24" stroke="#2196f3" stroke-width="1.5"/>
+                            </svg>
+                            <span class="sr-only" style="position:absolute;left:-9999px;"> <?= $this->t('Gesamtauswertung') ?> </span>
+                        </button>
+                <?php endif; ?>
+                <?php if ($simpleOrderMode && $isTeamAccount) : ?>
+                        <button id="team-stats-btn" type="button" class="default-button" title="<?= $this->t('Team-Statistik') ?>" style="font-size: 1.1em; font-weight: bold; background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; padding: 4px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 0; width: 52px; height: 44px; justify-content: center;" onclick="event.preventDefault(); if (typeof openTeamStatsModal === 'function') openTeamStatsModal();">
+                            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                <rect x="6" y="7" width="20" height="18" rx="3" fill="#f7fbff" stroke="#2196f3" stroke-width="2"/>
+                                <line x1="6" y1="13" x2="26" y2="13" stroke="#2196f3" stroke-width="1.5"/>
+                                <line x1="6" y1="19" x2="26" y2="19" stroke="#2196f3" stroke-width="1.5"/>
+                                <line x1="14" y1="7" x2="14" y2="25" stroke="#2196f3" stroke-width="1.5"/>
+                            </svg>
+                            <span class="sr-only" style="position:absolute;left:-9999px;"> <?= $this->t('Team-Statistik') ?> </span>
+                        </button>
+                <?php endif; ?>
+                <?php if (!$isTeamAccount): ?>
+                        <button id="money-send-btn" type="button" class="default-button" title="<?= $this->t('Geld senden') ?>" style="font-size: 1.35em; font-weight: bold; background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; padding: 4px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 0; width: 52px; height: 44px; justify-content: center;">
+                            <span aria-hidden="true">💸</span>
+                            <span class="sr-only" style="position:absolute;left:-9999px;"><?= $this->t('Geld senden') ?></span>
+                        </button>
+                <?php endif; ?>
+                        <button type="submit" form="drink-order-form" name="drink_order_submit" value="1" class="default-button stc-main-button" style="background: #2196f3; color: #fff; border: 1px solid #2196f3; border-radius: 6px; padding: 4px 14px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 1em; height: 44px; justify-content: center; font-weight: bold;">
+                            <span id="drink-order-total" style="color: #fff; background: transparent; border-radius: 3px; font-size: clamp(0.5em, 5vw, 2.0em); min-width: 8em; display: inline-block; text-align: center; transition: background 0.2s, color 0.2s;"></span>
+                        </button>
+                        <button type="button" id="clear-drink-selection" title="<?= $this->escapeHtmlAttr($this->t('Auswahl löschen')) ?>" aria-label="<?= $this->escapeHtmlAttr($this->t('Auswahl löschen')) ?>" class="default-button" disabled aria-disabled="true" style="background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; padding: 4px; min-width: 0; width: 52px; height: 44px; display: flex; align-items: center; justify-content: center; margin-right: 0; cursor: not-allowed; opacity:0.45;">
+                            <span class="icon-trash icon-trash--toolbar" aria-hidden="true">🗑</span>
+                        </button>
+                    </div>
+                </div>
+                <div id="money-send-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.5); z-index:2100; align-items:center; justify-content:center; padding:16px;">
+                    <div style="background:#fff; border:none; border-radius:12px; padding:0; max-width:450px; width:100%; margin:auto; box-shadow:0 12px 48px rgba(0,0,0,0.25); display:flex; flex-direction:column; max-height:90vh; overflow:hidden;">
+                        <!-- Header -->
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:18px 20px; border-bottom:1px solid #e8e8e8; background:#f8fbff;">
+                            <h3 style="margin:0; color:#1769aa; font-size:18px; font-weight:600;">💸 <?= $this->t('Geld senden') ?></h3>
+                            <button type="button" id="money-send-close-btn" title="<?= $this->t('Schließen') ?>" style="background:none; border:none; font-size:24px; color:#999; cursor:pointer; padding:0 4px; line-height:1;">&times;</button>
+                        </div>
+                        <!-- Content -->
+                        <div style="flex:1; overflow-y:auto; padding:24px;">
+                            <div style="display:grid; grid-template-columns:1fr; gap:18px;">
+                                <!-- Empfänger -->
+                                <div>
+                                    <label for="money-send-recipient" style="display:block; margin-bottom:8px; font-weight:600; color:#1769aa; font-size:14px;"><?= $this->t('EMPFÄNGER') ?></label>
+                                    <div style="position:relative; display:flex; align-items:center; gap:6px;">
+                                        <input type="text" id="money-send-recipient" name="money_send_recipient_search" autocomplete="off" placeholder="<?= $this->t('Namen tippen...') ?>" style="flex:1; min-width:0; padding:8px 12px; border:1px solid #ccc; border-radius:12px; font-size:15px; min-height:36px; -webkit-appearance:none; -webkit-user-select:text; line-height:1.2;" />
+                                        <button type="button" id="money-send-recipient-clear" title="<?= $this->t('Feld leeren') ?>" style="background:none; border:none; padding:6px; font-size:20px; color:#aaa; cursor:pointer; line-height:1; min-height:36px; display:flex; align-items:center; justify-content:center; min-width:36px;">&times;</button>
+                                        <div id="money-send-recipient-list" style="position:absolute; top:100%; left:0; right:58px; z-index:10; margin-top:4px;"></div>
+                                    </div>
+                                </div>
+                                <div id="money-send-team-event-wrap" style="display:none;">
+                                    <label for="money-send-team-event" style="display:block; margin-bottom:8px; font-weight:600; color:#1769aa; font-size:14px;"><?= $this->t('SPIELTAG') ?></label>
+                                    <select id="money-send-team-event" style="width:100%; padding:8px 12px; border:1px solid #ccc; border-radius:12px; font-size:15px; min-height:36px; background:#fff;"></select>
+                                </div>
+                                <!-- Betrag -->
+                                <div>
+                                    <label for="money-send-amount" style="display:block; margin-bottom:8px; font-weight:600; color:#1769aa; font-size:14px;"><?= $this->t('BETRAG') ?></label>
+                                    <div style="position:relative; display:flex; align-items:center; gap:6px;">
+                                        <textarea id="money-send-amount" autocomplete="off" inputmode="decimal" placeholder="<?= $this->t('0,00') ?>" rows="1" style="flex:1; min-width:0; height:36px; padding:8px 12px; border:1px solid #ccc; border-radius:12px; box-sizing:border-box; font-size:15px; font-family:Verdana, sans-serif; -webkit-appearance:none; -webkit-user-select:text; line-height:20px; resize:none; overflow:hidden; white-space:nowrap;"></textarea>
+                                        <button type="button" id="money-send-amount-clear" title="<?= $this->t('Feld leeren') ?>" style="background:none; border:none; padding:6px; font-size:20px; color:#aaa; cursor:pointer; line-height:1; min-height:36px; display:flex; align-items:center; justify-content:center; min-width:36px;">&times;</button>
+                                    </div>
+                                </div>
+                                <?php if ($simpleOrderMode): ?>
+                                <div>
+                                    <label for="money-send-password" style="display:block; margin-bottom:8px; font-weight:600; color:#1769aa; font-size:14px;"><?= $this->t('DEIN PASSWORT') ?></label>
+                                    <div style="position:relative; display:flex; align-items:center; gap:6px;">
+                                        <input type="password" id="money-send-password" name="money_send_secret" autocomplete="off" placeholder="<?= $this->t('DEIN PASSWORT') ?>" style="flex:1; min-width:0; padding:8px 12px; border:1px solid #ccc; border-radius:12px; font-size:15px; min-height:36px; -webkit-appearance:none; -webkit-user-select:text; line-height:1.2;" />
+                                        <button type="button" id="money-send-password-toggle" title="<?= $this->t('Passwort anzeigen/ausblenden') ?>" style="background:none; border:none; padding:6px; font-size:18px; color:#666; cursor:pointer; line-height:1; min-height:36px; display:flex; align-items:center; justify-content:center; min-width:36px;">&#128065;</button>
+                                        <button type="button" id="money-send-password-clear" title="<?= $this->t('Feld leeren') ?>" style="background:none; border:none; padding:6px; font-size:20px; color:#aaa; cursor:pointer; line-height:1; min-height:36px; display:flex; align-items:center; justify-content:center; min-width:36px;">&times;</button>
+                                    </div>
+                                </div>
+                                <?php endif; ?>
+                                <!-- Error Message -->
+                                <div id="money-send-error" style="color:#d32f2f; font-size:13px; min-height:18px; padding:6px 0;"></div>
+                            </div>
+                        </div>
+                        <!-- Footer -->
+                        <div style="display:flex; justify-content:flex-end; gap:8px; padding:16px 20px; border-top:1px solid #e8e8e8; background:#f8fbff;">
+                            <button type="button" id="money-send-cancel" class="mini-button" style="padding:10px 20px; border:1px solid #ccc; background:#fff; color:#333; border-radius:6px; font-size:14px; font-weight:500; cursor:pointer; min-height:40px;"><?= $this->t('Abbrechen') ?></button>
+                            <button type="button" id="money-send-confirm" class="default-button mini-button" style="padding:10px 24px; border:none; background:#2196f3; color:#fff; border-radius:6px; font-size:14px; font-weight:600; cursor:pointer; min-height:40px;"><?= $this->t('Senden') ?></button>
+                        </div>
+                    </div>
+                </div>
+                <div id="spieltag-create-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.5); z-index:2100; align-items:center; justify-content:center; padding:16px;">
+                    <div style="background:#fff; border:none; border-radius:12px; padding:0; max-width:560px; width:100%; margin:auto; box-shadow:0 12px 48px rgba(0,0,0,0.25); display:flex; flex-direction:column; max-height:90vh; overflow:hidden;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:18px 20px; border-bottom:1px solid #e8e8e8; background:#f8fbff;">
+                            <h3 style="margin:0; color:#1769aa; font-size:18px; font-weight:600;"><?= $this->t('Neuen Spieltag anlegen') ?></h3>
+                            <button type="button" id="spieltag-create-close-btn" title="<?= $this->t('Schließen') ?>" style="background:none; border:none; font-size:24px; color:#999; cursor:pointer; padding:0 4px; line-height:1;">&times;</button>
+                        </div>
+                        <div style="flex:1; overflow-y:auto; padding:24px;">
+                            <div style="display:grid; grid-template-columns:1fr; gap:18px;">
+                                <div>
+                                    <label for="spieltag-new-name" style="display:block; margin-bottom:8px; font-weight:600; color:#1769aa; font-size:14px;"><?= $this->t('SPIELTAG-NAME') ?></label>
+                                    <input type="text" id="spieltag-new-name" maxlength="100" style="width:100%; padding:8px 12px; border:1px solid #ccc; border-radius:12px; font-size:15px; min-height:36px;" />
+                                </div>
+                                <div>
+                                    <label for="spieltag-is-medenspiel" style="display:inline-flex; align-items:center; gap:8px; font-weight:600; color:#1769aa; font-size:14px; cursor:pointer;">
+                                        <input type="checkbox" id="spieltag-is-medenspiel" checked="checked" style="width:18px; height:18px; cursor:pointer;" />
+                                        <span><?= $this->t('medenspiel') ?></span>
+                                    </label>
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom:8px; font-weight:600; color:#1769aa; font-size:14px;"><?= $this->t('TEILNEHMER') ?></label>
+                                    <div id="spieltag-members-rows" style="display:flex; flex-direction:column; gap:8px;"></div>
+                                </div>
+                                <div id="spieltag-create-error" style="color:#d32f2f; font-size:13px; min-height:18px; padding:6px 0;"></div>
+                            </div>
+                        </div>
+                        <div style="display:flex; justify-content:flex-end; gap:8px; padding:16px 20px; border-top:1px solid #e8e8e8; background:#f8fbff;">
+                            <button type="button" id="spieltag-create-cancel" class="mini-button" style="padding:10px 20px; border:1px solid #ccc; background:#fff; color:#333; border-radius:6px; font-size:14px; font-weight:500; cursor:pointer; min-height:40px;"><?= $this->t('Abbrechen') ?></button>
+                            <button type="button" id="spieltag-create-confirm" class="default-button mini-button" style="padding:10px 24px; border:none; background:#2196f3; color:#fff; border-radius:6px; font-size:14px; font-weight:600; cursor:pointer; min-height:40px;"><?= $this->t('Anlegen') ?></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <script>
+            window.__bookingMoneyRecipients = <?= json_encode(isset($this->moneyRecipients) && is_array($this->moneyRecipients) ? $this->moneyRecipients : [], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) ?>;
+
+            function getBookingRecipientMatches(filter, options) {
+                var term = String(filter || '').trim().toLowerCase();
+                if (!term) {
+                    return [];
+                }
+
+                options = options || {};
+                var excludeUserIds = Array.isArray(options.excludeUserIds) ? options.excludeUserIds : [];
+                var allowUserId = parseInt(options.allowUserId || 0, 10);
+                var recipients = Array.isArray(window.__bookingMoneyRecipients) ? window.__bookingMoneyRecipients : [];
+
+                return recipients.filter(function(recipient) {
+                    var uid = parseInt(recipient.uid || 0, 10);
+                    if (!uid) {
+                        return false;
+                    }
+                    if (excludeUserIds.indexOf(uid) !== -1 && uid !== allowUserId) {
+                        return false;
+                    }
+                    var name = String(recipient.name || '').toLowerCase();
+                    var email = String(recipient.email || '').toLowerCase();
+                    return name.indexOf(term) !== -1 || email.indexOf(term) !== -1;
+                });
+            }
+
+            function setupBookingRecipientAutocomplete(config) {
+                var input = config.input;
+                var list = config.list;
+                var state = {
+                    matches: [],
+                    selectedIndex: -1
+                };
+
+                function clearList() {
+                    if (!list) return;
+                    list.innerHTML = '';
+                    state.matches = [];
+                    state.selectedIndex = -1;
+                }
+
+                function highlightSelection() {
+                    if (!list) return;
+                    var items = list.querySelectorAll('[data-index]');
+                    items.forEach(function(item, idx) {
+                        if (idx === state.selectedIndex) {
+                            item.style.background = '#e3f2fd';
+                            item.scrollIntoView({ block: 'nearest' });
+                        } else {
+                            item.style.background = 'transparent';
+                        }
+                    });
+                }
+
+                function selectMatch(index) {
+                    var idx = typeof index === 'number' ? index : 0;
+                    if (!state.matches[idx]) {
+                        return;
+                    }
+                    config.onSelect(state.matches[idx]);
+                    clearList();
+                }
+
+                function render(filter) {
+                    clearList();
+                    state.matches = config.getMatches(filter) || [];
+                    if (state.matches.length === 0 || !list) {
+                        return;
+                    }
+
+                    var wrap = document.createElement('div');
+                    wrap.style.cssText = config.listStyle || 'background:#fff; border:1px solid #ddd; max-height:150px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.12); border-radius:6px;';
+
+                    state.matches.forEach(function(recipient, idx) {
+                        var item = document.createElement('div');
+                        item.setAttribute('data-index', String(idx));
+                        item.textContent = String(recipient.name || '') + ' (' + String(recipient.email || '') + ')';
+                        item.style.cssText = config.itemStyle || 'padding:10px 12px; cursor:pointer; border-bottom:1px solid #f0f0f0; font-size:14px; min-height:40px; display:flex; align-items:center;';
+                        item.addEventListener('mousedown', function(e) {
+                            e.preventDefault();
+                            selectMatch(idx);
+                        });
+                        item.addEventListener('mouseenter', function() {
+                            state.selectedIndex = idx;
+                            highlightSelection();
+                        });
+                        item.addEventListener('mouseleave', function() {
+                            if (state.selectedIndex === idx) {
+                                state.selectedIndex = -1;
+                            }
+                            highlightSelection();
+                        });
+                        wrap.appendChild(item);
+                    });
+
+                    list.appendChild(wrap);
+                }
+
+                if (input) {
+                    input.addEventListener('input', function() {
+                        if (typeof config.onInputReset === 'function') {
+                            config.onInputReset();
+                        }
+                        render(input.value || '');
+                    });
+
+                    input.addEventListener('blur', function() {
+                        setTimeout(clearList, 150);
+                    });
+
+                    input.addEventListener('keydown', function(e) {
+                        if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            if (state.matches.length === 0) {
+                                render(input.value || '');
+                            }
+                            if (state.matches.length > 0) {
+                                state.selectedIndex = Math.min(state.selectedIndex + 1, state.matches.length - 1);
+                                highlightSelection();
+                            }
+                        } else if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            if (state.matches.length > 0) {
+                                state.selectedIndex = Math.max(state.selectedIndex - 1, -1);
+                                highlightSelection();
+                            }
+                        } else if (e.key === 'Enter') {
+                            if (state.matches.length > 0) {
+                                e.preventDefault();
+                                selectMatch(state.selectedIndex >= 0 ? state.selectedIndex : 0);
+                            } else if (typeof config.onEnterWithoutMatches === 'function') {
+                                config.onEnterWithoutMatches(e);
+                            }
+                        } else if (e.key === 'Escape') {
+                            clearList();
+                        } else if (e.key === 'Tab' && typeof config.onTab === 'function') {
+                            config.onTab(e);
+                        }
+                    });
+                }
+
+                return {
+                    clear: clearList
+                };
+            }
+
+            document.addEventListener('DOMContentLoaded', function() {
+                var moneySendBtn = document.getElementById('money-send-btn');
+                var moneySendModal = document.getElementById('money-send-modal');
+                var moneySendRecipientInput = document.getElementById('money-send-recipient');
+                var moneySendRecipientList = document.getElementById('money-send-recipient-list');
+                var moneySendRecipientClear = document.getElementById('money-send-recipient-clear');
+                var moneySendAmount = document.getElementById('money-send-amount');
+                var moneySendAmountClear = document.getElementById('money-send-amount-clear');
+                var moneySendTeamEventWrap = document.getElementById('money-send-team-event-wrap');
+                var moneySendTeamEventSelect = document.getElementById('money-send-team-event');
+                var moneySendPassword = document.getElementById('money-send-password');
+                var moneySendPasswordToggle = document.getElementById('money-send-password-toggle');
+                var moneySendPasswordClear = document.getElementById('money-send-password-clear');
+                var moneySendCancel = document.getElementById('money-send-cancel');
+                var moneySendConfirm = document.getElementById('money-send-confirm');
+                var moneySendCloseBtn = document.getElementById('money-send-close-btn');
+                var moneySendError = document.getElementById('money-send-error');
+                var isSimpleOrderMode = <?= $simpleOrderMode ? 'true' : 'false' ?>;
+                var modalMouseDownTarget = null;
+                var selectedRecipientId = '';
+                var selectedRecipientTeamEventId = '';
+                var moneyRecipientTeamEventRequestId = 0;
+                var spieltagCreateModal = document.getElementById('spieltag-create-modal');
+                var spieltagCreateCloseBtn = document.getElementById('spieltag-create-close-btn');
+                var spieltagCreateCancelBtn = document.getElementById('spieltag-create-cancel');
+                var spieltagCreateConfirmBtn = document.getElementById('spieltag-create-confirm');
+                var spieltagNewNameInput = document.getElementById('spieltag-new-name');
+                var spieltagMembersRows = document.getElementById('spieltag-members-rows');
+                var spieltagCreateError = document.getElementById('spieltag-create-error');
+                var spieltagLastRealValue = '';
+
+                function normalizeMoneyAmount(rawValue) {
+                    var value = String(rawValue || '').trim().replace(/\s+/g, '');
+                    if (value === '') return '';
+
+                    var hasComma = value.indexOf(',') !== -1;
+                    var hasDot = value.indexOf('.') !== -1;
+
+                    if (hasComma && hasDot) {
+                        if (value.lastIndexOf(',') > value.lastIndexOf('.')) {
+                            value = value.replace(/\./g, '').replace(',', '.');
+                        } else {
+                            value = value.replace(/,/g, '');
+                        }
+                    } else if (hasComma) {
+                        value = value.replace(',', '.');
+                    }
+
+                    return value;
+                }
+
+                function formatMoneySendCurrency(amount) {
+                    return Number(amount || 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+                }
+
+                function resetMoneySendTeamEvents() {
+                    selectedRecipientTeamEventId = '';
+                    if (moneySendTeamEventSelect) {
+                        moneySendTeamEventSelect.innerHTML = '';
+                    }
+                    if (moneySendTeamEventWrap) {
+                        moneySendTeamEventWrap.style.display = 'none';
+                    }
+                }
+
+                async function loadMoneyRecipientTeamEvents(recipientId) {
+                    resetMoneySendTeamEvents();
+                    if (!recipientId) {
+                        return;
+                    }
+
+                    var requestId = ++moneyRecipientTeamEventRequestId;
+                    try {
+                        var resp = await fetch('<?= $this->url('user/money-recipient-team-events') ?>?receiver_user_id=' + encodeURIComponent(recipientId), {
+                            credentials: 'same-origin',
+                            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                        });
+                        var data = await resp.json();
+                        if (requestId !== moneyRecipientTeamEventRequestId) {
+                            return;
+                        }
+                        if (!resp.ok || !data || !data.success || !data.is_team) {
+                            return;
+                        }
+                        if (!Array.isArray(data.team_events) || data.team_events.length === 0) {
+                            if (moneySendError) moneySendError.textContent = '<?= $this->t('Für dieses Team-Konto sind keine Spieltage vorhanden.') ?>';
+                            return;
+                        }
+
+                        data.team_events.forEach(function(teamEvent, idx) {
+                            if (!moneySendTeamEventSelect) return;
+                            var option = document.createElement('option');
+                            option.value = String(teamEvent.id || '');
+                            option.textContent = String(teamEvent.label || '') + ' (' + formatMoneySendCurrency(teamEvent.balance || 0) + ')';
+                            if (idx === 0) {
+                                option.selected = true;
+                                selectedRecipientTeamEventId = option.value;
+                            }
+                            moneySendTeamEventSelect.appendChild(option);
+                        });
+                        if (moneySendTeamEventWrap) {
+                            moneySendTeamEventWrap.style.display = '';
+                        }
+                    } catch (e) {
+                        if (requestId !== moneyRecipientTeamEventRequestId) {
+                            return;
+                        }
+                        if (moneySendError) moneySendError.textContent = '<?= $this->t('Spieltage konnten nicht geladen werden.') ?>';
+                    }
+                }
+
+                function selectMoneyRecipient(recipient) {
+                    if (!recipient) return;
+                    var displayText = recipient.name + ' (' + recipient.email + ')';
+                    if (moneySendRecipientInput) moneySendRecipientInput.value = displayText;
+                    selectedRecipientId = String(recipient.uid || '');
+                    if (moneySendRecipientList) moneySendRecipientList.innerHTML = '';
+                    loadMoneyRecipientTeamEvents(selectedRecipientId);
+                }
+
+                function closeMoneySendModal() {
+                    if (!moneySendModal) return;
+                    moneySendModal.style.display = 'none';
+                    if (moneySendError) moneySendError.textContent = '';
+                    if (moneySendAmount) moneySendAmount.value = '';
+                    if (moneySendPassword) moneySendPassword.value = '';
+                    if (moneySendRecipientInput) moneySendRecipientInput.value = '';
+                    selectedRecipientId = '';
+                    resetMoneySendTeamEvents();
+                    if (moneySendRecipientList) moneySendRecipientList.innerHTML = '';
+                }
+
+                var moneyRecipientAutocomplete = setupBookingRecipientAutocomplete({
+                    input: moneySendRecipientInput,
+                    list: moneySendRecipientList,
+                    getMatches: function(filter) {
+                        return getBookingRecipientMatches(filter);
+                    },
+                    onInputReset: function() {
+                        selectedRecipientId = '';
+                        resetMoneySendTeamEvents();
+                    },
+                    onSelect: selectMoneyRecipient,
+                    onEnterWithoutMatches: function(e) {
+                        e.preventDefault();
+                        if (moneySendAmount) {
+                            moneySendAmount.focus();
+                        }
+                    },
+                    onTab: function(e) {
+                        if (!e.shiftKey && moneySendAmount) {
+                            e.preventDefault();
+                            moneySendAmount.focus();
+                        }
+                    },
+                    listStyle: 'position:absolute; background:#fff; border:1px solid #ddd; width:100%; max-height:150px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.12); border-radius:6px; z-index:10;',
+                    itemStyle: 'padding:10px 12px; cursor:pointer; border-bottom:1px solid #f0f0f0; font-size:14px; min-height:40px; display:flex; align-items:center; touch-action:manipulation;'
+                });
+
+                function openMoneySendModal() {
+                    if (!moneySendModal) return;
+                    if (moneySendError) moneySendError.textContent = '';
+                    if (moneySendRecipientInput) {
+                        moneySendRecipientInput.value = '';
+                        setTimeout(function() { moneySendRecipientInput.focus(); }, 100);
+                    }
+                    selectedRecipientId = '';
+                    resetMoneySendTeamEvents();
+                    moneyRecipientAutocomplete.clear();
+                    if (moneySendAmount) moneySendAmount.value = '';
+                    if (moneySendPassword) moneySendPassword.value = '';
+                    moneySendModal.style.display = 'flex';
+                }
+
+                if (moneySendRecipientClear) {
+                    moneySendRecipientClear.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        if (moneySendRecipientInput) {
+                            moneySendRecipientInput.value = '';
+                            moneySendRecipientInput.focus();
+                        }
+                        selectedRecipientId = '';
+                        resetMoneySendTeamEvents();
+                        moneyRecipientAutocomplete.clear();
+                    });
+                }
+
+                if (moneySendTeamEventSelect) {
+                    moneySendTeamEventSelect.addEventListener('change', function() {
+                        selectedRecipientTeamEventId = moneySendTeamEventSelect.value || '';
+                    });
+                }
+
+                if (moneySendAmount) {
+                    moneySendAmount.addEventListener('keydown', function(e) {
+                        if (e.key === 'Tab' && e.shiftKey) {
+                            e.preventDefault();
+                            if (moneySendRecipientInput) {
+                                moneySendRecipientInput.focus();
+                            }
+                        } else if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (moneySendConfirm) {
+                                moneySendConfirm.click();
+                            }
+                        }
+                    });
+                }
+
+                if (moneySendAmountClear) {
+                    moneySendAmountClear.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        if (moneySendAmount) {
+                            moneySendAmount.value = '';
+                            moneySendAmount.focus();
+                        }
+                    });
+                }
+
+                if (moneySendPasswordClear) {
+                    moneySendPasswordClear.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        if (moneySendPassword) {
+                            moneySendPassword.value = '';
+                            moneySendPassword.focus();
+                        }
+                    });
+                }
+
+
+                if (moneySendPasswordToggle) {
+                    moneySendPasswordToggle.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        if (!moneySendPassword) return;
+                        var isPassword = moneySendPassword.getAttribute('type') === 'password';
+                        moneySendPassword.setAttribute('type', isPassword ? 'text' : 'password');
+                        moneySendPasswordToggle.style.color = isPassword ? '#1769aa' : '#666';
+                        moneySendPassword.focus();
+                    });
+                }
+
+                if (moneySendBtn) {
+                    moneySendBtn.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        openMoneySendModal();
+                    });
+                }
+                
+                if (moneySendCloseBtn) {
+                    moneySendCloseBtn.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        closeMoneySendModal();
+                    });
+                }
+                
+                if (moneySendCancel) {
+                    moneySendCancel.addEventListener('click', function() {
+                        closeMoneySendModal();
+                    });
+                }
+                
+                if (moneySendModal) {
+                    moneySendModal.addEventListener('mousedown', function(e) {
+                        modalMouseDownTarget = e.target;
+                    });
+                    
+                    moneySendModal.addEventListener('click', function(e) {
+                        if (e.target === moneySendModal && modalMouseDownTarget === moneySendModal) {
+                            closeMoneySendModal();
+                        }
+                        modalMouseDownTarget = null;
+                    });
+                }
+                
+                if (moneySendConfirm) {
+                    moneySendConfirm.addEventListener('click', function() {
+                        if (!moneySendAmount) return;
+                        var receiverUserId = selectedRecipientId || '';
+                        var amountRaw = normalizeMoneyAmount(moneySendAmount.value || '');
+                        var amount = Number(amountRaw);
+                        var passwordRaw = moneySendPassword ? (moneySendPassword.value || '') : '';
+
+                        if (!receiverUserId) {
+                            if (moneySendError) moneySendError.textContent = '<?= $this->t('Bitte Empfänger auswählen.') ?>';
+                            return;
+                        }
+                        if (moneySendTeamEventWrap && moneySendTeamEventWrap.style.display !== 'none' && !selectedRecipientTeamEventId) {
+                            if (moneySendError) moneySendError.textContent = '<?= $this->t('Bitte Spieltag auswählen.') ?>';
+                            return;
+                        }
+                        if (!amount || amount <= 0) {
+                            if (moneySendError) moneySendError.textContent = '<?= $this->t('Betrag muss positiv sein.') ?>';
+                            return;
+                        }
+                        if (isSimpleOrderMode && !passwordRaw) {
+                            if (moneySendError) moneySendError.textContent = '<?= $this->t('Bitte Passwort eingeben.') ?>';
+                            if (moneySendPassword) moneySendPassword.focus();
+                            return;
+                        }
+
+                        moneySendConfirm.disabled = true;
+                        if (moneySendError) moneySendError.textContent = '';
+                        fetch('<?= $simpleOrderMode ? $this->url('user/simple-order/send-money') : $this->url('user/send-money') ?>', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded',
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            credentials: 'same-origin',
+                            body: 'receiver_user_id=' + encodeURIComponent(receiverUserId)
+                                + '&amount=' + encodeURIComponent(amountRaw)
+                                + '&team_event_id=' + encodeURIComponent(selectedRecipientTeamEventId || '')
+                                + (isSimpleOrderMode ? ('&password=' + encodeURIComponent(passwordRaw)) : '')
+                        })
+                        .then(function(resp) {
+                            return resp.text().then(function(text) {
+                                var data = null;
+                                try { data = JSON.parse(text); } catch (e) {}
+                                return { ok: resp.ok, data: data };
+                            });
+                        })
+                        .then(function(result) {
+                            moneySendConfirm.disabled = false;
+                            if (!result.ok || !result.data || !result.data.success) {
+                                var msg = (result.data && result.data.error) ? result.data.error : '<?= $this->t('Senden fehlgeschlagen.') ?>';
+                                if (moneySendError) moneySendError.textContent = msg;
+                                return;
+                            }
+                            closeMoneySendModal();
+                            window.location.reload();
+                        })
+                        .catch(function() {
+                            moneySendConfirm.disabled = false;
+                            if (moneySendError) moneySendError.textContent = '<?= $this->t('Netzwerkfehler beim Senden.') ?>';
+                        });
+                    });
+                }
+            });
+            </script>
+        <?php endif; ?>
+        <div style="margin-left:16px; margin-right:16px; font-size: clamp(0.3em, 3vw, 1.0em); width: 100%-32px; min-height: 24px; display: flex; align-items: center; justify-content: center;">
+            <!-- Category selection UI and logic moved here -->
+            <?php if (isset($this->drinkCategories) && count($this->drinkCategories) > 0): ?>
+                <div id="drink-category-selection" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; width: 100%; justify-content: center;">
+                    <button type="button" class="category-btn" data-category="all" style="padding: 6px 18px; border-radius: 6px; border: 1px solid #2196f3; background: #e3f0fa; color: #2196f3; font-weight: bold; cursor: pointer;">All</button>
+                    <button type="button" class="category-btn" data-category="favourites" style="padding: 6px 18px; border-radius: 6px; border: 1px solid #2196f3; background: #fff; color: #2196f3; font-weight: bold; cursor: pointer;">Meine Favoriten</button>
+                    <?php foreach ($this->drinkCategories as $cat): ?>
+                        <?php if ((int)$cat['id'] === 0) continue; // skip hidden category ?>
+                        <button type="button" class="category-btn" data-category="<?= (int)$cat['id'] ?>" style="padding: 6px 18px; border-radius: 6px; border: 1px solid #2196f3; background: #fff; color: #2196f3; font-weight: bold; cursor: pointer;">
+                            <?= $this->escapeHtml($cat['name']) ?>
+                        </button>
+                    <?php endforeach; ?>
+                </div>
+                <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    var catBtns = document.querySelectorAll('.category-btn');
+                    var wrapper = document.querySelector('.drink-tiles-wrapper');
+                    if (!wrapper) return;
+                    var tiles = Array.prototype.slice.call(wrapper.querySelectorAll('.drink-tile'));
+                    // Store original order
+                    tiles.forEach(function(tile, idx) {
+                        tile.setAttribute('data-original-index', idx);
+                    });
+                    catBtns.forEach(function(btn) {
+                        btn.addEventListener('click', function() {
+                            catBtns.forEach(function(b) { b.style.background = '#fff'; });
+                            this.style.background = '#e3f0fa';
+                            var cat = this.getAttribute('data-category');
+                            var allTiles = Array.prototype.slice.call(wrapper.querySelectorAll('.drink-tile'));
+                            if (cat === 'favourites') {
+                                // Show only favourites, sort by current order count, then favourite-count, then name
+                                var favTiles = allTiles.filter(function(tile) {
+                                    return parseInt(tile.getAttribute('favourite-count')) > 0;
+                                });
+                                favTiles.sort(function(a, b) {
+                                    var inputA = a.querySelector('input[type="hidden"]');
+                                    var inputB = b.querySelector('input[type="hidden"]');
+                                    var countA = parseInt(inputA.value) || 0;
+                                    var countB = parseInt(inputB.value) || 0;
+                                    if (countA !== countB) return countB - countA;
+                                    var fa = parseInt(a.getAttribute('favourite-count')) || 0;
+                                    var fb = parseInt(b.getAttribute('favourite-count')) || 0;
+                                    if (fa !== fb) return fb - fa;
+                                    var na = a.querySelector('.drink-name').textContent.trim().toLowerCase();
+                                    var nb = b.querySelector('.drink-name').textContent.trim().toLowerCase();
+                                    return na.localeCompare(nb);
+                                });
+                                // Hide all, then show and append sorted favs
+                                allTiles.forEach(function(tile) { tile.style.display = 'none'; });
+                                favTiles.forEach(function(tile) {
+                                    tile.style.display = '';
+                                    wrapper.appendChild(tile);
+                                });
+                            } else {
+                                // Show all or by category, restore original order
+                                allTiles.sort(function(a, b) {
+                                    return (parseInt(a.getAttribute('data-original-index')) || 0) - (parseInt(b.getAttribute('data-original-index')) || 0);
+                                });
+                                allTiles.forEach(function(tile) {
+                                    if (cat === 'all' || tile.getAttribute('data-category') === cat) {
+                                        tile.style.display = '';
+                                    } else {
+                                        tile.style.display = 'none';
+                                    }
+                                    wrapper.appendChild(tile);
+                                });
+                                // Sort by order count after switching group
+                                sortDrinkTiles();
+                            }
+                        });
+                    });
+                    // Optionally, trigger click on 'All' to initialize
+                    var allBtn = document.querySelector('.category-btn[data-category="all"]');
+                    if (allBtn) allBtn.click();
+                });
+                </script>
+            <?php endif; ?>
+        </div>
+    </div>
+<?php endif; ?>
+
+<?php
+// Calculate current balance from bottom up (oldest to newest)
+$currentBalance = 0;
+if (!empty($this->drinkHistory) && is_array($this->drinkHistory)) {
+    foreach ($this->drinkHistory as $entry) {
+        if ($entry['type'] === 'deposit') {
+            $currentBalance += $entry['amount'];
+        } elseif ($entry['type'] === 'order' && empty($entry['deleted'])) {
+            $currentBalance -= $entry['total'];
+        }
+    }
+}
+?>
+
+<style type="text/css">
+html, body {
+    font-family: Verdana, sans-serif !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+button, .category-btn, input, select, textarea {
+    font-family: Verdana, sans-serif !important;
+}
+#clear-drink-selection svg, .order-cancel-btn svg { transition: transform .15s ease, color .15s ease; }
+.order-cancel-btn:hover svg { transform: scale(1.15); }
+#clear-drink-selection:hover svg { transform: scale(1.12); }
+
+/* Unicode trash icon (emoji) variants */
+.icon-trash { display:inline-block; line-height:1; font-weight:normal; font-style:normal; font-family: 'Apple Color Emoji','Segoe UI Emoji','Segoe UI Symbol',sans-serif; }
+.icon-trash--toolbar { font-size: 22px; /* visually ~26px svg */ }
+.icon-trash--row { font-size: 15px; /* fits 18x18 button */ }
+.order-cancel-btn .icon-trash { pointer-events:none; }
+.order-cancel-btn:hover .icon-trash, #clear-drink-selection:hover .icon-trash { transform: scale(1.05); transition: transform .15s ease; }
+button#clear-drink-selection[disabled] .icon-trash { transform:none !important; }
+button#clear-drink-selection[disabled]:hover .icon-trash { transform:none !important; }
+
+/* Fallback / Revert Notes:
+     If the emoji rendering looks inconsistent across platforms, replace the span.icon-trash
+     with the previous SVG (see git history) or wrap this in a feature toggle.
+     Example conditional (pseudo): if (!window.navigator.userAgent.includes('Win')) use emoji else use SVG.
+     To revert quickly for both buttons:
+         1. Search for 'icon-trash--toolbar' and 'icon-trash--row'
+         2. Replace the <span> with the earlier SVG block.
+     Optional CSS monochrome enforcement attempt (often ignored by color emoji fonts):
+         .icon-trash { filter: grayscale(1) contrast(1.1); }
+*/
+#clear-drink-selection svg, .order-cancel-btn svg { transition: transform .15s ease, color .15s ease; }
+.order-cancel-btn:hover svg { transform: scale(1.15); }
+#clear-drink-selection:hover svg { transform: scale(1.12); }
+#current-balance-display.negative-balance {
+    color: #d32f2f !important;
+}
+#current-balance-display.negative-balance #current-balance-value {
+    color: #d32f2f !important;
+}
+.drink-tile {
+    width: 140px;
+    height: 190px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    background: #fff;
+    padding: 4px;
+    position: relative;
+    overflow: visible;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    margin: 8px !important; /* Uniform margin for spacing */
+}
+.drink-info {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    width: 100%;
+}
+.drink-info .drink-name {
+    font-weight: bold;
+    margin-bottom: 4px;
+    text-align: center;
+}
+.drink-info .drink-price {
+    color: #666;
+    text-align: center;
+    margin-bottom: 4px;
+    font-size: 1.1em;
+    font-weight: bold;
+}
+.drink-tile .drink-controls {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    right: 4px;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 2;
+    pointer-events: none;
+    width: auto;
+}
+.drink-tile .drink-controls button {
+    pointer-events: auto;
+    width: 32px;
+    height: 32px;
+    font-size: 22px;
+}
+.drink-tile .drink-controls button.drink-minus {
+    background: #eee;
+    border: none;
+    border-radius: 4px;
+    width: 32px;
+    height: 32px;
+    font-size: 22px;
+    font-family: system-ui, Arial, sans-serif;
+    font-weight: bold;
+    color: #2196f3;
+    cursor: pointer;
+    margin-right: 0;
+    position: relative;
+    z-index: 2;
+    visibility: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    padding: 0;
+}
+.drink-tile .drink-count-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 32px;
+    height: 32px;
+    background: #2196f3;
+    color: #fff;
+    border-radius: 10px;
+    font-size: 19.8px;
+    font-weight: bold;
+    text-align: center;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    transition: background 0.2s, color 0.2s;
+    opacity: 0.9;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+    min-height: 0;
+}
+.drink-image-frame {
+    width: 128px;
+    height: 128px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    margin: 0 auto;
+    padding: 0;
+}
+.drink-tile img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    margin: 0;
+    background: transparent;
+    border-radius: 4px;
+    margin-top: 0;
+    z-index: 1;
+}
+/* Responsive top bar for drink ordering */
+@media (max-width: 900px) {
+    .drink-order-top-bar {
+        flex-wrap: wrap;
+        gap: 0 !important;
+    }
+    .drink-order-top-bar > * {
+        flex: 1 1 100%;
+        justify-content: center !important;
+        margin-bottom: 4px !important;
+        margin-top: 0 !important;
+    }
+    .drink-order-top-bar h2 {
+        text-align: center;
+        margin-bottom: 0;
+        margin-top: 0;
+    }
+    .drink-order-top-bar .order-actions {
+        flex: 0 0 100%;
+        display: flex;
+        flex-direction: row;
+        justify-content: center !important;
+        align-items: center;
+        gap: 0 8px;
+        margin-bottom: 4px !important;
+    }
+    .drink-order-top-bar button,
+    .drink-order-top-bar #clear-drink-selection {
+        margin: 0 !important;
+    }
+}
+.drink-order-top-bar > div:first-child,
+.drink-order-top-bar .order-actions {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
+    gap: 8px;
+    height: 100%;
+}
+.drink-order-top-bar > div:first-child > *,
+.drink-order-top-bar .order-actions > * {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.drink-order-top-bar > div:first-child > button,
+.drink-order-top-bar .order-actions > button {
+    flex: 0 0 auto;
+}
+.drink-order-top-bar > div:first-child > #current-balance-display,
+.drink-order-top-bar .order-actions > .default-button:not([type="button"]) {
+    flex: 1 1 0;
+}
+.drink-tiles-wrapper {
+    justify-content: center;
+    align-items: flex-start;
+    display: flex;
+    flex-wrap: wrap;
+    border: none !important;
+}
+@media (max-width: 700px) {
+    .drink-tiles-wrapper {
+        justify-content: center;
+    }
+    .drink-tile {
+        width: calc(50% - 16px) !important;
+        flex: 0 0 calc(50% - 16px) !important;
+        height: auto;
+        margin: 8px !important;
+        box-sizing: border-box;
+    }
+    #drink-category-selection {
+        justify-content: center !important;
+    }
+}
+@media (max-width: 500px) {
+    .drink-tiles-wrapper {
+        justify-content: center !important;
+    }
+    .drink-tile {
+        width: calc(50% - 16px) !important;
+        flex: 0 0 calc(50% - 16px) !important;
+        margin: 8px !important;
+        box-sizing: border-box;
+    }
+}
+.default-table th {
+    padding: 8px 16px 8px 0;
+    height: 32px;
+    font-weight: bold;
+    font-size: 1em;
+}
+.default-table td {
+    padding-right: 16px;
+    padding-bottom: 4px;
+    height: 20px;
+}
+.order-actions {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+}
+.drink-order-top-bar .order-actions > .default-button[type="submit"] {
+    flex: 1 1 0;
+    min-width: 0;
+}
+.order-actions > .default-button:not([type="submit"]) {
+    flex: 0 0 auto;
+}
+#logout-timer {
+    cursor: pointer;
+}
+#drink-category-selection .category-btn {
+    font-size: 1.18em;
+}
+#drink-order-total {
+    font-weight: bold;
+    color: #fff;
+    background: transparent !important;
+    border-radius: 3px !important;
+    font-size: 1em;
+    margin-left: 8px;
+    min-width: 60px;
+    display: inline-block;
+    text-align: center;
+    transition: background 0.2s, color 0.2s;
+}
+.stc-main-button {
+    font-family: inherit !important;
+    font-size: 1em;
+    font-weight: bold;
+    color: #fff;
+    background: #2196f3;
+    border: none;
+    border-radius: 8px;
+    letter-spacing: 0.5px;
+    box-shadow: 0 1px 4px rgba(33,150,243,0.08);
+    transition: background 0.18s, color 0.18s;
+    cursor: pointer;
+    text-align: center;
+    outline: none;
+    display: inline-block;
+}
+.stc-main-button:hover, .stc-main-button:focus {
+    background: #1769aa;
+    color: #fff;
+}
+button.default-button[disabled], button.default-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed !important;
+    background: #e3f0fa !important;
+    color: #b0b0b0 !important;
+    border-color: #b0b0b0 !important;
+}
+button.stc-main-button[disabled], button.stc-main-button:disabled {
+    background: #90caf9 !important;
+    color: #fff !important;
+    border-color: #2196f3 !important;
+    opacity: 0.6;
+}
+
+/* --- Guthaben aufladen ribbon overlay --- */
+.balance-recharge-ribbon-container {
+    display: none;
+    position: fixed;
+    top: 60%;
+    left: 50%;
+    width: 420px;
+    max-width: 90vw;
+    height: 80px;
+    z-index: 3001;
+    transform: translate(-50%, -50%) rotate(-24deg);
+    pointer-events: none;
+}
+.balance-recharge-ribbon {
+    width: 100%;
+    height: 100%;
+    background: rgba(211,47,47,0.40);
+    border-radius: 22px;
+    box-shadow: 0 2px 24px rgba(211,47,47,0.18);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border: 2.5px solid #fff;
+}
+.balance-recharge-ribbon-label {
+    display: inline-block;
+    font-size: 2em;
+    font-weight: 900;
+    color: rgba(255,255,255,0.90);
+    letter-spacing: 0.08em;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.18);
+    font-family: 'Arial Black', Arial, sans-serif;
+    pointer-events: none;
+    cursor: default;
+    user-select: none;
+    padding: 0 32px;
+    text-transform: uppercase;
+}
+.balance-recharge-ribbon-subtext {
+    display: block;
+    font-size: 1.1em;
+    color: rgba(255,255,255,0.9);
+    font-weight: 400;
+    margin-top: 2px;
+    pointer-events: none;
+    user-select: none;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.13);
+}
+</style>
+
+<?php if (isset($drinks) && $drinksEnabled): ?>
+    <style>
+    @media (max-width: 900px) {
+        .order-top-bar {
+            flex-direction: column;
+            align-items: stretch !important;
+            gap: 10px 0 !important;
+        }
+        .order-top-bar > * {
+            width: 100% !important;
+            min-width: 0 !important;
+            justify-content: center !important;
+            margin-right: 0 !important;
+        }
+        .order-top-bar h2 {
+            text-align: center;
+        }
+        #current-balance-display {
+            justify-content: center;
+        }
+        .order-top-bar button.default-button {
+            justify-content: center;
+        }
+    }
+    </style>
+    <form method="post" id="drink-order-form" onsubmit="return false;">
+        <div style="height: 16px;"></div>
+        <div class="drink-tiles-wrapper">
+            <?php
+            // Sort drinks by total ordered count descending for the order form
+            if (isset($drinks) && isset($this->drinkHistory) && is_array($drinks) && is_array($this->drinkHistory)) {
+                $drinkOrderCounts = array();
+                foreach ($this->drinkHistory as $entry) {
+                    if ($entry['type'] === 'order' && isset($entry['drink_id']) && empty($entry['deleted'])) { // skip deleted orders
+                        $drinkId = $entry['drink_id'];
+                        $qty = isset($entry['quantity']) ? (int)$entry['quantity'] : 1;
+                        if (!isset($drinkOrderCounts[$drinkId])) $drinkOrderCounts[$drinkId] = 0;
+                        $drinkOrderCounts[$drinkId] += $qty;
+                    }
+                }
+                usort($drinks, function($a, $b) use ($drinkOrderCounts) {
+                    $countA = isset($drinkOrderCounts[$a['id']]) ? $drinkOrderCounts[$a['id']] : 0;
+                    $countB = isset($drinkOrderCounts[$b['id']]) ? $drinkOrderCounts[$b['id']] : 0;
+                    // Descending order
+                    if ($countA === $countB) return strcasecmp($a['name'], $b['name']); // fallback: name
+                    return $countB - $countA;
+                });
+            }
+            foreach ($drinks as $drink): ?>
+                <?php if ((int)($drink['category'] ?? 0) === 0) continue; // skip hidden drinks ?>
+                <div class="drink-tile" data-category="<?= (int)($drink['category'] ?? 0) ?>" favourite-count="<?= (int)($drink['user_total_count'] ?? 0) ?>" data-drink-id="<?= (int)$drink['id'] ?>" style="position:relative; cursor:pointer;">
+                    <?php
+                    $imgFile = isset($drink['image']) && $drink['image'] ? $drink['image'] : 'ep3-bs-pos-de.png';
+                    $imgPath = $this->basePath('/imgs/branding/' . $imgFile);
+                    ?>
+                    <div class="drink-controls">
+                        <button type="button" class="drink-minus" data-drink-id="<?= (int)$drink['id'] ?>" style="background: #eee; border: none; border-radius: 4px; width: 32px; height: 32px; font-size: 19.8px; font-weight: bold; color: #2196f3; cursor: pointer; margin-right: 0; position:relative; z-index:2; visibility:hidden;">–</button>
+                    </div>
+                    <span class="drink-count-badge" id="badge-<?= (int)$drink['id'] ?>" style="position:absolute; top:4px; right:4px; z-index:2; visibility:hidden;">0</span>
+                    <div class="drink-image-frame">
+                        <img src="<?= $imgPath ?>" alt="<?= $this->escapeHtmlAttr($drink['name']) ?>" />
+                    </div>
+                    <div class="drink-info">
+                        <div class="drink-name">
+                            <?= $this->escapeHtml($drink['name']) ?>
+                        </div>
+                        <div class="drink-price">
+                            <?= $this->priceFormat($drink['price'] * 100.0, null, null, null, null, null, true, false, false) ?>
+                        </div>
+                    </div>
+                    <input type="hidden" name="drink_counts[<?= (int)$drink['id'] ?>]" id="input-<?= (int)$drink['id'] ?>" value="0" data-price="<?= htmlspecialchars($drink['price'], ENT_QUOTES) ?>" />
+                </div>
+            <?php endforeach; ?>
+        </div>
+        <div style="height: 24px;"></div>
+    </form>
+    <div id="drink-order-feedback" style="display:none; margin: 12px 0; text-align:center; font-weight:bold;"></div>
+    <script>
+    // --- AJAX drink order submission ---
+    function getDrinkOrderData() {
+        var data = {};
+        var inputs = document.querySelectorAll('input[id^="input-"]');
+        for (var i = 0; i < inputs.length; i++) {
+            var input = inputs[i];
+            var count = parseInt(input.value, 10) || 0;
+            if (count > 0) {
+                var id = input.id.replace('input-', '');
+                data['drink_counts[' + id + ']'] = count;
+            }
+        }
+        return data;
+    }
+    function showOrderFeedback(msg, isError) {
+        var box = document.getElementById('drink-order-feedback');
+        box.textContent = msg;
+        box.style.display = '';
+        box.style.color = isError ? '#d32f2f' : '#2196f3';
+        setTimeout(function() { box.style.display = 'none'; }, 4000);
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+        var form = document.getElementById('drink-order-form');
+        var submitBtn = document.querySelector('button[type="submit"][form="drink-order-form"]');
+        var spieltagCreateModal = document.getElementById('spieltag-create-modal');
+        var spieltagCreateCloseBtn = document.getElementById('spieltag-create-close-btn');
+        var spieltagCreateCancelBtn = document.getElementById('spieltag-create-cancel');
+        var spieltagCreateConfirmBtn = document.getElementById('spieltag-create-confirm');
+        var spieltagNewNameInput = document.getElementById('spieltag-new-name');
+        var spieltagIsMedenspielCheckbox = document.getElementById('spieltag-is-medenspiel');
+        var spieltagMembersRows = document.getElementById('spieltag-members-rows');
+        var spieltagCreateError = document.getElementById('spieltag-create-error');
+        if (form && submitBtn) {
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                if (submitBtn.disabled) return;
+                // In simple order mode for team accounts: require a valid Spieltag BEFORE showing order overview
+                if (window.SIMPLE_ORDER_MODE && spieltagSelect) {
+                    var currentSpieltag = spieltagSelect.value || '';
+                    if (!currentSpieltag || currentSpieltag === '__new__') {
+                        if (typeof openSpieltagCreateModal === 'function') {
+                            openSpieltagCreateModal();
+                        }
+                        return;
+                    }
+                }
+                if (typeof confirmDrinkOrder === 'function' && !confirmDrinkOrder()) return;
+                var data = getDrinkOrderData();
+                var hasData = false;
+                for (var k in data) { if (data.hasOwnProperty(k)) { hasData = true; break; } }
+                if (!hasData) {
+                    showOrderFeedback('<?= $this->t('Bitte mindestens ein Getränk auswählen.') ?>', true);
+                    return;
+                }
+                submitBtn.disabled = true;
+                submitBtn.className += ' loading';
+                var url = window.SIMPLE_ORDER_MODE ? 'simple-order/submit-order' : 'bookings/submit-order';
+                var params = [];
+                for (var key in data) {
+                    if (data.hasOwnProperty(key)) {
+                        params.push(encodeURIComponent(key) + '=' + encodeURIComponent(data[key]));
+                    }
+                }
+                // Add keep_logged_in parameter
+                if (window.SIMPLE_ORDER_MODE) {
+                    var keepLoggedInCheckbox = document.getElementById('keep-logged-in-header');
+                    if (keepLoggedInCheckbox) {
+                        params.push('keep_logged_in=' + (keepLoggedInCheckbox.checked ? '1' : '0'));
+                    }
+                }
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', url, true);
+                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState === 4) {
+                        try {
+                            var res = JSON.parse(xhr.responseText);
+                        } catch (e) { res = null; }
+                        if (res && res.success) {
+                            <?php if (!$simpleOrderMode): ?>
+                            alert('<?= $this->t('Bestellung erfolgreich!') ?>');
+                            <?php endif; ?>
+                            if (window.SIMPLE_ORDER_MODE) {
+                                window.location.replace('<?= $this->url("user/simple-login") ?>');
+                            } else {
+                                window.location.reload();
+                            }
+                        } else {
+                            var msg = res && res.error ? res.error : '<?= $this->t('Bestellung fehlgeschlagen.') ?>';
+                            showOrderFeedback(msg, true);
+                            submitBtn.disabled = false;
+                            submitBtn.className = submitBtn.className.replace(/\bloading\b/, '');
+                        }
+                    }
+                };
+                xhr.onerror = function() {
+                    showOrderFeedback('<?= $this->t('Bestellung fehlgeschlagen.') ?>', true);
+                    submitBtn.disabled = false;
+                    submitBtn.className = submitBtn.className.replace(/\bloading\b/, '');
+                };
+                xhr.send(params.join('&'));
+            });
+        }
+        // Drink order tile logic
+        var clearBtn = document.getElementById('clear-drink-selection');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', function() { clearSelectionAndLogout(false); });
+        }
+        var spieltagSelect = document.getElementById('spieltag-select');
+        if (spieltagSelect) {
+            function getDefaultSpieltagName() {
+                var today = new Date();
+                var year = today.getFullYear();
+                var month = String(today.getMonth() + 1).padStart(2, '0');
+                var day = String(today.getDate()).padStart(2, '0');
+                return 'Spieltag ' + year + '-' + month + '-' + day;
+            }
+
+            function getSpieltagSelectedMemberIds() {
+                if (!spieltagMembersRows) return [];
+                var rows = spieltagMembersRows.querySelectorAll('.spieltag-member-row');
+                var result = [];
+                rows.forEach(function(row) {
+                    var uid = parseInt(row.getAttribute('data-user-id') || '0', 10);
+                    if (uid > 0 && result.indexOf(uid) === -1) {
+                        result.push(uid);
+                    }
+                });
+                return result;
+            }
+
+            function ensureTrailingEmptySpieltagMemberRow() {
+                if (!spieltagMembersRows) return;
+                var rows = spieltagMembersRows.querySelectorAll('.spieltag-member-row');
+                var hasEmpty = false;
+                rows.forEach(function(row) {
+                    var uid = parseInt(row.getAttribute('data-user-id') || '0', 10);
+                    if (!uid) hasEmpty = true;
+                });
+                if (!hasEmpty) {
+                    createSpieltagMemberRow(null);
+                }
+            }
+
+            function createSpieltagMemberRow(initialRecipient) {
+                if (!spieltagMembersRows) return;
+
+                var row = document.createElement('div');
+                row.className = 'spieltag-member-row';
+                row.setAttribute('data-user-id', initialRecipient && initialRecipient.uid ? String(initialRecipient.uid) : '');
+                row.style.cssText = 'display:flex; align-items:center; gap:6px; position:relative;';
+
+                var input = document.createElement('input');
+                input.type = 'text';
+                input.autocomplete = 'off';
+                input.placeholder = '<?= $this->t('Teilnehmer suchen...') ?>';
+                input.style.cssText = 'flex:1; min-width:0; padding:8px 12px; border:1px solid #ccc; border-radius:12px; font-size:14px; min-height:36px;';
+
+                var clearBtn = document.createElement('button');
+                clearBtn.type = 'button';
+                clearBtn.title = '<?= $this->t('Feld leeren') ?>';
+                clearBtn.textContent = '×';
+                clearBtn.style.cssText = 'background:none; border:none; padding:6px; font-size:20px; color:#aaa; cursor:pointer; line-height:1; min-height:36px; display:flex; align-items:center; justify-content:center; min-width:36px;';
+
+                var removeBtn = document.createElement('button');
+                removeBtn.type = 'button';
+                removeBtn.title = '<?= $this->t('Zeile entfernen') ?>';
+                removeBtn.textContent = '−';
+                removeBtn.style.cssText = 'background:none; border:none; padding:6px; font-size:22px; color:#666; cursor:pointer; line-height:1; min-height:36px; display:flex; align-items:center; justify-content:center; min-width:36px;';
+
+                var list = document.createElement('div');
+                list.style.cssText = 'position:absolute; top:100%; left:0; right:78px; z-index:20; margin-top:4px;';
+
+                function setRecipient(recipient) {
+                    if (!recipient || !recipient.uid) return;
+                    var selectedIds = getSpieltagSelectedMemberIds();
+                    var currentUid = parseInt(row.getAttribute('data-user-id') || '0', 10);
+                    if (selectedIds.indexOf(recipient.uid) !== -1 && currentUid !== recipient.uid) {
+                        if (spieltagCreateError) spieltagCreateError.textContent = '<?= $this->t('Dieser Teilnehmer wurde bereits hinzugefügt.') ?>';
+                        return;
+                    }
+                    row.setAttribute('data-user-id', String(recipient.uid));
+                    input.value = String(recipient.name || '') + ' (' + String(recipient.email || '') + ')';
+                    rowAutocomplete.clear();
+                    if (spieltagCreateError) spieltagCreateError.textContent = '';
+                    ensureTrailingEmptySpieltagMemberRow();
+                }
+
+                var rowAutocomplete = setupBookingRecipientAutocomplete({
+                    input: input,
+                    list: list,
+                    getMatches: function(filter) {
+                        var selectedIds = getSpieltagSelectedMemberIds();
+                        var currentUid = parseInt(row.getAttribute('data-user-id') || '0', 10);
+                        return getBookingRecipientMatches(filter, {
+                            excludeUserIds: selectedIds,
+                            allowUserId: currentUid
+                        });
+                    },
+                    onInputReset: function() {
+                        row.setAttribute('data-user-id', '');
+                    },
+                    onSelect: setRecipient
+                });
+
+                clearBtn.addEventListener('click', function() {
+                    row.setAttribute('data-user-id', '');
+                    input.value = '';
+                    rowAutocomplete.clear();
+                    input.focus();
+                });
+
+                removeBtn.addEventListener('click', function() {
+                    row.remove();
+                    ensureTrailingEmptySpieltagMemberRow();
+                });
+
+                row.appendChild(input);
+                row.appendChild(clearBtn);
+                row.appendChild(removeBtn);
+                row.appendChild(list);
+                spieltagMembersRows.appendChild(row);
+
+                if (initialRecipient && initialRecipient.uid) {
+                    setRecipient(initialRecipient);
+                }
+            }
+
+            function resetSpieltagCreateModal() {
+                if (spieltagNewNameInput) {
+                    spieltagNewNameInput.value = getDefaultSpieltagName();
+                }
+                if (spieltagCreateError) {
+                    spieltagCreateError.textContent = '';
+                }
+                if (spieltagMembersRows) {
+                    spieltagMembersRows.innerHTML = '';
+                    createSpieltagMemberRow(null);
+                }
+            }
+
+            function closeSpieltagCreateModal() {
+                if (spieltagCreateModal) {
+                    spieltagCreateModal.style.display = 'none';
+                }
+            }
+
+            function openSpieltagCreateModal() {
+                if (!spieltagCreateModal) return;
+                resetSpieltagCreateModal();
+                spieltagCreateModal.style.display = 'flex';
+                if (spieltagNewNameInput) {
+                    spieltagNewNameInput.focus();
+                    spieltagNewNameInput.select();
+                }
+            }
+
+            if (spieltagCreateCloseBtn) {
+                spieltagCreateCloseBtn.addEventListener('click', closeSpieltagCreateModal);
+            }
+            if (spieltagCreateCancelBtn) {
+                spieltagCreateCancelBtn.addEventListener('click', closeSpieltagCreateModal);
+            }
+            if (spieltagCreateModal) {
+                spieltagCreateModal.addEventListener('mousedown', function(e) {
+                    if (e.target === spieltagCreateModal) {
+                        closeSpieltagCreateModal();
+                    }
+                });
+            }
+            if (spieltagCreateConfirmBtn) {
+                spieltagCreateConfirmBtn.addEventListener('click', function() {
+                    var newName = spieltagNewNameInput ? String(spieltagNewNameInput.value || '').trim() : '';
+                    if (!newName) {
+                        if (spieltagCreateError) spieltagCreateError.textContent = '<?= $this->t('Bitte Spieltag-Namen eingeben.') ?>';
+                        return;
+                    }
+
+                    var memberIds = getSpieltagSelectedMemberIds();
+                    var paramsNew = 'spieltag=' + encodeURIComponent('__new__')
+                        + '&new_spieltag=' + encodeURIComponent(newName)
+                        + '&member_user_ids=' + encodeURIComponent(memberIds.join(','))
+                        + '&is_medenspiel=' + encodeURIComponent(spieltagIsMedenspielCheckbox && spieltagIsMedenspielCheckbox.checked ? '1' : '0');
+
+                    if (spieltagCreateError) spieltagCreateError.textContent = '';
+                    spieltagCreateConfirmBtn.disabled = true;
+
+                    fetch('simple-order/spieltag', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: paramsNew
+                    }).then(function(resp) { return resp.json(); }).then(function(data) {
+                        if (!data || !data.success) {
+                            if (spieltagCreateError) {
+                                spieltagCreateError.textContent = (data && data.error) ? data.error : '<?= $this->t('Fehler beim Speichern des Spieltags.') ?>';
+                            }
+                            return;
+                        }
+                        if (typeof window.teamSpieltagUpdateFromApi === 'function') {
+                            window.teamSpieltagUpdateFromApi(data);
+                        }
+                        closeSpieltagCreateModal();
+                        // Auto-submit the booking form with the new Spieltag
+                        if (spieltagSelect) {
+                            spieltagSelect.value = newName;
+                        }
+                        if (form) {
+                            form.dispatchEvent(new Event('submit'));
+                        }
+                    }).catch(function() {
+                        if (spieltagCreateError) {
+                            spieltagCreateError.textContent = '<?= $this->t('Netzwerkfehler beim Speichern des Spieltags.') ?>';
+                        }
+                    }).finally(function() {
+                        spieltagCreateConfirmBtn.disabled = false;
+                    });
+                });
+            }
+
+            spieltagSelect.addEventListener('change', function() {
+                var selected = spieltagSelect.value || '';
+                if (selected === '__new__') {
+                    if (spieltagLastRealValue) {
+                        spieltagSelect.value = spieltagLastRealValue;
+                    }
+                    openSpieltagCreateModal();
+                    return;
+                }
+
+                spieltagLastRealValue = selected;
+
+                var params = 'spieltag=' + encodeURIComponent(selected);
+                fetch('simple-order/spieltag', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: params
+                }).then(function(resp) { return resp.json(); }).then(function(data) {
+                    if (!data || !data.success) {
+                        alert((data && data.error) ? data.error : '<?= $this->t('Fehler beim Setzen des Spieltags.') ?>');
+                        return;
+                    }
+                    if (typeof window.teamSpieltagUpdateFromApi === 'function') {
+                        window.teamSpieltagUpdateFromApi(data);
+                    }
+                    window.location.reload();
+                }).catch(function() {
+                    alert('<?= $this->t('Netzwerkfehler beim Setzen des Spieltags.') ?>');
+                });
+            });
+
+            fetch('simple-order/spieltag', {
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            }).then(function(resp) { return resp.json(); }).then(function(data) {
+                if (!data || !data.success) return;
+                if (typeof window.teamSpieltagUpdateFromApi === 'function') {
+                    window.teamSpieltagUpdateFromApi(data);
+                }
+                if (spieltagSelect && spieltagSelect.value && spieltagSelect.value !== '__new__') {
+                    spieltagLastRealValue = spieltagSelect.value;
+                }
+            }).catch(function() {});
+
+            if (spieltagSelect.value && spieltagSelect.value !== '__new__') {
+                spieltagLastRealValue = spieltagSelect.value;
+            }
+        }
+        var minusBtns = document.querySelectorAll('.drink-minus');
+        for (var i = 0; i < minusBtns.length; i++) {
+            minusBtns[i].addEventListener('click', function() {
+                var id = this.getAttribute('data-drink-id');
+                var input = document.getElementById('input-' + id);
+                var badge = document.getElementById('badge-' + id);
+                var val = parseInt(input.value, 10) || 0;
+                if (val > 0) val--;
+                input.value = val;
+                badge.textContent = val;
+                badge.style.visibility = val > 0 ? 'visible' : 'hidden';
+                var minusBtn = this;
+                minusBtn.style.visibility = val > 0 ? 'visible' : 'hidden';
+                updateDrinkOrderTotal();
+            });
+        }
+        var tiles = document.querySelectorAll('.drink-tile');
+        for (var i = 0; i < tiles.length; i++) {
+            tiles[i].addEventListener('click', function(e) {
+                var minusBtn = this.querySelector('.drink-minus');
+                if (minusBtn && e.target === minusBtn) return;
+                var id = this.getAttribute('data-drink-id');
+                if (!id) return;
+                var input = document.getElementById('input-' + id);
+                var badge = document.getElementById('badge-' + id);
+                if (!input || !badge) return;
+                var val = parseInt(input.value, 10) || 0;
+                val++;
+                input.value = val;
+                badge.textContent = val;
+                badge.style.visibility = val > 0 ? 'visible' : 'hidden';
+                if (minusBtn) minusBtn.style.visibility = val > 0 ? 'visible' : 'hidden';
+                updateDrinkOrderTotal();
+            });
+        }
+        // Initialize minus button visibility on page load
+        for (var i = 0; i < tiles.length; i++) {
+            var input = tiles[i].querySelector('input[type="hidden"]');
+            var minusBtn = tiles[i].querySelector('.drink-minus');
+            var val = parseInt(input.value, 10) || 0;
+            if (minusBtn) minusBtn.style.visibility = val > 0 ? 'visible' : 'hidden';
+        }
+        // Ensure booking button is disabled on initial load if no drinks selected
+        updateDrinkOrderTotal();
+    });
+    // --- Dynamic sorting of drink tiles by count (JS) ---
+    function sortDrinkTiles() {
+        var wrapper = document.querySelector('.drink-tiles-wrapper');
+        if (!wrapper) return;
+        var tiles = [].slice.call(wrapper.querySelectorAll('.drink-tile'));
+        tiles.sort(function(a, b) {
+            var inputA = a.querySelector('input[type="hidden"]');
+            var inputB = b.querySelector('input[type="hidden"]');
+            var countA = parseInt(inputA.value, 10) || 0;
+            var countB = parseInt(inputB.value, 10) || 0;
+            return countB - countA;
+        });
+        for (var i = 0; i < tiles.length; i++) { wrapper.appendChild(tiles[i]); }
+    }
+    // Call after every count change
+    function updateDrinkOrderTotal() {
+        var total = 0;
+        var anySelected = false;
+        var inputs = document.querySelectorAll('input[id^="input-"]');
+        for (var i = 0; i < inputs.length; i++) {
+            var input = inputs[i];
+            var count = parseInt(input.value, 10) || 0;
+            var price = parseFloat(input.getAttribute('data-price')) || 0;
+            total += count * price;
+            if (count > 0) anySelected = true;
+        }
+        var formatted = total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+        var totalElem = document.getElementById('drink-order-total');
+        totalElem.textContent = 'Buchen: ' + formatted + ' ';
+        var bookBtn = document.querySelector('button[type="submit"][form="drink-order-form"]');
+        if (bookBtn) bookBtn.disabled = !anySelected;
+            var clearBtn = document.getElementById('clear-drink-selection');
+            if (clearBtn) {
+                if (anySelected) {
+                    clearBtn.disabled = false;
+                    clearBtn.setAttribute('aria-disabled', 'false');
+                    clearBtn.style.opacity = '1';
+                    clearBtn.style.cursor = 'pointer';
+                } else {
+                    clearBtn.disabled = true;
+                    clearBtn.setAttribute('aria-disabled', 'true');
+                    clearBtn.style.opacity = '0.45';
+                    clearBtn.style.cursor = 'not-allowed';
+                }
+            }
+        var initialBalance = parseFloat("<?= $currentBalance ?>");
+        var newBalance = initialBalance - total;
+        var formattedBalance = "";
+        var showFullBalanceInSimple = <?= $showFullBalanceInSimple ? 'true' : 'false' ?>;
+        if (window.SIMPLE_ORDER_MODE && !showFullBalanceInSimple) {
+            formattedBalance = newBalance > 0 ? " > 0 €" : " < 0 €";
+        } else {
+            formattedBalance = newBalance.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+            var balanceElem = document.getElementById('current-balance-value');
+            var balanceBox = document.getElementById('current-balance-display');
+            if (balanceElem) {
+                balanceElem.textContent = formattedBalance;
+                balanceElem.style.color = (newBalance < 0) ? '#d32f2f' : '#2196f3';
+            }
+            if (balanceBox) {
+                if (newBalance < 0) {
+                    balanceBox.classList.add('negative-balance');
+                } else {
+                    balanceBox.classList.remove('negative-balance');
+                }
+            }
+        }
+        // Show/hide Guthaben aufladen button
+        var rechargeBtnContainer = document.getElementById('balance-recharge-btn-container');
+        if (rechargeBtnContainer) {
+            if (newBalance < 0) {
+                rechargeBtnContainer.style.display = 'block';
+            } else {
+                rechargeBtnContainer.style.display = 'none';
+            }
+        }
+    }
+    // --- Shared clear selection and logout logic (global scope) ---
+function clearSelectionAndLogout(logoutUser) {
+    var hasOrder = false;
+    var inputs = document.querySelectorAll('input[id^="input-"]');
+    for (var i = 0; i < inputs.length; i++) {
+        if (parseInt(inputs[i].value, 10) > 0) hasOrder = true;
+    }
+    // Suppress confirmation dialog if auto-order logout is in progress
+    if (hasOrder && !window.__AUTO_ORDER_LOGOUT__) {
+        if (!confirm('<?= $this->t('Bist Du sicher, dass Du Deine Getränkeauswahl löschen möchtest? Dadurch wird Deine aktuelle Bestellung zurückgesetzt.') ?>')) {
+            return;
+        }
+    }
+    for (var i = 0; i < inputs.length; i++) {
+        inputs[i].value = 0;
+        var id = inputs[i].id.replace('input-', '');
+        var badge = document.getElementById('badge-' + id);
+        badge.textContent = 0;
+        badge.style.visibility = 'hidden';
+        // FIX: Hide minus button for each tile correctly
+        var inputElem = document.getElementById('input-' + id);
+        if (inputElem) {
+            var tileElem = inputElem.closest('.drink-tile');
+            if (tileElem) {
+                var minusBtn = tileElem.querySelector('.drink-minus');
+                if (minusBtn) minusBtn.style.visibility = 'hidden';
+            }
+        }
+    }
+    if (typeof updateDrinkOrderTotal === 'function') updateDrinkOrderTotal();
+    // Ensure clear button disabled after clearing
+    var clearBtn = document.getElementById('clear-drink-selection');
+    if (clearBtn) {
+        clearBtn.disabled = true;
+        clearBtn.setAttribute('aria-disabled', 'true');
+        clearBtn.style.opacity = '0.45';
+        clearBtn.style.cursor = 'not-allowed';
+    }
+    if (logoutUser) {
+        if (window.SIMPLE_ORDER_MODE && !window.__KEEP_LOGGED_IN_UPDATED__) {
+            // Always synchronously update keep_logged_in state in DB before redirect
+            var keepLoggedInCheckbox = document.getElementById('keep-logged-in-header');
+            var keepVal = (keepLoggedInCheckbox && keepLoggedInCheckbox.checked) ? '1' : '0';
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', 'simple-order/submit-order', false); // synchronous
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+            try { xhr.send('keep_logged_in=' + keepVal); } catch(e) {}
+        }
+        window.location.replace('<?= $this->url("user/simple-login") ?>');
+    }
+}
+    function confirmDrinkOrder() {
+        var items = [];
+        var total = 0;
+        var inputs = document.querySelectorAll('input[id^="input-"]');
+        for (var i = 0; i < inputs.length; i++) {
+            var input = inputs[i];
+            var count = parseInt(input.value, 10) || 0;
+            if (count > 0) {
+                var id = input.id.replace('input-', '');
+                var tile = input.closest('.drink-tile');
+                var nameDiv = tile ? tile.querySelector('.drink-name') : null;
+                var name = nameDiv ? nameDiv.textContent.replace(/^\s+|\s+$/g, '') : id;
+                var price = parseFloat(input.getAttribute('data-price')) || 0;
+                var itemTotal = count * price;
+                total += itemTotal;
+                if (count > 1)
+                    items.push(count + ' x ' + name + ' á ' + price.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) + ' = ' + itemTotal.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }));
+                else
+                    items.push(count + ' x ' + name + ' = ' + itemTotal.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }));
+            }
+        }
+        if (items.length === 0) {
+            return confirm('<?= $this->t('Keine Getränke ausgewählt') ?>');
+        }
+        var msg = '<?= $this->t('Buchung bestätigen:') ?>\n\n' + items.join('\n') + '\n---------------------\n<?= $this->t('Gesamt:') ?> ' + total.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+        return confirm(msg);
+    }
+    </script>
+<?php endif; ?>
+
+<?php if ($simpleOrderMode): ?>
+<script>
+// Clear any old logout deadline on successful login/page load
+try {
+    localStorage.removeItem('simpleOrderLogoutDeadline');
+} catch (e) {}
+</script>
+<?php endif; ?>
+
+<?php
+$showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
+?>
+<?php if ($showHistory && $drinksEnabled && (!$simpleOrderMode || $simpleOrderMode)) : ?>
+<div id="order-history-section">
+    <h2 style="text-align: center;"><?= $this->t('Käufe und Einzahlungen') ?></h2>
+    <div style="margin-bottom: 18px;"></div>
+    <div style="display: flex; justify-content: center; width: 100%;">
+        <table class="default-table middle-table" style="margin: 0 auto;">
+            <tr style="background: #e3f0fa;">
+                <th style="text-align:left; width:24px;"></th>
+                <th style="text-align:left;">
+                    <?= $this->t('Aktion') ?>
+                </th>
+                <th style="text-align:left;">
+                    <?= $this->t('#') ?>
+                </th>
+                <th style="text-align:left;">
+                    <?= $this->t('Price') ?>
+                </th>
+                <th style="text-align:left;">
+                    <?= $this->t('Total') ?>
+                </th>
+                <?php if ($showBalanceColumn): ?>
+                <th style="text-align:left;">
+                    <?= $this->t('Kontostand') ?>
+                </th>
+                <?php endif; ?>
+            </tr>
+            <?php
+            $drinkHistory = array_reverse($this->drinkHistory);
+            $balance = 0;
+            $rows = [];
+            // Calculate balance from bottom up
+            for ($i = count($drinkHistory) - 1; $i >= 0; $i--) {
+                $entry = $drinkHistory[$i];
+                if ($entry['type'] === 'deposit') {
+                    $balance += $entry['amount'];
+                } else if ($entry['type'] === 'order') {
+                    if (!empty($entry['deleted'])) continue; // skip deleted orders for balance
+                    $balance -= $entry['total'];
+                }
+                $rows[$i] = $balance;
+            }
+            $rows = array_reverse($rows);
+            // Prepare a flat list of top-level entries: day groups and deposits, sorted newest to oldest
+            $entriesByDay = [];
+            $deposits = [];
+            foreach ($drinkHistory as $entry) {
+                if ($entry['type'] === 'deposit') {
+                    $deposits[] = $entry;
+                } else if ($entry['type'] === 'order') {
+                    $date = date('Y-m-d', strtotime($entry['datetime']));
+                    if (!isset($entriesByDay[$date])) {
+                        $entriesByDay[$date] = [];
+                    }
+                    $entriesByDay[$date][] = $entry;
+                }
+            }
+            // Build a flat list of top-level items (date group or deposit), sorted oldest to newest for math
+            $topLevel = [];
+            $startBalanceForWindow = null;
+            $historyLookbackHours = 18;
+            if ($simpleOrderMode) {
+                if ($isTeamAccount) {
+                    $startBalanceForWindow = null;
+                    foreach ($entriesByDay as $date => $orders) {
+                        if (count($orders) > 0) {
+                            $topLevel[] = [ 'type' => 'day', 'date' => $date, 'orders' => $orders ];
+                        }
+                    }
+                    foreach ($deposits as $deposit) {
+                        $topLevel[] = [ 'type' => 'deposit', 'datetime' => $deposit['datetime'], 'entry' => $deposit ];
+                    }
+                } else {
+                    $now = time();
+                    $historyLookbackHours = 18;
+                    $cutoff = $now - $historyLookbackHours * 3600;
+                    foreach ($entriesByDay as $date => $orders) {
+                        // Filter orders in this group by the configured simple-order window
+                        $recentOrders = array_filter($orders, function($entry) use ($cutoff) {
+                            return strtotime($entry['datetime']) >= $cutoff;
+                        });
+                        if (count($recentOrders) > 0) {
+                            $topLevel[] = [ 'type' => 'day', 'date' => $date, 'orders' => $recentOrders ];
+                        }
+                    }
+                }
+            } else {
+                foreach ($entriesByDay as $date => $orders) {
+                    $topLevel[] = [ 'type' => 'day', 'date' => $date, 'orders' => $orders ];
+                }
+                foreach ($deposits as $deposit) {
+                    $topLevel[] = [ 'type' => 'deposit', 'datetime' => $deposit['datetime'], 'entry' => $deposit ];
+                }
+            }
+            // Sort by date/datetime ascending (oldest to newest)
+            usort($topLevel, function($a, $b) {
+                $aTime = ($a['type'] === 'day') ? strtotime($a['date'] . ' 23:59:59') : strtotime($a['entry']['datetime']);
+                $bTime = ($b['type'] === 'day') ? strtotime($b['date'] . ' 23:59:59') : strtotime($b['entry']['datetime']);
+                return $aTime <=> $bTime;
+            });
+            // Calculate balances for each top-level group
+            $balance = ($simpleOrderMode && $isTeamAccount && $startBalanceForWindow !== null) ? $startBalanceForWindow : 0;
+            $groupBalances = [];
+            foreach ($topLevel as $idx => $item) {
+                if ($item['type'] === 'day') {
+                    $dayTotalAmount = 0;
+                    foreach ($item['orders'] as $entry) {
+                        if (!empty($entry['deleted'])) continue; // skip deleted orders for group balance
+                        $dayTotalAmount += $entry['total'];
+                    }
+                    $balance -= $dayTotalAmount;
+                    $groupBalances[$idx] = $balance;
+                } else if ($item['type'] === 'deposit') {
+                    $amount = $item['entry']['amount'];
+                    $balance += $amount;
+                    $groupBalances[$idx] = $balance;
+                }
+            }
+            // Now render from newest to oldest
+            $renderOrder = array_reverse(array_keys($topLevel));
+            $groupIndex = 0;
+            foreach ($renderOrder as $i) {
+                $item = $topLevel[$i];
+                $balanceAfter = $groupBalances[$i];
+                if ($item['type'] === 'day') {
+                    $date = $item['date'];
+                    $orders = $item['orders'];
+                    $collapsedId = 'order-day-' . $groupIndex;
+                    $isOpen = ($groupIndex === 0);
+                    $dayDrinkSum = 0;
+                    $dayTotalAmount = 0;
+                    foreach ($orders as $entry) {
+                        if (!empty($entry['deleted'])) continue; // skip deleted orders for day sum
+                        $dayDrinkSum += (int)$entry['quantity'];
+                        $dayTotalAmount += $entry['total'];
+                    }
+                    echo '<tr class="order-day-header" style="background:#f5faff; cursor:pointer;" data-group="' . $collapsedId . '">';
+                    echo '<td style="width:24px; text-align:center;">';
+                    echo '<span class="collapse-toggle" data-group="' . $collapsedId . '" style="display:inline-block; width:20px; height:20px; line-height:20px; border-radius:50%; background:#2196f3; color:#fff; font-weight:bold; cursor:pointer;">' . ($isOpen ? '–' : '+') . '</span>';
+                    echo '</td>';
+                    echo '<td style="font-weight:bold;">' . $this->escapeHtml($date) . ' - ' . $this->t('Käufe') . '</td>';
+                    echo '<td style="font-weight:bold;">' . $dayDrinkSum . '</td>';
+                    echo '<td style="font-weight:bold;"></td>';
+                    echo '<td style="font-weight:bold;">' . $this->priceFormat(-$dayTotalAmount * 100.0, null, null, null, null, null, true, false, false) . '</td>';
+                    if ($showBalanceColumn) echo '<td style="font-weight:bold;'.($balanceAfter < 0 ? ' color:#d32f2f;' : '').'">' . $this->priceFormat($balanceAfter * 100.0, null, null, null, null, null, true, true, false) . '</td>';
+                    echo '</tr>';
+                    // Sort orders inside the group newest to oldest
+                    $ordersSorted = $orders;
+                    usort($ordersSorted, function($a, $b) {
+                        return strtotime($b['datetime']) <=> strtotime($a['datetime']);
+                    });
+                    foreach ($ordersSorted as $entry) {
+                        $time = date('H:i', strtotime($entry['datetime']));
+                        $rowStyle = $isOpen ? '' : 'display:none;';
+                        $isDeleted = $entry['deleted'];
+                        $showCancel = false;
+                        $orderId = $entry['id'];
+                        if ($orderId && isset($entry['datetime']) && !$isDeleted) {
+                            $orderTime = strtotime($entry['datetime']);
+                            $now = time();
+                            if ($now - $orderTime < $drinkOrderCancelWindow) {
+                                $showCancel = true;
+                            }
+                        }
+                        $strikeOpen = $isDeleted ? '<span style="text-decoration:line-through; color:#b0b0b0;">' : '';
+                        $strikeClose = $isDeleted ? '</span>' : '';
+                        $drinkId = isset($entry['drink_id']) ? (int)$entry['drink_id'] : null;
+                        $quantity = isset($entry['quantity']) ? (int)$entry['quantity'] : 1;
+                        $comment = isset($entry['comment']) ? trim($entry['comment']) : '';
+                        $drinkName = isset($entry['name']) ? $entry['name'] : '';
+                        $rowLabel = '';
+                        if ($drinkId === 1 || $drinkId === -1) {
+                            // Special case for Sonstiges (1) and money transfers (-1): only show comment
+                            if ($quantity > 1) {
+                                $rowLabel = $quantity . 'x ';
+                            }
+                            $rowLabel .= $comment;
+                        } else {
+                            // Normal drink: show quantity, name, then comment (if any)
+                            $rowLabel = $quantity . 'x ' . $this->escapeHtml($drinkName);
+                            if ($comment !== '') {
+                                $rowLabel .= ' ' . $this->escapeHtml($comment);
+                            }
+                        }
+                        echo '<tr class="order-day-row' . ($isDeleted ? ' order-deleted-row' : '') . '" data-group="' . $collapsedId . '" style="background:#fafdff;' . $rowStyle . '">';
+                        echo '<td style="color:#888; font-size:0.95em; text-align:center; position:relative;">' . $time;
+                        if ($showCancel) {
+                            echo '<button class="order-cancel-btn" data-order-id="' . htmlspecialchars($orderId) . '" title="' . $this->t('Bestellung stornieren') . '" aria-label="' . $this->t('Bestellung stornieren') . '" style="position:absolute; right:2px; top:2px; width:18px; height:18px; border:none; background:transparent; color:#d32f2f; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center;">'
+                                . '<span class="icon-trash icon-trash--row" aria-hidden="true">🗑</span>'
+                                . '</button>';
+                        }
+                        echo '</td>';
+                        echo '<td>' . $strikeOpen . $rowLabel . $strikeClose . '</td>';
+                        echo '<td>' . $strikeOpen . (int)$entry['quantity'] . $strikeClose . '</td>';
+                        echo '<td>' . $strikeOpen . $this->priceFormat($entry['price'] * 100.0, null, null, null, null, null, true, false, false) . $strikeClose . '</td>';
+                        echo '<td>' . $strikeOpen . $this->priceFormat($entry['total'] * 100.0, null, null, null, null, null, true, false, false) . $strikeClose . '</td>';
+                        if ($showBalanceColumn) echo '<td></td>';
+                        echo '</tr>';
+                    }
+                    $groupIndex++;
+                } else if ($item['type'] === 'deposit') {
+                    $entry = $item['entry'];
+                    $date = date('Y-m-d', strtotime($entry['datetime']));
+                    $amount = $entry['amount'];
+                    $createdBy = isset($entry['createdby']) && $entry['createdby'] ? ' <span style="color:#888;font-weight:normal;">(' . $this->escapeHtml($entry['createdby']) . ')</span>' : '';
+                    echo '<tr style="background:#fafdff; font-weight:bold;">';
+                    echo '<td></td>';
+                    echo '<td>' . $this->escapeHtml($date) . ' - ' . $this->t('Einzahlung') . '</td>';
+                    echo '<td></td>';
+                    echo '<td>' . $createdBy . '</td>';
+                    echo '<td>' . $this->priceFormat($amount * 100.0, null, null, null, null, null, true, true, false) . '</td>';
+                    if ($showBalanceColumn) echo '<td>' . $this->priceFormat($balanceAfter * 100.0, null, null, null, null, null, true, true, false) . '</td>';
+                    echo '</tr>';
+                }
+            }
+            if ($simpleOrderMode && $isTeamAccount && $startBalanceForWindow !== null) {
+                $lookbackDays = (int)($historyLookbackHours / 24);
+                echo '<tr style="background:#fff7e6; font-weight:bold;">';
+                echo '<td></td>';
+                echo '<td>' . $this->t('Startguthaben') . ' (' . $this->t('vor') . ' ' . $lookbackDays . ' ' . $this->t('Tagen') . ')</td>';
+                echo '<td></td>';
+                echo '<td></td>';
+                echo '<td>' . $this->priceFormat($startBalanceForWindow * 100.0, null, null, null, null, null, true, true, false) . '</td>';
+                if ($showBalanceColumn) echo '<td></td>';
+                echo '</tr>';
+            }
+            ?>
+        </table>
+    </div>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.order-day-header').forEach(function(header) {
+            header.addEventListener('click', function(e) {
+                if (!e.target.classList.contains('collapse-toggle')) {
+                    var group = this.getAttribute('data-group');
+                    var rows = document.querySelectorAll('.order-day-row[data-group="' + group + '"]');
+                    var toggle = this.querySelector('.collapse-toggle');
+                    var isOpen = rows.length > 0 && rows[0].style.display !== 'none';
+                    rows.forEach(function(row) {
+                        row.style.display = isOpen ? 'none' : '';
+                    });
+                    if (toggle) toggle.textContent = isOpen ? '+' : '–';
+                }
+            });
+        });
+        document.querySelectorAll('.collapse-toggle').forEach(function(toggle) {
+            toggle.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var group = this.getAttribute('data-group');
+                var rows = document.querySelectorAll('.order-day-row[data-group="' + group + '"]');
+                var isOpen = rows.length > 0 && rows[0].style.display !== 'none';
+                rows.forEach(function(row) {
+                    row.style.display = isOpen ? 'none' : '';
+                });
+                this.textContent = isOpen ? '+' : '–';
+            });
+        });
+        // Cancel order (X button)
+        document.querySelectorAll('.order-cancel-btn').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var orderId = this.getAttribute('data-order-id');
+                if (!orderId) return;
+                if (!confirm('<?= $this->t('Bestellung wirklich stornieren?') ?>')) return;
+                var button = this;
+                button.disabled = true;
+                var dropOrderUrl = (window.SIMPLE_ORDER_MODE ? 'simple-order/drop-order' : 'bookings/drop-order');
+                fetch(dropOrderUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: 'order_id=' + encodeURIComponent(orderId),
+                    credentials: 'same-origin'
+                })
+                .then(function(response) {
+                    return response.text().then(function(text) {
+                        var data = null;
+                        try { data = JSON.parse(text); } catch (e) {}
+                        return { data: data, raw: text };
+                    });
+                })
+                .then(function(result) {
+                    var data = result.data;
+                    var raw = result.raw;
+                    if (data && data.success) {
+                        alert('<?= $this->t('Stornierung erfolgreich.') ?>');
+                        var row = button.closest('tr');
+                        if (row) {
+                            var group = row.getAttribute('data-group');
+                            row.parentNode.removeChild(row);
+                            var groupRows = document.querySelectorAll('.order-day-row[data-group="' + group + '"]');
+                            if (groupRows.length === 0) {
+                                var header = document.querySelector('.order-day-header[data-group="' + group + '"]');
+                                if (header) header.parentNode.removeChild(header);
+                            }
+                        }
+                    } else {
+                        var msg = '<?= $this->t('Stornierung fehlgeschlagen.') ?>';
+                        if (data && data.error_message) {
+                            msg += '\n' + data.error_message;
+                        } else if (!data && raw) {
+                            msg += '\n' + raw;
+                        }
+                        alert(msg);
+                        button.disabled = false;
+                    }
+                })
+                .catch(function(err) {
+                    var msg = '<?= $this->t('Stornierung fehlgeschlagen.') ?>';
+                    if (err && err.message) {
+                        msg += '\n' + err.message;
+                    } else if (err) {
+                        msg += '\n' + String(err);
+                    }
+                    alert(msg);
+                    button.disabled = false;
+                });
+            });
+        });
+    });
+    </script>
+    <div class="separator-small"></div>
+</div>
+<?php endif; ?>
+
+<?php if (!$simpleOrderMode && $drinksEnabled): ?>
+<div id="drink-stats-section">
+<h2><?= $this->t('Getränke-Statistik') ?></h2>
+<?php if (!isset($drinkStats) || empty($drinkStats)): ?>
+    <div style="color: #888; margin-bottom: 16px;">Keine Getränke-Statistik verfügbar.</div>
+<?php else: ?>
+    <table class="default-table middle-table" style="margin-bottom:24px;">
+        <tr style="background: #e3f0fa;">
+            <th><?= $this->t('Getränk') ?></th>
+            <th><?= $this->t('Gesamt konsumiert') ?></th>
+        </tr>
+        <?php foreach ($drinkStats as $row): ?>
+            <tr>
+                <td><?= $this->escapeHtml($row['name']) ?></td>
+                <td><?= (int)$row['total_count'] ?></td>
+            </tr>
+        <?php endforeach; ?>
+    </table>
+<?php endif; ?>
+</div>
+<?php endif; ?>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+        // --- Simple order mode: auto-logout after 5 minutes of inactivity, persistent across sleep ---
+        if (window.SIMPLE_ORDER_MODE) {
+            var LOGOUT_DELAY = 5 * 60 * 1000; // 5 minutes
+            var timerElem = document.getElementById('logout-timer');
+            var logoutInterval = null;
+            var deadlineKey = 'simpleOrderLogoutDeadline';
+
+            function setLogoutDeadline() {
+                var deadline = Date.now() + LOGOUT_DELAY;
+                localStorage.setItem(deadlineKey, deadline);
+                return deadline;
+            }
+            function getLogoutDeadline() {
+                var val = localStorage.getItem(deadlineKey);
+                return val ? parseInt(val, 10) : null;
+            }
+
+            function clearLogoutDeadline() {
+                localStorage.removeItem(deadlineKey);
+            }
+            function updateTimerDisplay(remaining) {
+                if (!timerElem) return;
+                var min = Math.floor(remaining / 60);
+                var sec = remaining % 60;
+                timerElem.textContent = 'Logout in ' + min + ':' + (sec < 10 ? '0' : '') + sec;
+            }
+            function performLogout() {
+                clearLogoutDeadline();
+                // --- AUTO-ORDER SUBMISSION ON LOGOUT (simple mode) ---
+                if (window.SIMPLE_ORDER_MODE) {
+                    var data = {};
+                    var inputs = document.querySelectorAll('input[id^="input-"]');
+                    var hasOrder = false;
+                    for (var i = 0; i < inputs.length; i++) {
+                        var input = inputs[i];
+                        var count = parseInt(input.value, 10) || 0;
+                        if (count > 0) {
+                            var id = input.id.replace('input-', '');
+                            data['drink_counts[' + id + ']'] = count;
+                            hasOrder = true;
+                        }
+                    }
+                    // Always include keep_logged_in state in auto-order
+                    var keepLoggedInCheckbox = document.getElementById('keep-logged-in-header');
+                    data['keep_logged_in'] = (keepLoggedInCheckbox && keepLoggedInCheckbox.checked) ? '1' : '0';
+                    if (hasOrder) {
+                        // Add is_auto_order flag
+                        data['is_auto_order'] = '1';
+                    }
+                    var url = 'simple-order/submit-order';
+                    var params = [];
+                    for (var key in data) {
+                        if (data.hasOwnProperty(key)) {
+                            params.push(encodeURIComponent(key) + '=' + encodeURIComponent(data[key]));
+                        }
+                    }
+                    var xhr = new XMLHttpRequest();
+                    xhr.open('POST', url, false); // synchronous to ensure state is saved before logout
+                    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+                    try {
+                        xhr.send(params.join('&'));
+                    } catch (e) {}
+                }
+                if (typeof clearSelectionAndLogout === 'function') {
+                    // Suppress confirmation dialog for auto-order logout
+                    // Mark keep_logged_in as already updated to skip duplicate XHR
+                    window.__KEEP_LOGGED_IN_UPDATED__ = true;
+                    window.__AUTO_ORDER_LOGOUT__ = true;
+                    clearSelectionAndLogout(true);
+                    window.__AUTO_ORDER_LOGOUT__ = false;
+                    window.__KEEP_LOGGED_IN_UPDATED__ = false;
+                } else {
+                    window.location.replace('<?= $this->url("user/simple-login") ?>');
+                }
+            }
+            function startLogoutTimer() {
+                if (logoutInterval) clearInterval(logoutInterval);
+                var deadline = getLogoutDeadline();
+                if (!deadline) deadline = setLogoutDeadline();
+                function tick() {
+                    var now = Date.now();
+                    var remainingMs = deadline - now;
+                    if (remainingMs <= 0) {
+                        performLogout();
+                        return;
+                    }
+                    var remaining = Math.ceil(remainingMs / 1000);
+                    updateTimerDisplay(remaining);
+                }
+                tick();
+                logoutInterval = setInterval(function() {
+                    var deadline = getLogoutDeadline();
+                    var now = Date.now();
+                    var remainingMs = deadline - now;
+                    if (remainingMs <= 0) {
+                        clearInterval(logoutInterval);
+                        performLogout();
+                    } else {
+                        var remaining = Math.ceil(remainingMs / 1000);
+                        updateTimerDisplay(remaining);
+                    }
+                }, 1000);
+            }
+            function resetLogoutTimer() {
+                setLogoutDeadline();
+                startLogoutTimer();
+            }
+            // On any user interaction, reset the timer and deadline
+            ['click', 'keydown', 'touchstart'].forEach(function(evt) {
+                document.addEventListener(evt, function() {
+                    resetLogoutTimer();
+                }, true);
+            });
+            // On page load/resume, check deadline
+            window.addEventListener('focus', function() {
+                var deadline = getLogoutDeadline();
+                if (deadline && Date.now() > deadline) {
+                    performLogout();
+                } else {
+                    startLogoutTimer();
+                }
+            });
+            if (timerElem) {
+                timerElem.style.display = '';
+                timerElem.addEventListener('click', function(e) {
+                    clearLogoutDeadline();
+                    clearSelectionAndLogout(true);
+                });
+            }
+            // Initial check
+            var deadline = getLogoutDeadline();
+            if (deadline && Date.now() > deadline) {
+                performLogout();
+            } else {
+                startLogoutTimer();
+            }
+        }
+    });
+</script>
+
+<script>
+(function() {
+    function isOldIOS() {
+        var ua = navigator.userAgent;
+        var m = ua.match(/OS (\d+)_/);
+        if (!m) return false;
+        var v = parseInt(m[1], 10);
+        return /iPad|iPhone|iPod/.test(ua) && v <= 12;
+    }
+    function supportsSticky() {
+        var el = document.createElement('div');
+        el.style.position = 'sticky';
+        return el.style.position.indexOf('sticky') !== -1;
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+        if (!isOldIOS() || supportsSticky()) return;
+        var bar = document.querySelector('.user-info-bar.sticky-user-info-bar');
+        if (!bar) return;
+        // Insert placeholder to prevent layout shift
+        var placeholder = document.createElement('div');
+        placeholder.style.display = 'none';
+        bar.parentNode.insertBefore(placeholder, bar);
+        var barHeight = bar.offsetHeight;
+        var origStyle = bar.getAttribute('style') || '';
+        function fixBar() {
+            bar.style.position = 'fixed';
+            bar.style.top = '0';
+            bar.style.left = '0';
+            bar.style.right = '0';
+            bar.style.width = '100%';
+            bar.style.zIndex = '2000';
+            bar.style.boxShadow = '0 4px 8px rgba(33,150,243,0.12)';
+            placeholder.style.display = 'block';
+            placeholder.style.height = barHeight + 'px';
+        }
+        function unfixBar() {
+            bar.setAttribute('style', origStyle);
+            placeholder.style.display = 'none';
+        }
+        function onScroll() {
+            var scrollY = window.scrollY || window.pageYOffset;
+            var barTop = bar.offsetTop;
+            if (scrollY > barTop) {
+                fixBar();
+            } else {
+                unfixBar();
+            }
+        }
+        window.addEventListener('scroll', onScroll);
+        window.addEventListener('resize', function() {
+            barHeight = bar.offsetHeight;
+            if (placeholder.style.display === 'block') {
+                placeholder.style.height = barHeight + 'px';
+            }
+        });
+    });
+})();
+</script>
