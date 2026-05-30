@@ -35,7 +35,7 @@ return array(
                         'options' => array(
                             'route' => '/add-drink-booking',
                             'defaults' => array(
-                                'controller' => 'User\Controller\Account',
+                                'controller' => 'Drinks\Controller\Drinks',
                                 'action'     => 'addDrinkBooking',
                             ),
                         ),
