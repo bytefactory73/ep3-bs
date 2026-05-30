@@ -33,7 +33,7 @@ return array(
                     'add-drink-booking' => array(
                         'type' => 'Literal',
                         'options' => array(
-                            'route' => '/user/add-drink-booking',
+                            'route' => '/add-drink-booking',
                             'defaults' => array(
                                 'controller' => 'User\Controller\Account',
                                 'action'     => 'addDrinkBooking',
@@ -125,7 +125,7 @@ return array(
                         'options' => array(
                             'route' => '/drinks',
                             'defaults' => array(
-                                'controller' => 'User\Controller\Account',
+                                'controller' => 'Drinks\Controller\Drinks',
                                 'action' => 'drinks',
                             ),
                         ),
@@ -136,8 +136,8 @@ return array(
                                 'options' => array(
                                     'route' => '/add-drink',
                                     'defaults' => array(
-                                        'controller' => 'User\Controller\Account',
-                                        'action' => 'addDrink',
+                                        'controller' => 'Drinks\Controller\Drinks',
+                                        'action' => 'addDrinkBooking',
                                     ),
                                 ),
                             ),
@@ -146,8 +146,8 @@ return array(
                                 'options' => array(
                                     'route' => '/cancel-order',
                                     'defaults' => array(
-                                        'controller' => 'User\Controller\Account',
-                                        'action' => 'cancelOrder',
+                                        'controller' => 'Drinks\Controller\Drinks',
+                                        'action' => 'dropOrder',
                                     ),
                                 ),
                             ),
@@ -182,7 +182,7 @@ return array(
                                 'options' => array(
                                     'route' => '/drop-order',
                                     'defaults' => array(
-                                        'controller' => 'User\Controller\Account',
+                                        'controller' => 'Drinks\Controller\Drinks',
                                         'action' => 'dropOrder',
                                     ),
                                 ),
@@ -192,7 +192,7 @@ return array(
                                 'options' => array(
                                     'route' => '/submit-order',
                                     'defaults' => array(
-                                        'controller' => 'User\\Controller\\Account',
+                                        'controller' => 'Drinks\Controller\Drinks',
                                         'action' => 'submitOrder',
                                     ),
                                 ),
@@ -214,7 +214,7 @@ return array(
                         'options' => array(
                             'route' => '/send-money',
                             'defaults' => array(
-                                'controller' => 'User\Controller\Account',
+                                'controller' => 'Drinks\Controller\Drinks',
                                 'action' => 'sendMoney',
                             ),
                         ),
@@ -224,7 +224,7 @@ return array(
                         'options' => array(
                             'route' => '/money-recipient-team-events',
                             'defaults' => array(
-                                'controller' => 'User\Controller\Account',
+                                'controller' => 'Drinks\Controller\Drinks',
                                 'action' => 'moneyRecipientTeamEvents',
                             ),
                         ),
@@ -234,7 +234,7 @@ return array(
                         'options' => array(
                             'route' => '/teamlead-team-stats',
                             'defaults' => array(
-                                'controller' => 'User\Controller\Account',
+                                'controller' => 'Drinks\Controller\Drinks',
                                 'action' => 'teamleadTeamStats',
                             ),
                         ),
@@ -244,7 +244,7 @@ return array(
                         'options' => array(
                             'route' => '/teamlead-team-members',
                             'defaults' => array(
-                                'controller' => 'User\Controller\Account',
+                                'controller' => 'Drinks\Controller\Drinks',
                                 'action' => 'teamleadTeamMembers',
                             ),
                         ),
@@ -254,7 +254,7 @@ return array(
                         'options' => array(
                             'route' => '/teamlead-order-relevance',
                             'defaults' => array(
-                                'controller' => 'User\Controller\Account',
+                                'controller' => 'Drinks\Controller\Drinks',
                                 'action' => 'teamleadOrderRelevance',
                             ),
                         ),
@@ -264,7 +264,7 @@ return array(
                             'options' => array(
                                 'route' => '/teamlead-extra-cost',
                                 'defaults' => array(
-                                    'controller' => 'User\Controller\Account',
+                                    'controller' => 'Drinks\Controller\Drinks',
                                     'action' => 'teamleadExtraCost',
                                 ),
                             ),
@@ -274,7 +274,7 @@ return array(
                             'options' => array(
                                 'route' => '/teamlead-update-extra-cost',
                                 'defaults' => array(
-                                    'controller' => 'User\Controller\Account',
+                                    'controller' => 'Drinks\Controller\Drinks',
                                     'action' => 'teamleadUpdateExtraCost',
                                 ),
                             ),
@@ -284,7 +284,7 @@ return array(
                             'options' => array(
                                 'route' => '/teamlead-delete-extra-cost',
                                 'defaults' => array(
-                                    'controller' => 'User\Controller\Account',
+                                    'controller' => 'Drinks\Controller\Drinks',
                                     'action' => 'teamleadDeleteExtraCost',
                                 ),
                             ),
@@ -294,7 +294,7 @@ return array(
                             'options' => array(
                                 'route' => '/teamlead-guest-donation',
                                 'defaults' => array(
-                                    'controller' => 'User\Controller\Account',
+                                    'controller' => 'Drinks\Controller\Drinks',
                                     'action' => 'teamleadGuestDonation',
                                 ),
                             ),
@@ -304,7 +304,7 @@ return array(
                             'options' => array(
                                 'route' => '/teamlead-update-guest-donation',
                                 'defaults' => array(
-                                    'controller' => 'User\Controller\Account',
+                                    'controller' => 'Drinks\Controller\Drinks',
                                     'action' => 'teamleadUpdateGuestDonation',
                                 ),
                             ),
@@ -314,7 +314,7 @@ return array(
                             'options' => array(
                                 'route' => '/teamlead-delete-guest-donation',
                                 'defaults' => array(
-                                    'controller' => 'User\Controller\Account',
+                                    'controller' => 'Drinks\Controller\Drinks',
                                     'action' => 'teamleadDeleteGuestDonation',
                                 ),
                             ),
@@ -324,7 +324,7 @@ return array(
                         'options' => array(
                             'route' => '/teamlead-close-team-event',
                             'defaults' => array(
-                                'controller' => 'User\Controller\Account',
+                                'controller' => 'Drinks\Controller\Drinks',
                                 'action' => 'teamleadCloseTeamEvent',
                             ),
                         ),
@@ -334,7 +334,7 @@ return array(
                         'options' => array(
                             'route' => '/manage-drinks',
                             'defaults' => array(
-                                'controller' => 'User\Controller\Account',
+                                'controller' => 'Drinks\Controller\Drinks',
                                 'action' => 'manageDrinks',
                             ),
                         ),
@@ -537,7 +537,7 @@ return array(
                         'options' => array(
                             'route' => '/drinks-admin',
                             'defaults' => array(
-                                'controller' => 'User\\Controller\\Account',
+                                'controller' => 'Drinks\Controller\Drinks',
                                 'action' => 'drinksAdmin',
                             ),
                         ),
@@ -548,7 +548,7 @@ return array(
                                 'options' => array(
                                     'route' => '/party-mode-save',
                                     'defaults' => array(
-                                        'controller' => 'User\\Controller\\Account',
+                                        'controller' => 'Drinks\Controller\Drinks',
                                         'action' => 'savePartyMode',
                                     ),
                                 ),
@@ -560,7 +560,7 @@ return array(
                         'options' => array(
                             'route' => '/deposits',
                             'defaults' => array(
-                                'controller' => 'User\\Controller\\Account',
+                                'controller' => 'Drinks\Controller\Drinks',
                                 'action' => 'deposits',
                             ),
                         ),
@@ -570,7 +570,7 @@ return array(
 										   'options' => array(
 										       'route' => '/balance-list',
 										       'defaults' => array(
-										           'controller' => 'User\Controller\Account',
+										           'controller' => 'Drinks\Controller\Drinks',
 										           'action' => 'balanceList',
 										       ),
 										   ),
@@ -580,7 +580,7 @@ return array(
                         'options' => array(
                             'route' => '/get-user-deposits-data',
                             'defaults' => array(
-                                'controller' => 'User\Controller\Account',
+                                'controller' => 'Drinks\Controller\Drinks',
                                 'action' => 'getUserDepositsData',
                             ),
                         ),
@@ -590,7 +590,7 @@ return array(
                         'options' => array(
                             'route' => '/get-user-team-event-stats-data',
                             'defaults' => array(
-                                'controller' => 'User\Controller\Account',
+                                'controller' => 'Drinks\Controller\Drinks',
                                 'action' => 'getUserTeamEventStatsData',
                             ),
                         ),
@@ -600,7 +600,7 @@ return array(
                         'options' => array(
                             'route' => '/create-team-event',
                             'defaults' => array(
-                                'controller' => 'User\Controller\Account',
+                                'controller' => 'Drinks\Controller\Drinks',
                                 'action' => 'createTeamEvent',
                             ),
                         ),
@@ -610,7 +610,7 @@ return array(
                         'options' => array(
                             'route' => '/drinks-summary',
                             'defaults' => array(
-                                'controller' => 'User\\Controller\\Account',
+                                'controller' => 'Drinks\Controller\Drinks',
                                 'action' => 'drinksSummary',
                             ),
                         ),
@@ -620,7 +620,7 @@ return array(
                         'options' => array(
                             'route' => '/store-check-date',
                             'defaults' => array(
-                                'controller' => 'User\Controller\Account',
+                                'controller' => 'Drinks\Controller\Drinks',
                                 'action' => 'storeCheckDate',
                             ),
                         ),
@@ -635,6 +635,7 @@ return array(
             'User\Controller\Session' => 'User\Controller\SessionController',
             'User\Controller\Account' => 'User\Controller\AccountController',
             'User\Controller\SimpleLogin' => 'User\Controller\SimpleLoginController',
+            'Drinks\Controller\Drinks' => 'Drinks\Controller\DrinksController',
         ),
         'factories' => array(
             'User\\Controller\\Barcode' => function($controllerManager) {

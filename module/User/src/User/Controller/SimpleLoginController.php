@@ -306,6 +306,82 @@ class SimpleLoginController extends AbstractActionController
         return $this->getResponse()->setContent(json_encode(['success' => false, 'error_message' => 'Update failed.']))->setStatusCode(500);
     }
 
+    /**
+     * Get team event labels where the user is a member (not just admin)
+     */
+    protected function getAvailableTeamEventLabelsForMember($teamAdminUserId)
+    {
+        $teamAdminUserId = (int)$teamAdminUserId;
+        if ($teamAdminUserId <= 0) {
+            return [];
+        }
+        
+        $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
+        try {
+            $rows = $db->query(
+                'SELECT DISTINCT te.comment AS team_event_label 
+                 FROM drinks_teamevent_members tm
+                 JOIN drinks_teamevents te ON te.id = tm.team_event_id
+                 WHERE tm.user_id = ?
+                   AND (te.closed IS NULL OR te.closed = 0)
+                   AND TRIM(COALESCE(te.comment, "")) != ""
+                 ORDER BY te.created_at DESC, te.id DESC',
+                [$teamAdminUserId]
+            )->toArray();
+            
+            $result = [];
+            foreach ($rows as $row) {
+                $label = isset($row['team_event_label']) ? trim((string)$row['team_event_label']) : '';
+                if ($label !== '' && !in_array($label, $result, true)) {
+                    $result[] = $label;
+                }
+            }
+            return $result;
+        } catch (\Exception $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Get team event by label, checking both admin-owned and member-assigned events
+     */
+    protected function getTeamEventByLabelForMember($teamAdminUserId, $label)
+    {
+        $teamAdminUserId = (int)$teamAdminUserId;
+        $label = $this->normalizeTeamEventLabel($label);
+        if ($teamAdminUserId <= 0 || $label === '') {
+            return null;
+        }
+        
+        $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
+        try {
+            // First try to find as admin
+            $row = $db->query(
+                'SELECT id, comment, created_at, closed FROM drinks_teamevents WHERE team_admin_user_id = ? AND comment = ? LIMIT 1',
+                [$teamAdminUserId, $label]
+            )->current();
+            
+            if ($row) {
+                return $row;
+            }
+            
+            // Then try to find as member
+            $row = $db->query(
+                'SELECT DISTINCT te.id, te.comment, te.created_at, te.closed 
+                 FROM drinks_teamevents te
+                 JOIN drinks_teamevent_members tm ON tm.team_event_id = te.id
+                 WHERE tm.user_id = ? AND te.comment = ?
+                 ORDER BY te.created_at DESC, te.id DESC
+                 LIMIT 1',
+                [$teamAdminUserId, $label]
+            )->current();
+            
+            return $row ?: null;
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
     public function teamStatsAction()
     {
         $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
@@ -331,12 +407,27 @@ class SimpleLoginController extends AbstractActionController
             return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Kein Spieltag ausgewählt.']));
         }
 
+        // For team accounts, also look up team events where the user is a member (not just admin)
+        $memberEventLabels = $this->getAvailableTeamEventLabelsForMember($teamAdminUserId);
+        $allSpieltage = array_unique(array_merge($this->getAvailableTeamEventLabels($teamAdminUserId, true), $memberEventLabels));
+        $allOpenSpieltage = array_unique(array_merge($this->getAvailableTeamEventLabels($teamAdminUserId, false), $memberEventLabels));
+        
+        // Resolve the team event using both admin-owned and member-assigned events
+        $teamEvent = $this->getTeamEventByLabelForMember($teamAdminUserId, $requestedTeamEventLabel);
+        if ($teamEvent) {
+            // Inject the team_event_id into the session so buildTeamStatsPayload can use it
+            $session->current_teamevent_id = (int)$teamEvent['id'];
+        }
+        
+        $payload = $this->buildTeamStatsPayload($teamAdminUserId, $requestedTeamEventLabel);
+        // Override spieltage/open_spieltage with merged values (admin-owned + member-assigned events)
+        $payload['spieltage'] = $allSpieltage;
+        $payload['open_spieltage'] = $allOpenSpieltage;
+        
         return $this->getResponse()->setContent(json_encode(array_merge([
             'success' => true,
             'account_balance' => $accountBalance,
-            'spieltage' => $this->getAvailableTeamEventLabels($teamAdminUserId, true),
-            'open_spieltage' => $this->getAvailableTeamEventLabels($teamAdminUserId, false),
-        ], $this->buildTeamStatsPayload($teamAdminUserId, $requestedTeamEventLabel))));
+        ], $payload)));
     }
 
     public function teamMembersAction()

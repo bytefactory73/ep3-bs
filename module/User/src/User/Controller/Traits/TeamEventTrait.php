@@ -1020,12 +1020,25 @@ trait TeamEventTrait
             if ($selectedTeamEvent && !$this->isTeamEventClosedRow($selectedTeamEvent)) {
                 return $selectedTeamEvent;
             }
+            // Fallback to latest open team event if the preferred one is closed or invalid
+            if (!$selectedTeamEvent || $this->isTeamEventClosedRow($selectedTeamEvent)) {
+                $latestEvent = $this->getLatestTeamEventRow($teamAdminUserId);
+                if ($latestEvent && !$this->isTeamEventClosedRow($latestEvent)) {
+                    return $latestEvent;
+                }
+            }
             return null;
         }
 
         $newTeamEventLabel = $this->normalizeTeamEventLabel($newTeamEventLabel);
         if ($newTeamEventLabel !== '') {
             return $this->getOrCreateTeamEventByLabel($teamAdminUserId, $newTeamEventLabel);
+        }
+
+        // Fallback: return the latest open team event when no specific ID or label is provided
+        $latestEvent = $this->getLatestTeamEventRow($teamAdminUserId);
+        if ($latestEvent && !$this->isTeamEventClosedRow($latestEvent)) {
+            return $latestEvent;
         }
 
         return null;
