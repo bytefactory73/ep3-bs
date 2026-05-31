@@ -7,9 +7,9 @@ use RuntimeException;
 use Zend\Mvc\Controller\AbstractActionController;
 use Zend\View\Model\ViewModel;
 use Zend\View\Model\JsonModel;
-use User\Controller\Traits\MoneyTransferTrait;
-use User\Controller\Traits\TeamEventTrait;
-use User\Controller\Traits\ThekeMailTrait;
+use Drinks\Controller\Traits\MoneyTransferTrait;
+use Drinks\Controller\Traits\TeamEventTrait;
+use Drinks\Controller\Traits\ThekeMailTrait;
 
 class DrinksController extends AbstractActionController
 {
