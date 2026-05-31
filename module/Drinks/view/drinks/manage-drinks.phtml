@@ -1,80 +1,179 @@
 <?php
-// Admin: Manage drinks - overview and editing of all drinks and categories
-$url = isset($this->simpleOrderMode) && $this->simpleOrderMode ? 'user/simple-order' : 'user/drinks-admin';
+// Admin-only Manage Drinks page
 $this->setup([
-    'title' => 'Artikel konfigurieren',
-    'panel' => 'centered-panel large-sized',
-    'back' => $this->url($url),
+    'title' => 'Manage Drinks',
+    'panel' => 'centered-panel',
+    'back' => $this->url('user/drinks-admin'),
     'links' => [
         'Drinks Verwaltung' => $this->url('user/drinks-admin'),
     ],
 ]);
 ?>
 
-<h1><?= $this->t('Artikel konfigurieren') ?></h1>
-<div class="separator-small"></div>
-<p><?= $this->t('Hier können Sie alle Getränke und Kategorien verwalten.') ?></p>
+<h1><?= $this->t('Manage Drinks') ?></h1>
+<?php if (!empty($this->message) || !empty($_GET['message'])): ?>
+    <div class="info-message"> <?= $this->escapeHtml($this->message ?? $_GET['message']) ?> </div>
+<?php endif; ?>
 
-<div class="separator separator-line"></div>
+<style>
+#manage-drinks-table th {
+    background: #e3ecfa;
+    color: #1a355b;
+    border: none;
+    padding: 12px 8px;
+    font-size: 1.08em;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+}
+#manage-drinks-table {
+    width: 100%;
+}
+#manage-drinks-table tr.separator-row td {
+    border-bottom: 1px solid #b3c6e6;
+    padding: 0;
+    height: 0;
+    background: transparent;
+}
+#manage-drinks-table > tbody > tr:not(.separator-row) > td {
+    padding-top: 16px;
+}
+#manage-drinks-table > tr:not(.separator-row) > td {
+    padding-top: 16px;
+}
+#manage-drinks-table > tr:not(.separator-row) > form > td {
+    padding-top: 16px;
+}
+#add-deposit-section {
+    margin-top: 20px;
+    margin-bottom: 20px;
+    padding: 16px 14px 14px 14px;
+    background: #f7faff;
+    border-radius: 8px;
+    box-shadow: 0 1px 6px rgba(30,60,120,0.06);
+}
+#add-deposit-section h2 {
+    margin-top: 0;
+    margin-bottom: 12px;
+}
+.section-block {
+    margin-top: 20px;
+    margin-bottom: 20px;
+    padding: 16px 14px 14px 14px;
+    background: #fafdff;
+    border-radius: 8px;
+    box-shadow: 0 1px 6px rgba(30,60,120,0.04);
+}
+.section-block h2 {
+    margin-top: 0;
+    margin-bottom: 12px;
+}
+.section-block + .section-block {
+    margin-top: 0;
+}
+</style>
 
-<div class="padded">
-    <!-- Kategorien -->
-    <h2><?= $this->t('Getränkekategorien') ?></h2>
-    <table class="table table-striped" style="margin-top:12px;">
-        <thead>
-            <tr>
-                <th style="width:40px;">#</th>
-                <th><?= $this->t('Kategorie') ?></th>
-                <th><?= $this->t('Sortierung') ?></th>
+<div class="section-block" style="margin-top: 0;">
+    <h2><?= $this->t('Add New Drink') ?></h2>
+    <form method="post" enctype="multipart/form-data">
+        <input type="text" name="name" placeholder="<?= $this->t('Drink Name') ?>" required />
+        <input type="number" name="price" min="0.01" step="0.01" placeholder="<?= $this->t('Price') ?>" required />
+        <input type="file" name="image" accept="image/*" style="margin-top:8px;" />
+        <button type="submit" name="add_drink" class="default-button mini-button">
+            <?= $this->t('Add Drink') ?>
+        </button>
+    </form>
+</div>
+
+<div class="section-block">
+    <h2><?= $this->t('All Drinks') ?></h2>
+    <table id="manage-drinks-table" class="default-table middle-table" style="border-collapse: separate; border-spacing: 0 0;">
+        <tr>
+            <th><?= $this->t('Image') ?></th>
+            <th><?= $this->t('Name/Price') ?></th>
+            <th><?= $this->t('Actions') ?></th>
+        </tr>
+        <?php $drinkCount = count($this->drinks); $i = 0; foreach ($this->drinks as $drink): $i++; ?>
+            <?php $rowFormId = 'drink-form-' . (int)$drink['id']; ?>
+            <tr style="background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.04);">
+                    <td>
+                        <form id="<?= $rowFormId ?>" method="post" enctype="multipart/form-data" style="display:inline;"></form>
+                        <?php
+                        $imgPath = isset($drink['image']) && $drink['image'] ? $this->basePath('imgs/branding/' . $drink['image']) : $this->basePath('imgs/branding/ep3-bs-pos-de.png');
+                        ?>
+                        <img src="<?= $imgPath ?>" alt="<?= $this->escapeHtmlAttr($drink['name']) ?>" style="width: 72px; height: 72px; object-fit: contain; background: #f8f8f8; border-radius: 4px;" />
+                        <?php $imageInputId = 'drink-image-' . (int)$drink['id']; ?>
+                        <input type="file" id="<?= $imageInputId ?>" name="image" form="<?= $rowFormId ?>" accept="image/*" style="display:none;" />
+                        <label for="<?= $imageInputId ?>" class="default-button mini-button" style="display:block; margin-top:4px; text-align:center; width:72px; font-size:0.8em; padding:2px 6px;">
+                            <?= $this->t('Choose Image') ?>
+                        </label>
+                        <?php if (isset($drink['image']) && $drink['image']): ?>
+                            <input type="hidden" name="existing_image" form="<?= $rowFormId ?>" value="<?= $this->escapeHtmlAttr($drink['image']) ?>" />
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <input type="hidden" name="id" form="<?= $rowFormId ?>" value="<?= (int)$drink['id'] ?>" />
+                        <input type="text" name="name" form="<?= $rowFormId ?>" value="<?= $this->escapeHtml($drink['name']) ?>" required style="display:block; width:100%; margin-bottom:6px;" />
+                        <input type="number" name="price" form="<?= $rowFormId ?>" min="0.01" step="0.01" value="<?= $this->escapeHtml($drink['price']) ?>" required style="display:block; width:100%; margin-bottom:6px;" />
+                        <select name="category" form="<?= $rowFormId ?>" style="display:block; width:100%; margin-bottom:6px;">
+                            <option value="">-- <?= $this->t('No Category') ?> --</option>
+                            <?php if (isset($this->drinkCategories)) foreach ($this->drinkCategories as $cat): ?>
+                                <option value="<?= (int)$cat['id'] ?>" <?= (isset($drink['category']) && $drink['category'] == $cat['id']) ? 'selected' : '' ?>>
+                                    <?= $this->escapeHtml($cat['name']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <?php if (isset($drink['category']) && $drink['category']): ?>
+                            <div style="font-size:0.95em; color:#888; margin-bottom:2px;">
+                                <?= $this->t('Category:') ?>
+                                <?php
+                                if (isset($this->drinkCategories)) {
+                                    foreach ($this->drinkCategories as $cat) {
+                                        if ($cat['id'] == $drink['category']) {
+                                            echo $this->escapeHtml($cat['name']);
+                                            break;
+                                        }
+                                    }
+                                }
+                                ?>
+                            </div>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <div style="display: flex; flex-direction: column; gap: 6px; align-items: stretch;">
+                            <button type="submit" id="<?= $rowFormId ?>-auto-save" name="edit_drink" value="1" form="<?= $rowFormId ?>" style="display:none;">Auto Save</button>
+                            <button type="submit" name="edit_drink" form="<?= $rowFormId ?>" class="default-button mini-button">
+                                <?= $this->t('Save') ?>
+                            </button>
+                            <button type="submit" name="delete_drink" form="<?= $rowFormId ?>" class="default-button mini-button" onclick="return confirm('<?= $this->t('Delete this drink?') ?>');">
+                                <?= $this->t('Delete') ?>
+                            </button>
+                        </div>
+                    </td>
             </tr>
-        </thead>
-        <tbody>
-        <?php $catNum = 1; foreach ($this->drinkCategories as $cat): ?>
-            <tr>
-                <td><?= $catNum++ ?></td>
-                <td><?= $this->escapeHtml($cat['name']) ?></td>
-                <td><?= $this->escapeHtml((string)$cat['sort_order']) ?></td>
-            </tr>
+            <?php if ($i < $drinkCount): ?>
+            <tr class="separator-row"><td colspan="3"></td></tr>
+            <?php endif; ?>
         <?php endforeach; ?>
-        </tbody>
-    </table>
-
-    <div class="separator-small"></div>
-
-    <!-- Getränke -->
-    <h2><?= $this->t('Getränke') ?></h2>
-    <table class="table table-striped" style="margin-top:12px;">
-        <thead>
-            <tr>
-                <th style="width:40px;">#</th>
-                <th><?= $this->t('Name') ?></th>
-                <th><?= $this->t('Kategorie') ?></th>
-                <th><?= $this->t('Preis') ?></th>
-                <th><?= $this->t('Aktiv') ?></th>
-            </tr>
-        </thead>
-        <tbody>
-        <?php $drinkNum = 1; foreach ($this->drinks as $drink): ?>
-            <tr>
-                <td><?= $drinkNum++ ?></td>
-                <td><?= $this->escapeHtml($drink['name']) ?></td>
-                <td><?= $this->escapeHtml($drink['category_name'] ?? '—') ?></td>
-                <td style="text-align:right;"><?= number_format($drink['price'], 2, ',', '.') ?> €</td>
-                <td style="text-align:center;">
-                    <?php if ((int)($drink['active'] ?? 1) === 1): ?>
-                        <span style="color:green;">✓</span>
-                    <?php else: ?>
-                        <span style="color:red;">✗</span>
-                    <?php endif; ?>
-                </td>
-            </tr>
-        <?php endforeach; ?>
-        </tbody>
     </table>
 </div>
 
-<div class="separator-small"></div>
-
-<p style="text-align:center;">
-    <a href="<?= $this->url('user/drinks-admin') ?>" class="default-button"><?= $this->t('Zurück') ?></a>
-</p>
+<script>
+document.addEventListener('change', function (e) {
+    var input = e.target;
+    if (!input || input.type !== 'file' || input.id.indexOf('drink-image-') !== 0) {
+        return;
+    }
+    if (!input.files || input.files.length === 0) {
+        return;
+    }
+    var formId = input.getAttribute('form');
+    if (!formId) {
+        return;
+    }
+    var autoSaveBtn = document.getElementById(formId + '-auto-save');
+    if (!autoSaveBtn) {
+        return;
+    }
+    autoSaveBtn.click();
+});
+</script>
