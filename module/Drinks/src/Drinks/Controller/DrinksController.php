@@ -567,6 +567,36 @@ class DrinksController extends AbstractActionController
     }
 
     /**
+     * Admin: Manage drinks (add/edit/delete drinks and prices)
+     */
+    public function manageDrinksAction()
+    {
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $user = $userSessionManager->getSessionUser();
+        if (!$user || $user->get('status') !== 'admin') {
+            return $this->redirect()->toRoute('user/settings');
+        }
+        $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
+        $drinkCategoryManager = $serviceManager->get('Drinks\Manager\DrinkCategoryManager');
+        
+        // Fetch all drinks (getAll returns a Traversable result set)
+        $drinksRaw = $drinkManager->getAll();
+        $drinks = is_array($drinksRaw) ? $drinksRaw : iterator_to_array($drinksRaw);
+        
+        // Fetch all categories (getAll returns an array directly)
+        $drinkCategoriesRaw = $drinkCategoryManager->getAll();
+        $drinkCategories = is_array($drinkCategoriesRaw) ? $drinkCategoriesRaw : iterator_to_array($drinkCategoriesRaw);
+        
+        $viewModel = new ViewModel([
+            'drinks' => $drinks,
+            'drinkCategories' => $drinkCategories,
+        ]);
+        $viewModel->setTemplate('drinks/manage-drinks');
+        return $viewModel;
+    }
+
+    /**
      * Admin: Save party mode settings
      */
     public function savePartyModeAction()

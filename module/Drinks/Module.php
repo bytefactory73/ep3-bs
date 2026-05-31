@@ -19,6 +19,7 @@ class Module
         $config = include __DIR__ . '/config/module.config.php';
         $config['view_manager'] = array(
             'template_path_stack' => array(
+                __DIR__ . '/../view',
                 __DIR__ . '/../User/view',
             ),
         );

@@ -1,0 +1,80 @@
+<?php
+// Admin: Manage drinks - overview and editing of all drinks and categories
+$url = isset($this->simpleOrderMode) && $this->simpleOrderMode ? 'user/simple-order' : 'user/drinks-admin';
+$this->setup([
+    'title' => 'Artikel konfigurieren',
+    'panel' => 'centered-panel large-sized',
+    'back' => $this->url($url),
+    'links' => [
+        'Drinks Verwaltung' => $this->url('user/drinks-admin'),
+    ],
+]);
+?>
+
+<h1><?= $this->t('Artikel konfigurieren') ?></h1>
+<div class="separator-small"></div>
+<p><?= $this->t('Hier können Sie alle Getränke und Kategorien verwalten.') ?></p>
+
+<div class="separator separator-line"></div>
+
+<div class="padded">
+    <!-- Kategorien -->
+    <h2><?= $this->t('Getränkekategorien') ?></h2>
+    <table class="table table-striped" style="margin-top:12px;">
+        <thead>
+            <tr>
+                <th style="width:40px;">#</th>
+                <th><?= $this->t('Kategorie') ?></th>
+                <th><?= $this->t('Sortierung') ?></th>
+            </tr>
+        </thead>
+        <tbody>
+        <?php $catNum = 1; foreach ($this->drinkCategories as $cat): ?>
+            <tr>
+                <td><?= $catNum++ ?></td>
+                <td><?= $this->escapeHtml($cat['name']) ?></td>
+                <td><?= $this->escapeHtml((string)$cat['sort_order']) ?></td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+
+    <div class="separator-small"></div>
+
+    <!-- Getränke -->
+    <h2><?= $this->t('Getränke') ?></h2>
+    <table class="table table-striped" style="margin-top:12px;">
+        <thead>
+            <tr>
+                <th style="width:40px;">#</th>
+                <th><?= $this->t('Name') ?></th>
+                <th><?= $this->t('Kategorie') ?></th>
+                <th><?= $this->t('Preis') ?></th>
+                <th><?= $this->t('Aktiv') ?></th>
+            </tr>
+        </thead>
+        <tbody>
+        <?php $drinkNum = 1; foreach ($this->drinks as $drink): ?>
+            <tr>
+                <td><?= $drinkNum++ ?></td>
+                <td><?= $this->escapeHtml($drink['name']) ?></td>
+                <td><?= $this->escapeHtml($drink['category_name'] ?? '—') ?></td>
+                <td style="text-align:right;"><?= number_format($drink['price'], 2, ',', '.') ?> €</td>
+                <td style="text-align:center;">
+                    <?php if ((int)($drink['active'] ?? 1) === 1): ?>
+                        <span style="color:green;">✓</span>
+                    <?php else: ?>
+                        <span style="color:red;">✗</span>
+                    <?php endif; ?>
+                </td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+</div>
+
+<div class="separator-small"></div>
+
+<p style="text-align:center;">
+    <a href="<?= $this->url('user/drinks-admin') ?>" class="default-button"><?= $this->t('Zurück') ?></a>
+</p>
