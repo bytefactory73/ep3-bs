@@ -1,6 +1,6 @@
 <?php
 
-namespace User\Controller\Traits;
+namespace Drinks\Controller\Traits;
 
 use Base\Service\MoneyCalculator;
 

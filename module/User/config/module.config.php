@@ -374,7 +374,7 @@ return array(
                         'options' => array(
                             'route' => '/simple-login',
                             'defaults' => array(
-                                'controller' => 'User\\Controller\\SimpleLogin',
+                                'controller' => 'Drinks\\Controller\\SimpleLogin',
                                 'action' => 'login',
                             ),
                         ),
@@ -384,152 +384,152 @@ return array(
                         'options' => array(
                             'route' => '/simple-order',
                             'defaults' => array(
-                                'controller' => 'User\\Controller\\SimpleLogin',
+                                'controller' => 'Drinks\\Controller\\SimpleLogin',
                                 'action' => 'order',
                             ),
                         ),
                         'may_terminate' => true,
                         'child_routes' => array(
-                            'drop-order' => array(
-                                'type' => 'Literal',
-                                'options' => array(
-                                    'route' => '/drop-order',
-                                    'defaults' => array(
-                                        'controller' => 'User\\Controller\\SimpleLogin',
-                                        'action' => 'dropOrder',
-                                    ),
-                                ),
-                            ),
-                            'submit-order' => array(
-                                'type' => 'Literal',
-                                'options' => array(
-                                    'route' => '/submit-order',
-                                    'defaults' => array(
-                                        'controller' => 'User\\Controller\\SimpleLogin',
-                                        'action' => 'submitOrder',
-                                    ),
-                                ),
-                            ),
-                            'team-stats' => array(
-                                'type' => 'Literal',
-                                'options' => array(
-                                    'route' => '/team-stats',
-                                    'defaults' => array(
-                                        'controller' => 'User\\Controller\\SimpleLogin',
-                                        'action' => 'teamStats',
-                                    ),
-                                ),
-                            ),
-                            'spieltag' => array(
-                                'type' => 'Literal',
-                                'options' => array(
-                                    'route' => '/spieltag',
-                                    'defaults' => array(
-                                        'controller' => 'User\\Controller\\SimpleLogin',
-                                        'action' => 'spieltag',
-                                    ),
-                                ),
-                            ),
-                            'send-money' => array(
-                                'type' => 'Literal',
-                                'options' => array(
-                                    'route' => '/send-money',
-                                    'defaults' => array(
-                                        'controller' => 'User\\Controller\\SimpleLogin',
-                                        'action' => 'sendMoney',
-                                    ),
-                                ),
-                            ),
-                            'team-members' => array(
-                                'type' => 'Literal',
-                                'options' => array(
-                                    'route' => '/team-members',
-                                    'defaults' => array(
-                                        'controller' => 'User\Controller\SimpleLogin',
-                                        'action' => 'teamMembers',
-                                    ),
-                                ),
-                            ),
-                            'team-order-relevance' => array(
-                                'type' => 'Literal',
-                                'options' => array(
-                                    'route' => '/team-order-relevance',
-                                    'defaults' => array(
-                                        'controller' => 'User\Controller\SimpleLogin',
-                                        'action' => 'teamOrderRelevance',
-                                    ),
-                                ),
-                            ),
-                            'team-extra-cost' => array(
-                                'type' => 'Literal',
-                                'options' => array(
-                                    'route' => '/team-extra-cost',
-                                    'defaults' => array(
-                                        'controller' => 'User\Controller\SimpleLogin',
-                                        'action' => 'teamExtraCost',
-                                    ),
-                                ),
-                            ),
-                            'team-update-extra-cost' => array(
-                                'type' => 'Literal',
-                                'options' => array(
-                                    'route' => '/team-update-extra-cost',
-                                    'defaults' => array(
-                                        'controller' => 'User\Controller\SimpleLogin',
-                                        'action' => 'teamUpdateExtraCost',
-                                    ),
-                                ),
-                            ),
-                            'team-delete-extra-cost' => array(
-                                'type' => 'Literal',
-                                'options' => array(
-                                    'route' => '/team-delete-extra-cost',
-                                    'defaults' => array(
-                                        'controller' => 'User\Controller\SimpleLogin',
-                                        'action' => 'teamDeleteExtraCost',
-                                    ),
-                                ),
-                            ),
-                            'team-guest-donation' => array(
-                                'type' => 'Literal',
-                                'options' => array(
-                                    'route' => '/team-guest-donation',
-                                    'defaults' => array(
-                                        'controller' => 'User\Controller\SimpleLogin',
-                                        'action' => 'teamGuestDonation',
-                                    ),
-                                ),
-                            ),
-                            'team-update-guest-donation' => array(
-                                'type' => 'Literal',
-                                'options' => array(
-                                    'route' => '/team-update-guest-donation',
-                                    'defaults' => array(
-                                        'controller' => 'User\Controller\SimpleLogin',
-                                        'action' => 'teamUpdateGuestDonation',
-                                    ),
-                                ),
-                            ),
-                            'team-delete-guest-donation' => array(
-                                'type' => 'Literal',
-                                'options' => array(
-                                    'route' => '/team-delete-guest-donation',
-                                    'defaults' => array(
-                                        'controller' => 'User\Controller\SimpleLogin',
-                                        'action' => 'teamDeleteGuestDonation',
-                                    ),
-                                ),
-                            ),
-                            'close-team-event' => array(
-                                'type' => 'Literal',
-                                'options' => array(
-                                    'route' => '/close-team-event',
-                                    'defaults' => array(
-                                        'controller' => 'User\Controller\SimpleLogin',
-                                        'action' => 'closeTeamEvent',
-                                    ),
-                                ),
-                            ),
+                             'drop-order' => array(
+                                 'type' => 'Literal',
+                                 'options' => array(
+                                     'route' => '/drop-order',
+                                     'defaults' => array(
+                                         'controller' => 'Drinks\\Controller\\SimpleLogin',
+                                         'action' => 'dropOrder',
+                                     ),
+                                 ),
+                             ),
+                             'submit-order' => array(
+                                 'type' => 'Literal',
+                                 'options' => array(
+                                     'route' => '/submit-order',
+                                     'defaults' => array(
+                                         'controller' => 'Drinks\\Controller\\SimpleLogin',
+                                         'action' => 'submitOrder',
+                                     ),
+                                 ),
+                             ),
+                             'team-stats' => array(
+                                 'type' => 'Literal',
+                                 'options' => array(
+                                     'route' => '/team-stats',
+                                     'defaults' => array(
+                                         'controller' => 'Drinks\\Controller\\SimpleLogin',
+                                         'action' => 'teamStats',
+                                     ),
+                                 ),
+                             ),
+                             'spieltag' => array(
+                                 'type' => 'Literal',
+                                 'options' => array(
+                                     'route' => '/spieltag',
+                                     'defaults' => array(
+                                         'controller' => 'Drinks\\Controller\\SimpleLogin',
+                                         'action' => 'spieltag',
+                                     ),
+                                 ),
+                             ),
+                             'send-money' => array(
+                                 'type' => 'Literal',
+                                 'options' => array(
+                                     'route' => '/send-money',
+                                     'defaults' => array(
+                                         'controller' => 'Drinks\\Controller\\SimpleLogin',
+                                         'action' => 'sendMoney',
+                                     ),
+                                 ),
+                             ),
+                             'team-members' => array(
+                                 'type' => 'Literal',
+                                 'options' => array(
+                                     'route' => '/team-members',
+                                     'defaults' => array(
+                                         'controller' => 'Drinks\\Controller\\SimpleLogin',
+                                         'action' => 'teamMembers',
+                                     ),
+                                 ),
+                             ),
+                             'team-order-relevance' => array(
+                                 'type' => 'Literal',
+                                 'options' => array(
+                                     'route' => '/team-order-relevance',
+                                     'defaults' => array(
+                                         'controller' => 'Drinks\\Controller\\SimpleLogin',
+                                         'action' => 'teamOrderRelevance',
+                                     ),
+                                 ),
+                             ),
+                             'team-extra-cost' => array(
+                                 'type' => 'Literal',
+                                 'options' => array(
+                                     'route' => '/team-extra-cost',
+                                     'defaults' => array(
+                                         'controller' => 'Drinks\\Controller\\SimpleLogin',
+                                         'action' => 'teamExtraCost',
+                                     ),
+                                 ),
+                             ),
+                             'team-update-extra-cost' => array(
+                                 'type' => 'Literal',
+                                 'options' => array(
+                                     'route' => '/team-update-extra-cost',
+                                     'defaults' => array(
+                                         'controller' => 'Drinks\\Controller\\SimpleLogin',
+                                         'action' => 'teamUpdateExtraCost',
+                                     ),
+                                 ),
+                             ),
+                             'team-delete-extra-cost' => array(
+                                 'type' => 'Literal',
+                                 'options' => array(
+                                     'route' => '/team-delete-extra-cost',
+                                     'defaults' => array(
+                                         'controller' => 'Drinks\\Controller\\SimpleLogin',
+                                         'action' => 'teamDeleteExtraCost',
+                                     ),
+                                 ),
+                             ),
+                             'team-guest-donation' => array(
+                                 'type' => 'Literal',
+                                 'options' => array(
+                                     'route' => '/team-guest-donation',
+                                     'defaults' => array(
+                                         'controller' => 'Drinks\\Controller\\SimpleLogin',
+                                         'action' => 'teamGuestDonation',
+                                     ),
+                                 ),
+                             ),
+                             'team-update-guest-donation' => array(
+                                 'type' => 'Literal',
+                                 'options' => array(
+                                     'route' => '/team-update-guest-donation',
+                                     'defaults' => array(
+                                         'controller' => 'Drinks\\Controller\\SimpleLogin',
+                                         'action' => 'teamUpdateGuestDonation',
+                                     ),
+                                 ),
+                             ),
+                             'team-delete-guest-donation' => array(
+                                 'type' => 'Literal',
+                                 'options' => array(
+                                     'route' => '/team-delete-guest-donation',
+                                     'defaults' => array(
+                                         'controller' => 'Drinks\\Controller\\SimpleLogin',
+                                         'action' => 'teamDeleteGuestDonation',
+                                     ),
+                                 ),
+                             ),
+                             'close-team-event' => array(
+                                 'type' => 'Literal',
+                                 'options' => array(
+                                     'route' => '/close-team-event',
+                                     'defaults' => array(
+                                         'controller' => 'Drinks\\Controller\\SimpleLogin',
+                                         'action' => 'closeTeamEvent',
+                                     ),
+                                 ),
+                             ),
                         ),
                     ),
                     'drinks-admin' => array(
@@ -634,7 +634,7 @@ return array(
         'invokables' => array(
             'User\Controller\Session' => 'User\Controller\SessionController',
             'User\Controller\Account' => 'User\Controller\AccountController',
-            'User\Controller\SimpleLogin' => 'User\Controller\SimpleLoginController',
+             'User\Controller\SimpleLogin' => 'Drinks\Controller\SimpleLoginController',
             'Drinks\Controller\Drinks' => 'Drinks\Controller\DrinksController',
         ),
         'factories' => array(

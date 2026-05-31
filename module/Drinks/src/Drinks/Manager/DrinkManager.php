@@ -3,7 +3,7 @@
 namespace Drinks\Manager;
 
 use RuntimeException;
-use User\Controller\Traits\ThekeMailTrait;
+use Drinks\Controller\Traits\ThekeMailTrait;
 use Zend\Db\Adapter\Adapter;
 
 class DrinkManager

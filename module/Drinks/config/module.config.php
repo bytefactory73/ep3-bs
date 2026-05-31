@@ -6,6 +6,12 @@ return [
             'Drinks\Manager\DrinkOrderManager' => 'Drinks\Manager\DrinkOrderManagerFactory',
             'Drinks\Manager\DrinkDepositManager' => 'Drinks\Manager\DrinkDepositManagerFactory',
             'Drinks\Manager\DrinkCategoryManager' => 'Drinks\Manager\DrinkCategoryManagerFactory',
+            'Drinks\Controller\SimpleLogin' => 'Drinks\Controller\SimpleLoginControllerFactory',
+        ],
+    ],
+    'controllers' => [
+        'invokables' => [
+            'Drinks\Controller\SimpleLogin' => 'Drinks\Controller\SimpleLoginController',
         ],
     ],
 ];

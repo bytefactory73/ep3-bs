@@ -1,8 +1,8 @@
 <?php
-namespace User\Controller;
+namespace Drinks\Controller;
 
-use User\Controller\Traits\MoneyTransferTrait;
-use User\Controller\Traits\TeamEventTrait;
+use Drinks\Controller\Traits\MoneyTransferTrait;
+use Drinks\Controller\Traits\TeamEventTrait;
 use Zend\Crypt\Password\Bcrypt;
 use Zend\Mvc\Controller\AbstractActionController;
 use Zend\View\Model\ViewModel;
