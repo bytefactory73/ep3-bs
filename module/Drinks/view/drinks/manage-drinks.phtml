@@ -103,9 +103,9 @@ $this->setup([
                         <img src="<?= $imgPath ?>" alt="<?= $this->escapeHtmlAttr($drink['name']) ?>" style="width: 72px; height: 72px; object-fit: contain; background: #f8f8f8; border-radius: 4px;" />
                         <?php $imageInputId = 'drink-image-' . (int)$drink['id']; ?>
                         <input type="file" id="<?= $imageInputId ?>" name="image" form="<?= $rowFormId ?>" accept="image/*" style="display:none;" />
-                        <label for="<?= $imageInputId ?>" class="default-button mini-button" style="display:block; margin-top:4px; text-align:center; width:72px; font-size:0.8em; padding:2px 6px;">
+                        <button type="button" class="default-button mini-button" style="display:block; margin-top:4px; text-align:center; width:72px; font-size:0.8em; padding:2px 6px;" onclick="document.getElementById('<?= $imageInputId ?>').click();">
                             <?= $this->t('Choose Image') ?>
-                        </label>
+                        </button>
                         <?php if (isset($drink['image']) && $drink['image']): ?>
                             <input type="hidden" name="existing_image" form="<?= $rowFormId ?>" value="<?= $this->escapeHtmlAttr($drink['image']) ?>" />
                         <?php endif; ?>

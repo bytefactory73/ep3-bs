@@ -577,9 +577,73 @@ class DrinksController extends AbstractActionController
         if (!$user || $user->get('status') !== 'admin') {
             return $this->redirect()->toRoute('user/settings');
         }
+
         $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
         $drinkCategoryManager = $serviceManager->get('Drinks\Manager\DrinkCategoryManager');
-        
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+
+        // Handle POST requests for adding/editing/deleting drinks
+        if ($this->getRequest()->isPost()) {
+            $post = $this->params()->fromPost();
+            $files = $this->getRequest()->getFiles()->toArray();
+            $uploadDir = dirname(dirname(dirname(dirname(dirname(__DIR__))))) . '/public/imgs/branding/';
+            if (!is_dir($uploadDir)) {
+                @mkdir($uploadDir, 0755, true);
+            }
+
+            // Add new drink
+            if (isset($post['add_drink'])) {
+                $name = trim((string)($post['name'] ?? ''));
+                $price = floatval($post['price'] ?? 0);
+                $categoryId = isset($post['category']) ? (int)$post['category'] : null;
+                if ($name !== '' && $price > 0) {
+                    $imageFilename = null;
+                    if (isset($files['image']['tmp_name']) && !empty($files['image']['tmp_name']) && is_uploaded_file($files['image']['tmp_name'])) {
+                        $ext = pathinfo($files['image']['name'], PATHINFO_EXTENSION);
+                        $imageFilename = uniqid('drink_', true) . '.' . $ext;
+                        $destPath = $uploadDir . DIRECTORY_SEPARATOR . $imageFilename;
+                        if (!@move_uploaded_file($files['image']['tmp_name'], $destPath)) {
+                            error_log('Drink image upload failed: ' . $destPath);
+                            $imageFilename = null;
+                        }
+                    }
+                    $sql = 'INSERT INTO drinks (name, price, image, category) VALUES (?, ?, ?, ?)';
+                    $dbAdapter->query($sql, [$name, $price, $imageFilename, $categoryId]);
+                    return $this->redirect()->toRoute(null, [], ['query' => ['message' => 'Drink added successfully.']], true);
+                }
+            }
+            // Edit drink
+            elseif (isset($post['edit_drink'])) {
+                $id = (int)($post['id'] ?? 0);
+                $name = trim((string)($post['name'] ?? ''));
+                $price = floatval($post['price'] ?? 0);
+                $categoryId = isset($post['category']) ? (int)$post['category'] : null;
+                $imageFilename = $post['existing_image'] ?? null;
+                if ($id > 0 && $name !== '' && $price > 0) {
+                    if (isset($files['image']['tmp_name']) && !empty($files['image']['tmp_name']) && is_uploaded_file($files['image']['tmp_name'])) {
+                        $ext = pathinfo($files['image']['name'], PATHINFO_EXTENSION);
+                        $imageFilename = uniqid('drink_', true) . '.' . $ext;
+                        $destPath = $uploadDir . DIRECTORY_SEPARATOR . $imageFilename;
+                        if (!@move_uploaded_file($files['image']['tmp_name'], $destPath)) {
+                            error_log('Drink image upload failed: ' . $destPath);
+                            $imageFilename = $post['existing_image'] ?? null;
+                        }
+                    }
+                    $sql = 'UPDATE drinks SET name = ?, price = ?, image = ?, category = ? WHERE id = ?';
+                    $dbAdapter->query($sql, [$name, $price, $imageFilename, $categoryId, $id]);
+                    return $this->redirect()->toRoute(null, [], ['query' => ['message' => 'Drink updated successfully.']], true);
+                }
+            }
+            // Delete drink
+            elseif (isset($post['delete_drink'])) {
+                $id = (int)($post['id'] ?? 0);
+                if ($id > 0) {
+                    $dbAdapter->query('DELETE FROM drinks WHERE id = ?', [$id]);
+                    return $this->redirect()->toRoute(null, [], ['query' => ['message' => 'Drink deleted successfully.']], true);
+                }
+            }
+        }
+
         // Fetch all drinks (getAll returns a Traversable result set)
         $drinksRaw = $drinkManager->getAll();
         $drinks = is_array($drinksRaw) ? $drinksRaw : iterator_to_array($drinksRaw);
@@ -587,10 +651,11 @@ class DrinksController extends AbstractActionController
         // Fetch all categories (getAll returns an array directly)
         $drinkCategoriesRaw = $drinkCategoryManager->getAll();
         $drinkCategories = is_array($drinkCategoriesRaw) ? $drinkCategoriesRaw : iterator_to_array($drinkCategoriesRaw);
-        
+
         $viewModel = new ViewModel([
             'drinks' => $drinks,
             'drinkCategories' => $drinkCategories,
+            'message' => null,
         ]);
         $viewModel->setTemplate('drinks/manage-drinks');
         return $viewModel;
