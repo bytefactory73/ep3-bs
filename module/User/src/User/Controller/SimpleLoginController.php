@@ -105,6 +105,7 @@ class SimpleLoginController extends AbstractActionController
             'quickLoginUsers' => $quickLoginUsers,
         ]);
         $viewModel->setTerminal(true);
+        $viewModel->setTemplate('simple-login/login');
         return $viewModel;
     }
 
@@ -112,6 +113,7 @@ class SimpleLoginController extends AbstractActionController
     {
         $viewModel = new ViewModel();
         $viewModel->setTerminal(true);
+        $viewModel->setTemplate('simple-login/order');
         $sessionManager = $this->getServiceLocator()->get('Zend\Session\SessionManager');
         $sessionManager->start();
         $session = new \Zend\Session\Container('SimpleLogin');

@@ -258,7 +258,7 @@ class DrinksController extends AbstractActionController
             'keepLoggedInActive' => $keepLoggedInActive,
             'partyModeEnabled' => $partyModeEnabled,
         ]);
-        $viewModel->setTemplate('user/account/drinks.phtml');
+        $viewModel->setTemplate('drinks.phtml');
         return $viewModel;
     }
 
@@ -562,7 +562,7 @@ class DrinksController extends AbstractActionController
             'partyModeStart' => $partyModeStart,
             'partyModeEnd' => $partyModeEnd,
         ]);
-        $viewModel->setTemplate('user/account/drinks-admin');
+        $viewModel->setTemplate('drinks-admin.phtml');
         return $viewModel;
     }
 
@@ -727,7 +727,7 @@ class DrinksController extends AbstractActionController
             'drinks' => $drinks,
             'message' => $message,
         ]);
-        $viewModel->setTemplate('user/account/deposits');
+        $viewModel->setTemplate('deposits.phtml');
         return $viewModel;
     }
 
@@ -1539,7 +1539,7 @@ class DrinksController extends AbstractActionController
             $viewVars['simpleOrderMode'] = true;
         }
         $viewModel = new ViewModel($viewVars);
-        $viewModel->setTemplate('user/account/drinks-summary.phtml');
+        $viewModel->setTemplate('drinks-summary.phtml');
         return $viewModel;
     }
 
@@ -1625,7 +1625,7 @@ class DrinksController extends AbstractActionController
             'users' => $userList,
             'total_balance' => $totalBalance,
         ]);
-        $viewModel->setTemplate('user/account/balance-list.phtml');
+        $viewModel->setTemplate('balance-list.phtml');
         return $viewModel;
     }
 

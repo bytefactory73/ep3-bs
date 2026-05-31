@@ -20,7 +20,6 @@ class Module
         $config['view_manager'] = array(
             'template_path_stack' => array(
                 __DIR__ . '/../view',
-                __DIR__ . '/../User/view',
             ),
         );
         return $config;
