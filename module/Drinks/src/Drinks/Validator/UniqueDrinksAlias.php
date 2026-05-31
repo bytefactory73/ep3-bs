@@ -1,6 +1,6 @@
 <?php
 
-namespace User\Validator;
+namespace Drinks\Validator;
 
 use Zend\Validator\AbstractValidator;
 use Zend\Db\Adapter\AdapterAwareInterface;

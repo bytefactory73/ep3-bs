@@ -1,6 +1,6 @@
 <?php
 
-namespace User\Form;
+namespace Drinks\Form;
 
 use Zend\Form\Form;
 use Zend\InputFilter\Factory;
@@ -72,7 +72,7 @@ class EditDrinksAliasForm extends Form
                         ),
                     ),
                     array(
-                        'name' => 'User\Validator\UniqueDrinksAlias',
+                        'name' => 'Drinks\Validator\UniqueDrinksAlias',
                         'options' => array(
                             'message' => 'Dieser Alias ist bereits vergeben.',
                         ),
