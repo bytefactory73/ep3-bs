@@ -1591,10 +1591,12 @@ class DrinksController extends AbstractActionController
             $totalBalance += $user['balance'];
         }
 
-        return [
+        $viewModel = new ViewModel([
             'users' => $userList,
             'total_balance' => $totalBalance,
-        ];
+        ]);
+        $viewModel->setTemplate('user/account/balance-list.phtml');
+        return $viewModel;
     }
 
     /**
@@ -1763,6 +1765,163 @@ class DrinksController extends AbstractActionController
         return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'Entry not found']));
     }
 
+   /**
+     * AJAX endpoint to update drinks_enabled and drinks_alias for a user
+          * POST: uid, drinks_enabled (bool), drinks_alias (string), order_email_option (string), teamlead_email (string)
+     * Returns JSON: { success: true } or { error: ... }
+     */
+    public function setUserDrinksSettingsAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $admin = $userSessionManager->getSessionUser();
+        if (!$admin || $admin->get('status') !== 'admin') {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['error' => 'No permission']));
+        }
+        $request = $this->getRequest();
+        if (!$request->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['error' => 'POST required']));
+        }
+        $uid = (int)$this->params()->fromPost('uid');
+        $drinksEnabled = $this->params()->fromPost('drinks_enabled', null);
+        $drinksAlias = $this->params()->fromPost('drinks_alias', null);
+        $orderEmailOption = $this->params()->fromPost('order_email_option', null);
+        $teamleadEmail = $this->params()->fromPost('teamlead_email', null);
+        $isTeam = $this->params()->fromPost('is_team', null);
+        if (!$uid) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'No user selected']));
+        }
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+        // Validate alias: allow empty or up to 50 chars, no dangerous chars
+        if ($drinksAlias !== null) {
+            $drinksAlias = trim($drinksAlias);
+            if ($drinksAlias !== '' && !preg_match('/^[\w\-\s]{1,50}$/u', $drinksAlias)) {
+                return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'Invalid alias']));
+            }
+        }
+        if ($orderEmailOption !== null) {
+            $orderEmailOption = trim((string)$orderEmailOption);
+            $allowedOrderEmailOptions = ['order', 'summary', 'negative'];
+            if (!in_array($orderEmailOption, $allowedOrderEmailOptions, true)) {
+                return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'Invalid order email option']));
+            }
+        }
+        if ($teamleadEmail !== null) {
+            $teamleadEmail = trim((string)$teamleadEmail);
+            if ($teamleadEmail !== '') {
+                $rawEmails = preg_split('/[;,]+/', $teamleadEmail);
+                $normalizedEmails = [];
+                foreach ((array)$rawEmails as $rawEmail) {
+                    $email = strtolower(trim((string)$rawEmail));
+                    if ($email === '') {
+                        continue;
+                    }
+                    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                        return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'Invalid teamlead email address']));
+                    }
+                    if (!in_array($email, $normalizedEmails, true)) {
+                        $normalizedEmails[] = $email;
+                    }
+                }
+                $teamleadEmail = implode(', ', $normalizedEmails);
+            }
+        }
+        // Normalize is_team
+        $isTeamVal = null;
+        if ($isTeam !== null) {
+            $isTeamVal = ($isTeam === '1' || $isTeam === 1 || $isTeam === true || $isTeam === 'true') ? 1 : 0;
+        }
+        try {
+            $row = $dbAdapter->query('SELECT * FROM drink_aliases WHERE user_id = ?', [$uid])->current();
+            if ($row) {
+                // Build dynamic update
+                $fields = [];
+                $params = [];
+                if ($drinksEnabled !== null) {
+                    $enabledVal = ($drinksEnabled === '1' || $drinksEnabled === 1 || $drinksEnabled === true || $drinksEnabled === 'true') ? 1 : 0;
+                    $fields[] = 'enabled = ?';
+                    $params[] = $enabledVal;
+                }
+                if ($drinksAlias !== null) {
+                    $fields[] = 'alias = ?';
+                    $params[] = $drinksAlias;
+                }
+                if ($orderEmailOption !== null) {
+                    $fields[] = 'order_email_option = ?';
+                    $params[] = $orderEmailOption;
+                }
+                if ($teamleadEmail !== null) {
+                    $fields[] = 'teamlead_email = ?';
+                    $params[] = $teamleadEmail;
+                }
+                if (isset($thekenadmin)) {
+                    $fields[] = 'thekenadmin = ?';
+                    $params[] = $thekenadmin ? 1 : 0;
+                }
+                if ($isTeamVal !== null) {
+                    $fields[] = 'is_team = ?';
+                    $params[] = $isTeamVal;
+                }
+                if (!empty($fields)) {
+                    $params[] = $uid;
+                    // Build upsert query for drink_aliases
+                    $columns = [];
+                    $values = [];
+                    $updates = [];
+                    if ($drinksEnabled !== null) {
+                        $columns[] = 'enabled';
+                        $values[] = $enabledVal;
+                        $updates[] = 'enabled = VALUES(enabled)';
+                    }
+                    if ($drinksAlias !== null) {
+                        $columns[] = 'alias';
+                        $values[] = $drinksAlias;
+                        $updates[] = 'alias = VALUES(alias)';
+                    }
+                    if ($orderEmailOption !== null) {
+                        $columns[] = 'order_email_option';
+                        $values[] = $orderEmailOption;
+                        $updates[] = 'order_email_option = VALUES(order_email_option)';
+                    }
+                    if ($teamleadEmail !== null) {
+                        $columns[] = 'teamlead_email';
+                        $values[] = $teamleadEmail;
+                        $updates[] = 'teamlead_email = VALUES(teamlead_email)';
+                    }
+                    if (isset($thekenadmin)) {
+                        $columns[] = 'thekenadmin';
+                        $values[] = $thekenadmin ? 1 : 0;
+                        $updates[] = 'thekenadmin = VALUES(thekenadmin)';
+                    }
+                    if ($isTeamVal !== null) {
+                        $columns[] = 'is_team';
+                        $values[] = $isTeamVal;
+                        $updates[] = 'is_team = VALUES(is_team)';
+                    }
+                    $columns = array_merge(['user_id'], $columns);
+                    $values = array_merge([$uid], $values);
+                    $sql = 'INSERT INTO drink_aliases (' . implode(', ', $columns) . ') VALUES (' . rtrim(str_repeat('?, ', count($columns)), ', ') . ') ON DUPLICATE KEY UPDATE ' . implode(', ', $updates);
+                    $dbAdapter->query($sql, $values);
+                }
+            } else {
+                // Insert: require all fields
+                if ($drinksAlias === null && $drinksEnabled === null && $orderEmailOption === null && $teamleadEmail === null && !isset($thekenadmin) && $isTeamVal === null) {
+                    return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['error' => 'Alias, enabled, and thekenadmin required for new entry']));
+                }
+                $enabledVal = ($drinksEnabled === '1' || $drinksEnabled === 1 || $drinksEnabled === true || $drinksEnabled === 'true') ? 1 : 0;
+                $thekenadminVal = isset($thekenadmin) ? ($thekenadmin ? 1 : 0) : 0;
+                $isTeamInsert = $isTeamVal !== null ? $isTeamVal : 0;
+                $orderEmailOptionInsert = $orderEmailOption !== null ? $orderEmailOption : 'order';
+                $teamleadEmailInsert = $teamleadEmail !== null ? $teamleadEmail : '';
+                $dbAdapter->query('INSERT INTO drink_aliases (user_id, alias, enabled, thekenadmin, is_team, order_email_option, teamlead_email) VALUES (?, ?, ?, ?, ?, ?, ?)', [$uid, $drinksAlias, $enabledVal, $thekenadminVal, $isTeamInsert, $orderEmailOptionInsert, $teamleadEmailInsert]);
+            }
+        } catch (\Exception $e) {
+            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['error' => 'DB error', 'details' => $e->getMessage()]));
+        }
+        return $this->getResponse()->setContent(json_encode(['success' => true]));
+    }
+    
     /**
      * Helper: Check if transfer reference columns exist
      */

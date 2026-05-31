@@ -15,18 +15,8 @@ return array(
                         'options' => array(
                             'route' => '/toggle-deposit-order-deleted',
                             'defaults' => array(
-                                'controller' => 'User\Controller\Account',
+                                'controller' => 'Drinks\Controller\Drinks',
                                 'action' => 'toggleDepositOrderDeleted',
-                            ),
-                        ),
-                    ),
-                    'set-user-drinks-settings' => array(
-                        'type' => 'Literal',
-                        'options' => array(
-                            'route' => '/set-user-drinks-settings',
-                            'defaults' => array(
-                                'controller' => 'User\Controller\Account',
-                                'action' => 'setUserDrinksSettings',
                             ),
                         ),
                     ),
@@ -37,6 +27,16 @@ return array(
                             'defaults' => array(
                                 'controller' => 'Drinks\Controller\Drinks',
                                 'action'     => 'addDrinkBooking',
+                            ),
+                        ),
+                    ),
+                    'set-user-drinks-settings' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/set-user-drinks-settings',
+                            'defaults' => array(
+                                'controller' => 'Drinks\Controller\Drinks',
+                                'action' => 'setUserDrinksSettings',
                             ),
                         ),
                     ),
@@ -565,16 +565,16 @@ return array(
                             ),
                         ),
                     ),
-										'balance-list' => array(
-										   'type' => 'Literal',
-										   'options' => array(
-										       'route' => '/balance-list',
-										       'defaults' => array(
-										           'controller' => 'Drinks\Controller\Drinks',
-										           'action' => 'balanceList',
-										       ),
-										   ),
-										),
+                    'balance-list' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/balance-list',
+                            'defaults' => array(
+                                'controller' => 'Drinks\Controller\Drinks',
+                                'action' => 'balanceList',
+                            ),
+                        ),
+                    ),
                     'get-user-deposits-data' => array(
                         'type' => 'Literal',
                         'options' => array(
