@@ -1,6 +1,21 @@
 <?php
 $teamLeadTeamUserId = isset($this->teamLeadTeamUserId) ? (int)$this->teamLeadTeamUserId : 0;
 $teamLeadTeamAlias = isset($this->teamLeadTeamAlias) ? (string)$this->teamLeadTeamAlias : '';
+$teamLeadTeams = isset($this->teamLeadTeams) && is_array($this->teamLeadTeams) ? $this->teamLeadTeams : [];
+$isTeamMember = isset($this->isTeamMember) ? (bool)$this->isTeamMember : false;
+
+// Show MF-Theke button if user is teamlead OR team member
+$showMfTheke = ($teamLeadTeamUserId > 0) || $isTeamMember;
+
+// Determine primary team for dropdown (first teamlead team, or first team member team)
+$primaryTeamUserId = $teamLeadTeamUserId;
+$primaryTeamAlias = $teamLeadTeamAlias;
+if ($primaryTeamUserId <= 0 && $isTeamMember) {
+    // For team members without teamlead role, we need to find their team
+    // This will be populated from the backend API
+    $primaryTeamUserId = 0;
+    $primaryTeamAlias = '';
+}
 ?>
 
 <table style="height: 100%;">
@@ -25,12 +40,12 @@ $teamLeadTeamAlias = isset($this->teamLeadTeamAlias) ? (string)$this->teamLeadTe
 
         <?php endif; ?>
 
-        <?php if ($teamLeadTeamUserId > 0): ?>
+        <?php if ($showMfTheke): ?>
         <td>
             <button
                 type="button"
                 class="default-button"
-                onclick="openFrontendTeamStatsModal(<?= $teamLeadTeamUserId ?>);"
+                onclick='openFrontendTeamStatsModal(<?= json_encode($teamLeadTeams, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>, <?= $isTeamMember ? 'true' : 'false' ?>, <?= $this->user->need('uid') ?>);'
             >
                 <span class="symbolic symbolic-stats"><?= $this->t('MF-Theke') ?></span>
             </button>
@@ -59,7 +74,7 @@ $teamLeadTeamAlias = isset($this->teamLeadTeamAlias) ? (string)$this->teamLeadTe
     </tr>
 </table>
 
-<?php if ($teamLeadTeamUserId > 0): ?>
+<?php if ($showMfTheke): ?>
 <div id="frontendTeamStatsModal" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.6);z-index:99999;align-items:center;justify-content:center;">
     <div style="position:relative;width:min(980px,96vw);height:90vh;max-height:90vh;background:#fff;border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,0.25);overflow:auto;padding:18px 16px 16px 16px;">
         <button onclick="closeFrontendTeamStatsModal()" style="position:absolute;top:10px;right:12px;z-index:10;background:#eee;border:none;border-radius:50%;width:34px;height:34px;font-size:20px;cursor:pointer;">&times;</button>
@@ -74,10 +89,15 @@ $teamLeadTeamAlias = isset($this->teamLeadTeamAlias) ? (string)$this->teamLeadTe
         <div id="frontendTeamStatsContent" style="padding:2px 4px 8px 4px;"></div>
     </div>
 </div>
-<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260511-21') ?>"></script>
+<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260607-02') ?>"></script>
 <script>
-window.__frontendTeamStatsTeamAlias = <?= json_encode($teamLeadTeamAlias, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-window.__frontendTeamStatsTeamUid = 0;
+// Pass team data to JS for dropdown population
+window.__frontendTeamStatsTeamAlias = <?= json_encode($primaryTeamAlias, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+window.__frontendTeamStatsTeamUid = <?= $primaryTeamUserId ?>;
+window.__frontendTeamStatsTeamLeadTeams = <?= json_encode($teamLeadTeams, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+window.__frontendTeamStatsIsTeamMember = <?= $isTeamMember ? 'true' : 'false' ?>;
+window.__frontendTeamStatsIsTeamLead = <?= ($teamLeadTeamUserId > 0) ? 'true' : 'false' ?>;
+window.__frontendTeamStatsUserRole = <?= ($teamLeadTeamUserId > 0) ? "'Mannschaftsführer'" : (($isTeamMember) ? "'Teilnehmer'" : "''") ?>;
 
 var frontendTeamStatsModalController = createTeamStatsModal({
     modalId: 'frontendTeamStatsModal',
@@ -94,14 +114,32 @@ var frontendTeamStatsModalController = createTeamStatsModal({
     removeButtonClass: 'frontend-team-stats-member-remove',
     addDirectButtonClass: 'frontend-team-stats-member-add-direct',
     manageContainerStyle: 'position:relative; display:flex; align-items:center; gap:6px; margin-top:10px; max-width:560px;',
-    getTitle: function(teamAlias) {
+    getTitle: function(teamAlias, userRole) {
         var alias = String(teamAlias || '').trim();
-        return alias ? ('Kostenübersicht - ' + alias) : 'Kostenübersicht';
+        var role = String(userRole || '').trim();
+        var roleSuffix = role ? (' - ' + role) : '';
+        return alias ? ('Kostenübersicht - ' + alias + roleSuffix) : 'Kostenübersicht';
     },
     onOpen: function(args, state) {
-        var uid = parseInt(args[0] || 0, 10);
-        if (uid > 0) {
-            state.teamUid = uid;
+        var teamLeadTeams = args[0] || [];
+        var isTeamMember = args[1] === true;
+        var userUid = parseInt(args[2] || 0, 10);
+        // Store isTeamMember flag for buildStatsUrl
+        state.isTeamMember = isTeamMember;
+        // Store all teamLeadTeams for determining editability
+        state.teamLeadTeams = (Array.isArray(teamLeadTeams) && teamLeadTeams.length > 0) ? teamLeadTeams : [];
+        // Use teamLeadTeams array passed from button click
+        if (state.teamLeadTeams.length > 0) {
+            // Use first team as initial teamUid for the API query
+            state.teamUid = state.teamLeadTeams[0].user_id;
+        } else if (isTeamMember) {
+            // For team members without teamlead role, use the user's personal UID
+            // The API will find events where this user is a member
+            state.teamUid = userUid;
+        }
+        // Store user's personal UID for member events query
+        if (userUid > 0) {
+            state.userUid = userUid;
         }
     },
     buildStatsUrl: function(spieltag, state) {
@@ -111,6 +149,22 @@ var frontendTeamStatsModalController = createTeamStatsModal({
         var url = '<?= $this->url('user/teamlead-team-stats') ?>?team_uid=' + encodeURIComponent(String(state.teamUid));
         if (spieltag) {
             url += '&spieltag=' + encodeURIComponent(spieltag);
+        }
+        // Pass all teamLeadTeams UIDs so the API can query events from all teams
+        if (state.teamLeadTeams && state.teamLeadTeams.length > 0) {
+            var teamUids = [];
+            for (var i = 0; i < state.teamLeadTeams.length; i++) {
+                teamUids.push(String(state.teamLeadTeams[i].user_id));
+            }
+            url += '&team_uids=' + encodeURIComponent(JSON.stringify(teamUids));
+        }
+        // Pass user's personal UID for member events query
+        if (state.userUid) {
+            url += '&user_uid=' + encodeURIComponent(String(state.userUid));
+        }
+        // Pass is_team_member flag for view-only mode
+        if (state.isTeamMember) {
+            url += '&is_team_member=1';
         }
         return url;
     },
@@ -226,30 +280,99 @@ var frontendTeamStatsModalController = createTeamStatsModal({
         if (data.team_alias) {
             state.teamAlias = String(data.team_alias);
         }
+        // Store canManageMembers flag for controlling UI editing
+        // Determine from the selected event's can_manage_members field
+        var selectedEvent = null;
+        var events = Array.isArray(data.events) ? data.events : [];
+        for (var i = 0; i < events.length; i++) {
+            if (String(events[i].label || '') === (data.spieltag || '')) {
+                selectedEvent = events[i];
+                break;
+            }
+        }
+        if (!selectedEvent && events.length > 0) {
+            selectedEvent = events[0];
+        }
+        if (selectedEvent && typeof selectedEvent.can_manage_members !== 'undefined') {
+            state.canManageMembers = !!selectedEvent.can_manage_members;
+        }
+        // Store user role for title display
+        state.userRole = data.user_role || '';
+        // Fallback to global if API didn't return user_role
+        if (!state.userRole && typeof window.__frontendTeamStatsUserRole !== 'undefined') {
+            state.userRole = window.__frontendTeamStatsUserRole || '';
+        }
+        // Store event-to-team-alias mapping
+        state.eventTeamAliases = {};
+        var events = Array.isArray(data.events) ? data.events : [];
+        for (var i = 0; i < events.length; i++) {
+            var event = events[i];
+            var eventId = parseInt(event.id || 0, 10);
+            if (eventId > 0 && event.team_alias) {
+                state.eventTeamAliases[eventId] = String(event.team_alias);
+            }
+        }
         if (refs.select) {
             while (refs.select.firstChild) {
                 refs.select.removeChild(refs.select.firstChild);
             }
-            var spieltage = Array.isArray(data.spieltage) ? data.spieltage : [];
             var openSpieltage = Array.isArray(data.open_spieltage) ? data.open_spieltage : [];
             var selectedSpieltag = data.spieltag || '';
-            for (var i = 0; i < spieltage.length; i++) {
-                var name = String(spieltage[i] || '').trim();
+            
+            // Handle both flat events array and grouped events by team
+            var flatEvents = [];
+            if (Array.isArray(events)) {
+                // Check if events are grouped by team (object with team keys)
+                var isGrouped = events.length > 0 && typeof events[Object.keys(events)[0]] === 'object' && events[Object.keys(events)[0]].events !== undefined;
+                if (isGrouped) {
+                    // Flatten grouped events, sorting each team's events by id descending
+                    var teamKeys = Object.keys(events);
+                    for (var t = 0; t < teamKeys.length; t++) {
+                        var teamData = events[teamKeys[t]];
+                        var teamEvents = Array.isArray(teamData.events) ? teamData.events : [];
+                        // Sort events within each team by id descending (newest first)
+                        teamEvents.sort(function(a, b) { return (b.id || 0) - (a.id || 0); });
+                        // Merge team info into each event
+                        for (var e = 0; e < teamEvents.length; e++) {
+                            teamEvents[e].team_alias = teamData.team_alias;
+                            teamEvents[e].team_admin_user_id = teamData.team_admin_user_id;
+                        }
+                        flatEvents = flatEvents.concat(teamEvents);
+                    }
+                } else {
+                    flatEvents = events;
+                }
+            }
+            
+            // Sort all events by id descending (newest first)
+            flatEvents.sort(function(a, b) { return (b.id || 0) - (a.id || 0); });
+            
+            for (var i2 = 0; i2 < flatEvents.length; i2++) {
+                var event2 = flatEvents[i2];
+                var name = String(event2.label || '').trim();
                 if (!name) continue;
+                var teamAlias = String(event2.team_alias || '').trim();
+                var displayText = teamAlias ? (teamAlias + ' - ' + name) : name;
                 var opt = document.createElement('option');
                 opt.value = name;
+                opt.setAttribute('data-event-id', event2.id || '');
+                opt.setAttribute('data-team-alias', teamAlias || '');
+                // Add data-user-role based on can_manage_members for this event
+                var canManage = (typeof event2.can_manage_members !== 'undefined') ? !!event2.can_manage_members : false;
+                var eventUserRole = canManage ? 'Mannschaftsführer' : 'Mitglied';
+                opt.setAttribute('data-user-role', eventUserRole);
                 var isOpen = openSpieltage.indexOf(name) !== -1;
-                opt.textContent = isOpen ? (name + ' (offen)') : name;
+                opt.textContent = isOpen ? (displayText + ' (offen)') : displayText;
                 if (name === selectedSpieltag) opt.selected = true;
                 refs.select.appendChild(opt);
             }
-            refs.select.disabled = spieltage.length === 0;
+            refs.select.disabled = flatEvents.length === 0;
         }
     }
 });
 
-function openFrontendTeamStatsModal(teamUid) {
-    return frontendTeamStatsModalController.open(teamUid);
+function openFrontendTeamStatsModal(teamLeadTeams, isTeamMember, userUid) {
+    return frontendTeamStatsModalController.open(teamLeadTeams, isTeamMember, userUid);
 }
 
 function loadFrontendTeamStatsForSpieltag(spieltag) {

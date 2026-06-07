@@ -565,6 +565,16 @@ return array(
                             ),
                         ),
                     ),
+                    'update-user-history-team-event' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/update-user-history-team-event',
+                            'defaults' => array(
+                                'controller' => 'Drinks\Controller\Drinks',
+                                'action' => 'updateUserHistoryTeamEvent',
+                            ),
+                        ),
+                    ),
                     'create-team-event' => array(
                         'type' => 'Literal',
                         'options' => array(

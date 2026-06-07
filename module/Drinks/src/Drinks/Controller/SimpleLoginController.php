@@ -173,6 +173,26 @@ class SimpleLoginController extends AbstractActionController
                 }
             }
         }
+        
+        // Check if user is team lead for any team event (not just team accounts)
+        $isTeamLead = false;
+        try {
+            $teamLeadRow = $db->query(
+                'SELECT COUNT(DISTINCT id) AS cnt FROM drinks_teamevents WHERE team_admin_user_id = ?',
+                [$userId]
+            )->current();
+            $isTeamLead = $teamLeadRow && isset($teamLeadRow['cnt']) && (int)$teamLeadRow['cnt'] > 0;
+        } catch (\Exception $e) {}
+        
+        // Check if user is member of any team event
+        $isTeamMemberOfAnyEvent = false;
+        try {
+            $memberRow = $db->query(
+                'SELECT COUNT(DISTINCT team_event_id) AS cnt FROM drinks_teamevent_members WHERE user_id = ?',
+                [$userId]
+            )->current();
+            $isTeamMemberOfAnyEvent = $memberRow && isset($memberRow['cnt']) && (int)$memberRow['cnt'] > 0;
+        } catch (\Exception $e) {}
         $drinkHistory = [];
         foreach ($drinkDeposits as $deposit) {
             $depositComment = isset($deposit['comment']) ? trim((string)$deposit['comment']) : '';
@@ -277,6 +297,8 @@ class SimpleLoginController extends AbstractActionController
             'simpleOrderMode' => true,
             'thekenadmin' => $thekenadmin,
             'isTeamAccount' => $isTeamAccount,
+            'isTeamLead' => $isTeamLead,
+            'isTeamMemberOfAnyEvent' => $isTeamMemberOfAnyEvent,
             'currentSpieltag' => $currentTeamEventLabel,
             'availableSpieltage' => $availableTeamEventLabels,
             'partyModeEnabled' => $partyModeEnabled,
@@ -395,36 +417,180 @@ class SimpleLoginController extends AbstractActionController
         }
 
         $userId = (int)$session->user_id;
-        $teamAdminUserId = $userId;
         $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
         $serviceManager = $this->getServiceLocator();
         $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
-        $accountBalance = (float)$drinkManager->calculateUserDrinkBalance($userId, $serviceManager);
-        $aliasRow = $db->query('SELECT is_team FROM drink_aliases WHERE user_id = ?', [$userId])->current();
-        if (!$aliasRow || empty($aliasRow['is_team'])) {
-            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'Kein Team-Account.']));
+        
+        // Determine user role and team admin
+        $aliasRow = $db->query('SELECT is_team, alias FROM drink_aliases WHERE user_id = ?', [$userId])->current();
+        $isTeamAccount = $aliasRow && !empty($aliasRow['is_team']);
+        
+        // Check if user is a team member
+        $isTeamMember = false;
+        $memberEventRows = $db->query(
+            'SELECT DISTINCT dte.team_admin_user_id FROM drinks_teamevent_members dtm JOIN drinks_teamevents dte ON dtm.team_event_id = dte.id WHERE dtm.user_id = ? LIMIT 1',
+            [$userId]
+        )->toArray();
+        $isTeamMember = !empty($memberEventRows);
+        
+        // Determine team admin user ID
+        $teamAdminUserId = $userId;
+        if (!$isTeamAccount && $isTeamMember) {
+            // User is only a team member - find the team from events
+            $teamAdminUserIds = $db->query(
+                'SELECT DISTINCT dte.team_admin_user_id FROM drinks_teamevent_members dtm JOIN drinks_teamevents dte ON dtm.team_event_id = dte.id WHERE dtm.user_id = ?',
+                [$userId]
+            )->toArray();
+            if (empty($teamAdminUserIds)) {
+                return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'Kein Team-Account und keine Team-Events gefunden.']));
+            }
+            // Get all team admin user IDs for multi-team support
+            $teamAdminUserIds = array_column($teamAdminUserIds, 'team_admin_user_id');
+            $teamAdminUserId = $teamAdminUserIds[0];
+        } elseif (!$isTeamAccount) {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'Kein Team-Account und keine Team-Events gefunden.']));
         }
+        
+        // Get account balance for the team admin
+        $accountBalance = (float)$drinkManager->calculateUserDrinkBalance($teamAdminUserId, $serviceManager);
+        
+        // Get team alias from the team admin
+        $teamAliasRow = $db->query('SELECT alias FROM drink_aliases WHERE user_id = ?', [$teamAdminUserId])->current();
+        
         $requestedTeamEventLabel = $this->normalizeTeamEventLabel($this->params()->fromQuery('spieltag', isset($session->current_spieltag) ? $session->current_spieltag : ''));
         if ($requestedTeamEventLabel === '') {
             return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Kein Spieltag ausgewählt.']));
         }
 
-        // For team accounts, also look up team events where the user is a member (not just admin)
-        $memberEventLabels = $this->getAvailableTeamEventLabelsForMember($teamAdminUserId);
-        $allSpieltage = array_unique(array_merge($this->getAvailableTeamEventLabels($teamAdminUserId, true), $memberEventLabels));
-        $allOpenSpieltage = array_unique(array_merge($this->getAvailableTeamEventLabels($teamAdminUserId, false), $memberEventLabels));
+        // Get all team events for the user (admin + member) using the new trait method
+        $eventsData = $this->getTeamEventsForUser($userId, $isTeamAccount);
         
-        // Resolve the team event using both admin-owned and member-assigned events
-        $teamEvent = $this->getTeamEventByLabelForMember($teamAdminUserId, $requestedTeamEventLabel);
-        if ($teamEvent) {
-            // Inject the team_event_id into the session so buildTeamStatsPayload can use it
-            $session->current_teamevent_id = (int)$teamEvent['id'];
+        // Build team alias map for all team admins
+        $teamAliasMap = [];
+        if (!empty($eventsData['teamAdminUserIds'])) {
+            $placeholders = implode(', ', array_fill(0, count($eventsData['teamAdminUserIds']), '?'));
+            $aliasRows = $db->query(
+                'SELECT user_id, alias FROM drink_aliases WHERE user_id IN (' . $placeholders . ')',
+                $eventsData['teamAdminUserIds']
+            )->toArray();
+            foreach ($aliasRows as $ar) {
+                $teamAliasMap[(int)$ar['user_id']] = isset($ar['alias']) ? $ar['alias'] : '';
+            }
         }
         
-        $payload = $this->buildTeamStatsPayload($teamAdminUserId, $requestedTeamEventLabel);
+        // Build team events array with proper team aliases
+        // Sort events so that team alias appears in front of the event label (e.g., "MF - Team - Teamevent")
+        $teamEvents = [];
+        foreach ($eventsData['events'] as $event) {
+            $eventId = (int)$event['id'];
+            $adminUserId = (int)$event['team_admin_user_id'];
+            $teamAlias = isset($teamAliasMap[$adminUserId]) ? $teamAliasMap[$adminUserId] : '';
+            $teamEvents[] = [
+                'id' => $eventId,
+                'label' => isset($event['label']) ? trim((string)$event['label']) : '',
+                'team_admin_user_id' => $adminUserId,
+                'team_alias' => $teamAlias,
+                'balance' => 0.0,
+                'closed' => isset($event['closed']) ? (int)$event['closed'] : 0,
+            ];
+        }
+
+        // Build spieltage/open_spieltage from team events
+        $spieltage = [];
+        $openSpieltage = [];
+        foreach ($teamEvents as $event) {
+            $spieltage[] = $event['label'];
+            if (empty($event['closed'])) {
+                $openSpieltage[] = $event['label'];
+            }
+        }
+
+        // Resolve the team event using both admin-owned and member-assigned events
+        $selectedTeamEvent = null;
+        if ($requestedTeamEventLabel !== '') {
+            foreach ($teamEvents as $te) {
+                if (trim((string)$te['label']) === $requestedTeamEventLabel) {
+                    $selectedTeamEvent = $te;
+                    break;
+                }
+            }
+        }
+        if ($selectedTeamEvent) {
+            $session->current_teamevent_id = (int)$selectedTeamEvent['id'];
+        }
+        
+        // Determine selected event ID for passing to buildTeamStatsPayload
+        $selectedEventId = $selectedTeamEvent ? (int)$selectedTeamEvent['id'] : 0;
+
+        // Determine which team admin to use for the selected event
+        $selectedTeamAdminUserId = $teamAdminUserId;
+        if ($selectedTeamEvent && $selectedEventId > 0) {
+            // Find the actual team admin for the selected event
+            foreach ($eventsData['events'] as $evt) {
+                if ((int)$evt['id'] === $selectedEventId) {
+                    $selectedTeamAdminUserId = (int)$evt['team_admin_user_id'];
+                    break;
+                }
+            }
+        }
+
+        // Build payload with event ID to handle member-only events from different teams
+        try {
+            $payload = $this->buildTeamStatsPayload($selectedTeamAdminUserId, $requestedTeamEventLabel, ['team_event_id' => $selectedEventId]);
+        } catch (\Exception $e) {
+            return $this->getResponse()->setStatusCode(500)->setContent(json_encode([
+                'success' => false,
+                'error' => 'Team-Statistiken konnten nicht geladen werden: ' . $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]));
+        }
+        
         // Override spieltage/open_spieltage with merged values (admin-owned + member-assigned events)
-        $payload['spieltage'] = $allSpieltage;
-        $payload['open_spieltage'] = $allOpenSpieltage;
+        $payload['spieltage'] = $spieltage;
+        $payload['open_spieltage'] = $openSpieltage;
+        
+        // Build events array with can_manage_members for the dropdown
+        // Determine which events the user can manage
+        $adminEventIds = $eventsData['adminEventIds'];
+        $events = [];
+        foreach ($teamEvents as $event) {
+            $eventId = (int)$event['id'];
+            $adminUserId = (int)$event['team_admin_user_id'];
+            $canManage = in_array($eventId, $adminEventIds) ? 1 : 0;
+            $events[] = [
+                'id' => $eventId,
+                'label' => $event['label'],
+                'team_alias' => $event['team_alias'],
+                'team_admin_user_id' => $adminUserId,
+                'can_manage_members' => $canManage,
+                'role' => $canManage ? 'Mannschaftsführer' : 'Mitglied',
+                'closed' => $event['closed'],
+            ];
+        }
+        $payload['events'] = $events;
+        
+        // Determine user role based on editability
+        $isEditable = 0;
+        foreach ($events as $event) {
+            if (!empty($event['can_manage_members'])) {
+                $isEditable = 1;
+                break;
+            }
+        }
+        $payload['is_editable'] = $isEditable;
+        $payload['user_role'] = $isEditable ? 'Mannschaftsführer' : 'Mitglied';
+
+        $memberCandidates = [];
+        if ($selectedEventId > 0) {
+            $candidateExcludeUserId = $selectedTeamAdminUserId > 0 ? $selectedTeamAdminUserId : $teamAdminUserId;
+            try {
+                $memberCandidates = $this->getTeamEventMemberCandidates($candidateExcludeUserId, $selectedEventId);
+            } catch (\Throwable $e) {
+                $memberCandidates = [];
+            }
+        }
+        $payload['member_candidates'] = $memberCandidates;
         
         return $this->getResponse()->setContent(json_encode(array_merge([
             'success' => true,

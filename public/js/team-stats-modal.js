@@ -117,7 +117,7 @@
             var titleEl = byId(config.titleId);
             if (!titleEl) return;
             if (typeof config.getTitle === 'function') {
-                titleEl.textContent = config.getTitle(state.teamAlias);
+                titleEl.textContent = config.getTitle(state.teamAlias, state.userRole);
             }
         }
 
@@ -199,7 +199,21 @@
 
         function buildStatsHtml(data, canManageMembers) {
             var rows = Array.isArray(data.rows) ? data.rows : [];
-            var members = Array.isArray(data.members) ? data.members : [];
+            var membersRaw = Array.isArray(data.members)
+                ? data.members
+                : (Array.isArray(data.active_members) ? data.active_members : []);
+            var members = membersRaw.map(function(member) {
+                var uid = parseInt((member && (member.uid || member.user_id)) || 0, 10);
+                return {
+                    uid: uid,
+                    user_id: uid,
+                    name: String((member && member.name) || ''),
+                    email: String((member && member.email) || ''),
+                    is_member: (member && typeof member.is_member !== 'undefined') ? !!member.is_member : true
+                };
+            }).filter(function(member) {
+                return member.uid > 0;
+            });
             var extraCosts = Array.isArray(data.extra_costs) ? data.extra_costs : [];
             var guestDonations = Array.isArray(data.guest_donations) ? data.guest_donations : [];
             var orderRows = rows.filter(function(row) {
@@ -218,6 +232,8 @@
                 && typeof config.buildGuestDonationCreateRequest === 'function'
                 && typeof config.buildGuestDonationUpdateRequest === 'function'
                 && typeof config.buildGuestDonationDeleteRequest === 'function';
+            // When canManageMembers is false (team member without teamlead role), show view-only mode
+            // All editing elements will be hidden, settlement button will be disabled
             var relevanceTriggerClass = config.orderRelevanceTriggerClass || 'team-stats-order-relevance-trigger';
             var extraCostAddClass = config.extraCostAddClass || 'team-stats-extra-cost-add';
             var extraCostEditClass = config.extraCostEditClass || 'team-stats-extra-cost-edit';
@@ -613,9 +629,6 @@
                     var closeTitle = '';
                     if (grandTotal < 0) {
                         closeTitle = 'Der Spieltagssaldo ist negativ. Abrechnung kann nicht beendet werden.';
-                    }
-                    if (typeof console !== 'undefined' && console.log) {
-                        console.log('[DEBUG] Close button state:', { grandTotal: grandTotal, accountBalance: accountBalance, settlementDebtors: settlementDebtors.length, disableClose: disableClose, closeTitle: closeTitle });
                     }
                     var closeButtonStyle = disableClose
                         ? 'background:#bdbdbd; border-color:#9e9e9e; color:#666; cursor:not-allowed; opacity:0.72;'
@@ -1355,9 +1368,6 @@
             
             var shouldDisable = closeBtn.hasAttribute('disabled');
             closeBtn.disabled = shouldDisable;
-            if (typeof console !== 'undefined' && console.log) {
-                console.log('[DEBUG] Close button bound:', { hasDisabledAttr: shouldDisable, buttonDisabledProp: closeBtn.disabled, clickable: !closeBtn.disabled });
-            }
         }
 
         function bindMemberControls(canManageMembers) {
@@ -1701,8 +1711,14 @@
                 }
             }
 
+            // Show/hide settlement (Abrechnung) button based on canManageMembers
             var closeBtn = document.getElementById(config.closeEventBtnId || 'team-stats-close-event-btn');
             if (closeBtn) {
+                // Find the parent div container (the close button is inside a flex div, not a table row)
+                var closeBtnContainer = closeBtn.closest('div[style*="justify-content:flex-end"]') || closeBtn.parentElement;
+                if (closeBtnContainer) {
+                    closeBtnContainer.style.display = canManageMembers ? '' : 'none';
+                }
                 if (closeBtn._boundForClose !== true) {
                     var r = refs();
                     if (r.content && !r.content._closeBtnDelegateListener) {
@@ -1732,9 +1748,6 @@
                 }
                 var shouldDisable = closeBtn.hasAttribute('disabled');
                 closeBtn.disabled = shouldDisable;
-                if (typeof console !== 'undefined' && console.log) {
-                    console.log('[DEBUG] Button binding:', { hasDisabledAttr: shouldDisable, buttonDisabledProp: closeBtn.disabled, clickable: !closeBtn.disabled });
-                }
             }
         }
 
@@ -1757,11 +1770,6 @@
                     throw new Error((data && data.error) ? data.error : 'Fehler beim Laden der Statistik.');
                 }
 
-                if (typeof data.team_alias !== 'undefined') {
-                    state.teamAlias = String(data.team_alias || '').trim();
-                }
-                setTitle();
-
                 state.currentEventId = parseInt(data.team_event_id || 0, 10);
                 state.memberCandidates = Array.isArray(data.member_candidates) ? data.member_candidates : [];
                 state.selectedMemberId = 0;
@@ -1772,12 +1780,59 @@
                     config.afterLoadData(data, state, r);
                 }
 
+                // After afterLoadData populates the dropdown, update title based on selected option
+                if (r.select) {
+                    var selectedOption = r.select.options[r.select.selectedIndex];
+                    if (selectedOption) {
+                        var selectedTeamAlias = selectedOption.getAttribute('data-team-alias') || '';
+                        if (selectedTeamAlias) {
+                            state.teamAlias = selectedTeamAlias;
+                        }
+                        // Also read data-user-role from the selected option to avoid title flashing
+                        var selectedUserRole = selectedOption.getAttribute('data-user-role') || '';
+                        if (selectedUserRole) {
+                            state.userRole = selectedUserRole;
+                        }
+                    }
+                }
+                setTitle();
+
                 var accountBalance = Number(data.account_balance || 0);
                 if (r.balanceHeader) {
                     r.balanceHeader.innerHTML = 'Gesamtsaldo Mannschaftskonto: <span style="color:' + amountColor(accountBalance) + ';">' + formatCurrency(accountBalance) + '</span>';
                 }
 
-                var canManageMembers = !!data.can_manage_members && !data.team_event_closed;
+                // Use is_editable from API response (computed from can_manage_members flag)
+                // This single flag controls both the header role (Mitglied vs. Mannschaftsführer)
+                // and whether editing elements are shown
+                var isEditable = !!data.is_editable;
+                var userRole = data.user_role || 'Mitglied';
+                
+                // Find the per-event role for the currently selected event
+                var selectedEventForRole = null;
+                var eventsForRole = Array.isArray(data.events) ? data.events : [];
+                for (var ri = 0; ri < eventsForRole.length; ri++) {
+                    if (String(eventsForRole[ri].label || '') === (data.spieltag || '')) {
+                        selectedEventForRole = eventsForRole[ri];
+                        break;
+                    }
+                }
+                if (!selectedEventForRole && eventsForRole.length > 0) {
+                    selectedEventForRole = eventsForRole[0];
+                }
+                if (selectedEventForRole && selectedEventForRole.can_manage_members) {
+                    userRole = 'Mannschaftsführer';
+                } else if (selectedEventForRole) {
+                    userRole = 'Mitglied';
+                }
+                
+                // Update state.userRole for the popup title
+                state.userRole = userRole;
+                
+                // canManageMembers is based on per-event can_manage_members, not global is_editable
+                // This ensures team members see view-only mode for events they're only members of
+                var eventCanManageMembers = selectedEventForRole && selectedEventForRole.can_manage_members ? true : false;
+                var canManageMembers = eventCanManageMembers && !data.team_event_closed;
                 r.content.innerHTML = buildStatsHtml(data, canManageMembers);
                 
                 bindCloseEventButton(r);
@@ -1804,7 +1859,12 @@
             if (typeof config.onOpen === 'function') {
                 config.onOpen(args, state, r);
             }
-            setTitle();
+
+            // Fallback: set teamUid from teamLeadTeams if onOpen didn't set it (only in userpanel context)
+            if (!state.teamUid && typeof teamLeadTeams !== 'undefined' && Array.isArray(teamLeadTeams) && teamLeadTeams.length > 0) {
+                state.teamUid = teamLeadTeams[0].user_id;
+            }
+            // Don't set title here - it will be set correctly in load() after the dropdown is populated
 
             var selectedSpieltag = '';
             if (typeof config.getInitialSpieltag === 'function') {
@@ -1826,6 +1886,20 @@
             var r = refs();
             if (r.select) {
                 r.select.addEventListener('change', function() {
+                    // Update title based on selected option's data attributes
+                    var selectedOption = r.select.options[r.select.selectedIndex];
+                    if (selectedOption) {
+                        var teamAlias = selectedOption.getAttribute('data-team-alias') || '';
+                        var userRole = selectedOption.getAttribute('data-user-role') || '';
+                        if (teamAlias) {
+                            state.teamAlias = teamAlias;
+                        }
+                        if (userRole) {
+                            state.userRole = userRole;
+                        }
+                    }
+                    // setTitle() will use state.teamAlias and state.userRole
+                    setTitle();
                     load(r.select.value || '');
                 });
             }

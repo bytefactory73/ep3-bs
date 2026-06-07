@@ -84,7 +84,7 @@ if ($partyModeEnabled) {
         <div id="teamStatsContent" style="padding:2px 4px 8px 4px;"></div>
     </div>
 </div>
-<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260511-21') ?>"></script>
+<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260607-02') ?>"></script>
 <script>
 function getTeamStatsSpieltagOptions() {
     var bookingSelect = document.getElementById('spieltag-select');
@@ -294,13 +294,49 @@ var teamStatsModalController = createTeamStatsModal({
         var spieltage = Array.isArray(data.spieltage) ? data.spieltage : [];
         var openSpieltage = Array.isArray(data.open_spieltage) ? data.open_spieltage : [];
         var selectedSpieltag = String(data.spieltag || '').trim();
+        
+        // Build a map of event label -> role from the events array
+        var eventRoleMap = {};
+        var events = Array.isArray(data.events) ? data.events : [];
+        for (var ei = 0; ei < events.length; ei++) {
+            var eventLabel = String(events[ei].label || '').trim();
+            var eventRole = events[ei].role || (events[ei].can_manage_members ? 'Mannschaftsführer' : 'Mitglied');
+            if (eventLabel) {
+                eventRoleMap[eventLabel] = eventRole;
+            }
+        }
+        
         for (var i = 0; i < spieltage.length; i++) {
             var name = String(spieltage[i] || '').trim();
             if (!name) continue;
             var opt = document.createElement('option');
             opt.value = name;
             var isOpen = openSpieltage.indexOf(name) !== -1;
-            opt.textContent = isOpen ? (name + ' (offen)') : name;
+            // Find team alias for this event to show in front (e.g., "MF - Team - Teamevent")
+            var teamAlias = '';
+            var eventRole = eventRoleMap[name] || (isOpen ? 'Mannschaftsführer' : 'Mitglied');
+            for (var ej = 0; ej < events.length; ej++) {
+                if (String(events[ej].label || '').trim() === name) {
+                    var alias = String(events[ej].team_alias || '').trim();
+                    if (alias !== '') {
+                        teamAlias = alias;
+                    }
+                    eventRole = events[ej].role || eventRole;
+                    break;
+                }
+            }
+            // Display team alias in front of event label (e.g., "MF - Team - Teamevent")
+            var displayText = name;
+            if (teamAlias !== '') {
+                displayText = teamAlias + ' - ' + name;
+            }
+            if (isOpen) {
+                displayText += ' (offen)';
+            }
+            opt.textContent = displayText;
+            // Add data attributes for per-event role and team alias
+            opt.setAttribute('data-user-role', eventRole);
+            opt.setAttribute('data-team-alias', teamAlias);
             if (name === selectedSpieltag) opt.selected = true;
             refs.select.appendChild(opt);
         }

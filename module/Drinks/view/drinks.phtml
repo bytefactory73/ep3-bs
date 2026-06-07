@@ -16,7 +16,10 @@ $simpleOrderMode = $simpleOrderMode ?? ($this->simpleOrderMode ?? false);
 $drinks = $this->drinks ?? [];
 // drinksEnabled: should be set by controller, fallback to true for BC
 $drinksEnabled = isset($this->drinksEnabled) ? (bool)$this->drinksEnabled : true;
-$isTeamAccount = isset($this->isTeamAccount) ? (bool)$this->isTeamAccount : false;
+        $isTeamAccount = isset($this->isTeamAccount) ? (bool)$this->isTeamAccount : false;
+        $isTeamLead = isset($this->isTeamLead) ? (bool)$this->isTeamLead : false;
+        $isTeamMemberOfAnyEvent = isset($this->isTeamMemberOfAnyEvent) ? (bool)$this->isTeamMemberOfAnyEvent : false;
+        $isTeamLeadOrMember = $isTeamLead || $isTeamMemberOfAnyEvent;
 $showFullBalanceInSimple = (!$simpleOrderMode && !empty($this->thekenadmin)); // Show balance in title bar only for non-simple-mode thekenadmin users
 $showBalanceColumn = (!$simpleOrderMode || $showFullBalanceInSimple || $isTeamAccount);
 
@@ -118,7 +121,7 @@ if ($__partyModeEnabled) {
                             <span class="sr-only" style="position:absolute;left:-9999px;"> <?= $this->t('Gesamtauswertung') ?> </span>
                         </button>
                 <?php endif; ?>
-                <?php if ($simpleOrderMode && $isTeamAccount) : ?>
+                <?php if ($simpleOrderMode && ($isTeamAccount || $isTeamLeadOrMember)) : ?>
                         <button id="team-stats-btn" type="button" class="default-button" title="<?= $this->t('Team-Statistik') ?>" style="font-size: 1.1em; font-weight: bold; background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; padding: 4px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 0; width: 52px; height: 44px; justify-content: center;" onclick="event.preventDefault(); if (typeof openTeamStatsModal === 'function') openTeamStatsModal();">
                             <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                                 <rect x="6" y="7" width="20" height="18" rx="3" fill="#f7fbff" stroke="#2196f3" stroke-width="2"/>

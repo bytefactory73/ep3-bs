@@ -136,7 +136,23 @@ $this->setup([
     </div>
 </div>
 
-<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260511-21') ?>"></script>
+<div id="depositsHistoryTeamEventEditModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.55); z-index:100011; align-items:center; justify-content:center;">
+    <div style="position:relative; width:min(460px,94vw); background:#fff; border-radius:10px; box-shadow:0 10px 28px rgba(0,0,0,0.25); padding:18px 16px 16px 16px;">
+        <button type="button" id="deposits-history-team-event-edit-close-x" style="position:absolute;top:10px;right:12px;z-index:10;background:#eee;border:none;border-radius:50%;width:34px;height:34px;font-size:20px;cursor:pointer;">&times;</button>
+        <h3 id="deposits-history-team-event-edit-title" style="margin:0 40px 14px 0; color:#1769aa;">Spieltag bearbeiten</h3>
+        <div style="display:grid; gap:10px;">
+            <label for="deposits-history-team-event-edit-select" style="font-weight:bold; color:#1769aa;">Spieltag:</label>
+            <select id="deposits-history-team-event-edit-select" style="min-width:260px; font-size:1em; padding:6px 8px; border:1px solid #2196f3; border-radius:6px; color:#1769aa;"></select>
+            <div id="deposits-history-team-event-edit-message" style="min-height:20px; color:#666;"></div>
+            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
+                <button type="button" id="deposits-history-team-event-edit-cancel" class="mini-button">Abbrechen</button>
+                <button type="button" id="deposits-history-team-event-edit-save" class="default-button mini-button">Speichern</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260607-02') ?>"></script>
 <script>
 function formatCurrency(amount) {
     return amount != null ? amount.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) : '';
@@ -244,8 +260,16 @@ document.addEventListener('DOMContentLoaded', function() {
     var depositsTeamStatsModalController = null;
     var currentTeamEventsForPanel = [];
     var currentSelectedTeamEventIdForPanel = '';
+    var historyTeamEventEditState = { entryId: '', entryType: '', currentTeamEventId: '' };
     var depositTabStorageKey = 'deposits_active_tab';
     var activeDepositTab = 'buchungen';
+    var historyTeamEventEditModal = document.getElementById('depositsHistoryTeamEventEditModal');
+    var historyTeamEventEditTitle = document.getElementById('deposits-history-team-event-edit-title');
+    var historyTeamEventEditSelect = document.getElementById('deposits-history-team-event-edit-select');
+    var historyTeamEventEditMessage = document.getElementById('deposits-history-team-event-edit-message');
+    var historyTeamEventEditSaveBtn = document.getElementById('deposits-history-team-event-edit-save');
+    var historyTeamEventEditCancelBtn = document.getElementById('deposits-history-team-event-edit-cancel');
+    var historyTeamEventEditCloseXBtn = document.getElementById('deposits-history-team-event-edit-close-x');
 
     function updateTeamSpieltagVisibility() {
         if (!teamSpieltagRow) return;
@@ -1505,7 +1529,14 @@ document.addEventListener('DOMContentLoaded', function() {
                         var bg = 'hsl(' + hue + ', ' + saturation + '%, ' + backgroundLightness + '%)';
                         var border = 'hsl(' + hue + ', ' + Math.max(36, saturation - 18) + '%, ' + borderLightness + '%)';
                         var text = 'hsl(' + hue + ', ' + Math.max(34, saturation - 14) + '%, ' + textLightness + '%)';
-                        return ' <span style="display:inline-block; margin-left:6px; padding:1px 6px; border:1px solid ' + border + '; border-radius:5px; background:' + bg + '; color:' + text + '; font-size:11px; font-weight:600; line-height:1.2; text-decoration:none; vertical-align:middle;">' + escapeHtml(label) + '</span>';
+                        var entryId = entry && typeof entry.id !== 'undefined' ? String(entry.id) : '';
+                        var entryType = entry && entry.type === 'Einzahlung' ? 'deposit' : 'order';
+                        var teamEventId = entry && entry.teamevent_id ? String(entry.teamevent_id) : '';
+                        var isClosed = !!(entry && entry.spieltag_closed);
+                        if (!entryId || !teamEventId || isClosed) {
+                            return ' <span style="display:inline-block; margin-left:6px; padding:1px 6px; border:1px solid ' + border + '; border-radius:5px; background:' + bg + '; color:' + text + '; font-size:11px; font-weight:600; line-height:1.2; text-decoration:none; vertical-align:middle;">' + escapeHtml(label) + '</span>';
+                        }
+                        return ' <button type="button" class="history-team-event-badge" data-entry-id="' + escapeHtml(entryId) + '" data-entry-type="' + escapeHtml(entryType) + '" data-team-event-id="' + escapeHtml(teamEventId) + '" data-team-event-label="' + escapeHtml(label) + '" style="display:inline-block; margin-left:6px; padding:1px 6px; border:1px solid ' + border + '; border-radius:5px; background:' + bg + '; color:' + text + '; font-size:11px; font-weight:600; line-height:1.2; text-decoration:none; vertical-align:middle; cursor:pointer;">' + escapeHtml(label) + '</button>';
                     }
 
                     var html = '<h2><?= $this->t('Buchungs- und Einzahlungsverlauf') ?></h2>' +
@@ -1663,12 +1694,14 @@ document.addEventListener('DOMContentLoaded', function() {
                                 historySection.innerHTML = renderHistory(history, showStorno);
                                 attachStornoHandler();
                                 attachEntryCancelHandlers();
+                                attachHistoryTeamEventBadgeHandlers();
                             });
                         }
                     }
                     historySection.innerHTML = renderHistory(history, showStorno);
                     attachStornoHandler();
                     attachEntryCancelHandlers();
+                        attachHistoryTeamEventBadgeHandlers();
                     // Scroll to entry if requested
                     if (scrollToEntry && scrollToEntry.entryId && scrollToEntry.entryType) {
                         setTimeout(function() {
@@ -1810,6 +1843,137 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         });
+    }
+
+    function closeHistoryTeamEventEditModal() {
+        if (!historyTeamEventEditModal) return;
+        historyTeamEventEditModal.style.display = 'none';
+        historyTeamEventEditState = { entryId: '', entryType: '', currentTeamEventId: '' };
+        if (historyTeamEventEditMessage) {
+            historyTeamEventEditMessage.textContent = '';
+            historyTeamEventEditMessage.style.color = '#666';
+        }
+    }
+
+    function openHistoryTeamEventEditModal(entryId, entryType, currentTeamEventId, currentLabel) {
+        if (!historyTeamEventEditModal || !historyTeamEventEditSelect) return;
+        if (!currentTeamEventsForPanel || currentTeamEventsForPanel.length === 0) {
+            alert('Keine Spieltage für diese Mannschaft vorhanden.');
+            return;
+        }
+
+        historyTeamEventEditState = {
+            entryId: String(entryId || ''),
+            entryType: String(entryType || ''),
+            currentTeamEventId: String(currentTeamEventId || '')
+        };
+
+        historyTeamEventEditSelect.innerHTML = '';
+        currentTeamEventsForPanel.forEach(function(evt) {
+            var eventId = String((evt && evt.id) || '');
+            var label = String((evt && evt.label) || '').trim();
+            if (!eventId || !label || (evt && evt.closed)) return;
+            var option = document.createElement('option');
+            option.value = eventId;
+            option.textContent = label + ' (offen)';
+            historyTeamEventEditSelect.appendChild(option);
+        });
+
+        if (historyTeamEventEditState.currentTeamEventId) {
+            historyTeamEventEditSelect.value = historyTeamEventEditState.currentTeamEventId;
+        }
+        if (!historyTeamEventEditSelect.value && historyTeamEventEditSelect.options.length > 0) {
+            historyTeamEventEditSelect.selectedIndex = 0;
+        }
+        if (historyTeamEventEditSelect.options.length === 0) {
+            alert('Keine offenen Spieltage für diese Mannschaft vorhanden.');
+            closeHistoryTeamEventEditModal();
+            return;
+        }
+
+        if (historyTeamEventEditTitle) {
+            historyTeamEventEditTitle.textContent = entryType === 'deposit' ? 'Spieltag der Einzahlung bearbeiten' : 'Spieltag der Buchung bearbeiten';
+        }
+        if (historyTeamEventEditMessage) {
+            historyTeamEventEditMessage.textContent = currentLabel ? ('Aktuell: ' + currentLabel) : '';
+            historyTeamEventEditMessage.style.color = '#666';
+        }
+        historyTeamEventEditModal.style.display = 'flex';
+    }
+
+    async function saveHistoryTeamEventAssignment() {
+        var uid = String(userIdInput && userIdInput.value ? userIdInput.value : '').trim();
+        var entryId = historyTeamEventEditState.entryId;
+        var entryType = historyTeamEventEditState.entryType;
+        var teamEventId = String(historyTeamEventEditSelect && historyTeamEventEditSelect.value ? historyTeamEventEditSelect.value : '').trim();
+        if (!uid || !entryId || !entryType || !teamEventId) return;
+
+        historyTeamEventEditSaveBtn.disabled = true;
+        if (historyTeamEventEditMessage) {
+            historyTeamEventEditMessage.textContent = 'Speichere...';
+            historyTeamEventEditMessage.style.color = '#666';
+        }
+        try {
+            var resp = await fetch('<?= $this->url('user/update-user-history-team-event') ?>', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: new URLSearchParams({
+                    uid: uid,
+                    entry_id: entryId,
+                    entry_type: entryType,
+                    team_event_id: teamEventId
+                })
+            });
+            var data = await resp.json();
+            if (!resp.ok || !data || !data.success) {
+                throw new Error((data && data.error) ? data.error : 'Spieltag konnte nicht aktualisiert werden.');
+            }
+            closeHistoryTeamEventEditModal();
+            await updateUserInfo({ entryId: entryId, entryType: entryType });
+        } catch (e) {
+            if (historyTeamEventEditMessage) {
+                historyTeamEventEditMessage.textContent = (e && e.message) ? e.message : 'Spieltag konnte nicht aktualisiert werden.';
+                historyTeamEventEditMessage.style.color = '#d32f2f';
+            }
+        } finally {
+            historyTeamEventEditSaveBtn.disabled = false;
+        }
+    }
+
+    function attachHistoryTeamEventBadgeHandlers() {
+        var buttons = document.querySelectorAll('.history-team-event-badge');
+        buttons.forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                var entryId = btn.getAttribute('data-entry-id') || '';
+                var entryType = btn.getAttribute('data-entry-type') || '';
+                var teamEventId = btn.getAttribute('data-team-event-id') || '';
+                var label = btn.getAttribute('data-team-event-label') || '';
+                if (!entryId || !entryType || !teamEventId) return;
+                openHistoryTeamEventEditModal(entryId, entryType, teamEventId, label);
+            });
+        });
+    }
+
+    if (historyTeamEventEditModal) {
+        historyTeamEventEditModal.addEventListener('click', function(e) {
+            if (e.target === historyTeamEventEditModal) {
+                closeHistoryTeamEventEditModal();
+            }
+        });
+    }
+    if (historyTeamEventEditCancelBtn) {
+        historyTeamEventEditCancelBtn.addEventListener('click', closeHistoryTeamEventEditModal);
+    }
+    if (historyTeamEventEditCloseXBtn) {
+        historyTeamEventEditCloseXBtn.addEventListener('click', closeHistoryTeamEventEditModal);
+    }
+    if (historyTeamEventEditSaveBtn) {
+        historyTeamEventEditSaveBtn.addEventListener('click', saveHistoryTeamEventAssignment);
     }
 
 // Ensure attachEntryCancelHandlers is defined to prevent JS errors
