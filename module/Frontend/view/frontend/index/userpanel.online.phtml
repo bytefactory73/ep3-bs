@@ -4,7 +4,7 @@ $teamLeadTeamAlias = isset($this->teamLeadTeamAlias) ? (string)$this->teamLeadTe
 $teamLeadTeams = isset($this->teamLeadTeams) && is_array($this->teamLeadTeams) ? $this->teamLeadTeams : [];
 $isTeamMember = isset($this->isTeamMember) ? (bool)$this->isTeamMember : false;
 
-// Show MF-Theke button if user is teamlead OR team member
+// Show Spieltage button if user is teamlead OR team member
 $showMfTheke = ($teamLeadTeamUserId > 0) || $isTeamMember;
 
 // Determine primary team for dropdown (first teamlead team, or first team member team)
@@ -47,7 +47,7 @@ if ($primaryTeamUserId <= 0 && $isTeamMember) {
                 class="default-button"
                 onclick='openFrontendTeamStatsModal(<?= json_encode($teamLeadTeams, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>, <?= $isTeamMember ? 'true' : 'false' ?>, <?= $this->user->need('uid') ?>);'
             >
-                <span class="symbolic symbolic-stats"><?= $this->t('MF-Theke') ?></span>
+                <span class="symbolic symbolic-stats"><?= $this->t('Spieltage') ?></span>
             </button>
         </td>
         <?php endif; ?>

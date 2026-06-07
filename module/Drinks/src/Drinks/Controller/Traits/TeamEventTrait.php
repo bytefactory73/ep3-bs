@@ -438,49 +438,271 @@ trait TeamEventTrait
             return [];
         }
 
-        // Get members (current and former) with their contributions
-        // Shows current members + any non-member users who made deposits
-        $rows = $this->getTeamEventDbAdapter()->query(
-            '(SELECT
-                    m.user_id AS uid,
-                    u.alias,
-                    u.email,
-                    COALESCE(SUM(d.amount), 0) AS total_paid,
-                    1 AS is_member,
-                    "" AS deposit_comment
+        // Get members (current and former) with their contributions.
+        // Resolve payer per deposit in PHP for robust cross-install behavior.
+        $dbAdapter = $this->getTeamEventDbAdapter();
+
+        $memberRows = $dbAdapter->query(
+            'SELECT m.user_id AS uid, u.alias, u.email
              FROM drinks_teamevent_members m
              JOIN bs_users u ON u.uid = m.user_id
-             LEFT JOIN drink_deposits d
-                    ON d.createdbyuserid = m.user_id
-                    AND (d.deleted IS NULL OR d.deleted = 0)
-                    AND (
-                         d.teamevent_id = ?
-                         OR (d.teamevent_id IS NULL AND TRIM(COALESCE(d.comment, "")) = ?)
-                    )
              WHERE m.team_event_id = ?
-             GROUP BY m.user_id, u.alias, u.email)
-             UNION
-             (SELECT
-                    d.createdbyuserid AS uid,
-                    u.alias,
-                    u.email,
-                    d.amount AS total_paid,
-                    0 AS is_member,
-                    COALESCE(d.comment, "") AS deposit_comment
-             FROM drink_deposits d
-             JOIN bs_users u ON u.uid = d.createdbyuserid
-             WHERE d.createdbyuserid NOT IN (
-                    SELECT m.user_id FROM drinks_teamevent_members m WHERE m.team_event_id = ?
-               )
-               AND d.createdbyuserid IS NOT NULL
-               AND (d.deleted IS NULL OR d.deleted = 0)
-               AND (
-                    d.teamevent_id = ?
-                    OR (d.teamevent_id IS NULL AND TRIM(COALESCE(d.comment, "")) = ?)
-               ))
-             ORDER BY is_member DESC, alias ASC, uid ASC',
-             [$teamEventId, $teamEventLabel, $teamEventId, $teamEventId, $teamEventId, $teamEventLabel]
+             ORDER BY u.alias ASC, m.user_id ASC',
+            [$teamEventId]
         )->toArray();
+
+        $memberUids = [];
+        $userInfoByUid = [];
+        foreach ($memberRows as $mr) {
+            $uid = isset($mr['uid']) ? (int)$mr['uid'] : 0;
+            if ($uid <= 0) {
+                continue;
+            }
+            $memberUids[$uid] = true;
+            $userInfoByUid[$uid] = [
+                'alias' => isset($mr['alias']) ? trim((string)$mr['alias']) : '',
+                'email' => isset($mr['email']) ? trim((string)$mr['email']) : '',
+            ];
+        }
+
+        $aliasRows = $dbAdapter->query(
+            'SELECT uid, alias FROM bs_users WHERE alias IS NOT NULL AND TRIM(alias) <> ""',
+            []
+        )->toArray();
+        $aliasToUid = [];
+        foreach ($aliasRows as $ar) {
+            $uid = isset($ar['uid']) ? (int)$ar['uid'] : 0;
+            $alias = isset($ar['alias']) ? strtolower(trim((string)$ar['alias'])) : '';
+            if ($uid > 0 && $alias !== '' && !isset($aliasToUid[$alias])) {
+                $aliasToUid[$alias] = $uid;
+            }
+        }
+
+        // Also map drink aliases because transfer comments can use those display names.
+        try {
+            $drinkAliasRows = $dbAdapter->query(
+                'SELECT user_id AS uid, alias FROM drink_aliases WHERE alias IS NOT NULL AND TRIM(alias) <> ""',
+                []
+            )->toArray();
+            foreach ($drinkAliasRows as $dar) {
+                $uid = isset($dar['uid']) ? (int)$dar['uid'] : 0;
+                $alias = isset($dar['alias']) ? strtolower(trim((string)$dar['alias'])) : '';
+                if ($uid > 0 && $alias !== '' && !isset($aliasToUid[$alias])) {
+                    $aliasToUid[$alias] = $uid;
+                }
+            }
+        } catch (\Exception $e) {
+            // Optional table/column differences should not break stats.
+        }
+
+        $depositRows = [];
+        $eventTransferRefs = [];
+        try {
+            $eventTransferRows = $dbAdapter->query(
+                'SELECT DISTINCT transfer_reference
+                 FROM drink_orders
+                 WHERE (deleted IS NULL OR deleted = 0)
+                   AND drink_id = -1
+                   AND transfer_reference IS NOT NULL
+                   AND transfer_reference <> ""
+                   AND (
+                        teamevent_id = ?
+                        OR (teamevent_id IS NULL AND TRIM(COALESCE(comment, "")) = ?)
+                   )',
+                [$teamEventId, $teamEventLabel]
+            )->toArray();
+            foreach ($eventTransferRows as $etr) {
+                $ref = isset($etr['transfer_reference']) ? trim((string)$etr['transfer_reference']) : '';
+                if ($ref !== '') {
+                    $eventTransferRefs[$ref] = true;
+                }
+            }
+        } catch (\Exception $e) {
+            $eventTransferRefs = [];
+        }
+
+        if (!empty($eventTransferRefs)) {
+            $refValues = array_keys($eventTransferRefs);
+            $refPlaceholders = implode(',', array_fill(0, count($refValues), '?'));
+            $depositRows = $dbAdapter->query(
+                'SELECT id, user_id, createdbyuserid, amount, comment, transfer_reference
+                 FROM drink_deposits
+                 WHERE (deleted IS NULL OR deleted = 0)
+                   AND (
+                        teamevent_id = ?
+                        OR (teamevent_id IS NULL AND TRIM(COALESCE(comment, "")) = ?)
+                        OR transfer_reference IN (' . $refPlaceholders . ')
+                   )',
+                array_merge([$teamEventId, $teamEventLabel], $refValues)
+            )->toArray();
+        } else {
+            $depositRows = $dbAdapter->query(
+                'SELECT id, user_id, createdbyuserid, amount, comment, transfer_reference
+                 FROM drink_deposits
+                 WHERE (deleted IS NULL OR deleted = 0)
+                   AND (
+                        teamevent_id = ?
+                        OR (teamevent_id IS NULL AND TRIM(COALESCE(comment, "")) = ?)
+                   )',
+                [$teamEventId, $teamEventLabel]
+            )->toArray();
+        }
+
+        $transferRefs = [];
+        foreach ($depositRows as $dr) {
+            $ref = isset($dr['transfer_reference']) ? trim((string)$dr['transfer_reference']) : '';
+            if ($ref !== '' && !isset($transferRefs[$ref])) {
+                $transferRefs[$ref] = true;
+            }
+        }
+
+        $payerByTransferRef = [];
+        if (!empty($transferRefs)) {
+            $refValues = array_keys($transferRefs);
+            $refPlaceholders = implode(',', array_fill(0, count($refValues), '?'));
+            try {
+                $transferRows = $dbAdapter->query(
+                    'SELECT transfer_reference, MAX(user_id) AS payer_user_id
+                     FROM drink_orders
+                     WHERE transfer_reference IN (' . $refPlaceholders . ')
+                       AND drink_id = -1
+                       AND (deleted IS NULL OR deleted = 0)
+                     GROUP BY transfer_reference',
+                    $refValues
+                )->toArray();
+                foreach ($transferRows as $tr) {
+                    $ref = isset($tr['transfer_reference']) ? trim((string)$tr['transfer_reference']) : '';
+                    $payerUid = isset($tr['payer_user_id']) ? (int)$tr['payer_user_id'] : 0;
+                    if ($ref !== '' && $payerUid > 0) {
+                        $payerByTransferRef[$ref] = $payerUid;
+                    }
+                }
+            } catch (\Exception $e) {
+                // Older installations may not have transfer_reference columns.
+                $payerByTransferRef = [];
+            }
+        }
+
+        $paidByUid = [];
+        $depositCommentByUid = [];
+        foreach ($depositRows as $dr) {
+            $amount = isset($dr['amount']) ? (float)$dr['amount'] : 0.0;
+            if ($amount <= 0) {
+                continue;
+            }
+
+            $payerUid = 0;
+            $comment = isset($dr['comment']) ? trim((string)$dr['comment']) : '';
+            $commentLower = strtolower($comment);
+            $createdBy = isset($dr['createdbyuserid']) ? (int)$dr['createdbyuserid'] : 0;
+            $receiverUid = isset($dr['user_id']) ? (int)$dr['user_id'] : 0;
+            $ref = isset($dr['transfer_reference']) ? trim((string)$dr['transfer_reference']) : '';
+
+            if ($ref !== '' && isset($payerByTransferRef[$ref])) {
+                $payerUid = (int)$payerByTransferRef[$ref];
+            } elseif (strpos($commentLower, 'geld empfangen von ') === 0) {
+                $senderAlias = trim(substr($comment, strlen('Geld empfangen von ')));
+                $senderAliasLower = strtolower($senderAlias);
+                if ($senderAliasLower !== '' && isset($aliasToUid[$senderAliasLower])) {
+                    $payerUid = (int)$aliasToUid[$senderAliasLower];
+                }
+                if ($payerUid <= 0 && $createdBy > 0 && $createdBy !== $teamAdminUserId) {
+                    $payerUid = $createdBy;
+                }
+            } elseif ($createdBy > 0) {
+                $payerUid = $createdBy;
+            }
+
+            if ($payerUid <= 0 && $receiverUid > 0 && $receiverUid !== $teamAdminUserId) {
+                $payerUid = $receiverUid;
+            }
+
+            if ($payerUid <= 0) {
+                continue;
+            }
+
+            // Refund transfers from the team account to members must not count
+            // as additional member contributions for this event.
+            if (
+                $receiverUid > 0
+                && $receiverUid !== $teamAdminUserId
+                && $payerUid === $teamAdminUserId
+                && strpos($commentLower, 'geld empfangen von ') === 0
+            ) {
+                continue;
+            }
+
+            if (!isset($paidByUid[$payerUid])) {
+                $paidByUid[$payerUid] = 0.0;
+            }
+            $paidByUid[$payerUid] += $amount;
+
+            if (!isset($memberUids[$payerUid]) && !isset($depositCommentByUid[$payerUid]) && $comment !== '') {
+                $depositCommentByUid[$payerUid] = $comment;
+            }
+        }
+
+        $allUids = array_keys($paidByUid);
+        foreach (array_keys($memberUids) as $memberUid) {
+            if (!in_array($memberUid, $allUids, true)) {
+                $allUids[] = $memberUid;
+            }
+        }
+
+        $missingUids = [];
+        foreach ($allUids as $uid) {
+            if (!isset($userInfoByUid[$uid])) {
+                $missingUids[] = (int)$uid;
+            }
+        }
+
+        if (!empty($missingUids)) {
+            $missingPlaceholders = implode(',', array_fill(0, count($missingUids), '?'));
+            $missingRows = $dbAdapter->query(
+                'SELECT uid, alias, email FROM bs_users WHERE uid IN (' . $missingPlaceholders . ')',
+                $missingUids
+            )->toArray();
+            foreach ($missingRows as $row) {
+                $uid = isset($row['uid']) ? (int)$row['uid'] : 0;
+                if ($uid > 0) {
+                    $userInfoByUid[$uid] = [
+                        'alias' => isset($row['alias']) ? trim((string)$row['alias']) : '',
+                        'email' => isset($row['email']) ? trim((string)$row['email']) : '',
+                    ];
+                }
+            }
+        }
+
+        $rows = [];
+        foreach ($allUids as $uid) {
+            $uid = (int)$uid;
+            if ($uid <= 0) {
+                continue;
+            }
+            $info = isset($userInfoByUid[$uid]) ? $userInfoByUid[$uid] : ['alias' => '', 'email' => ''];
+            $rows[] = [
+                'uid' => $uid,
+                'alias' => $info['alias'],
+                'email' => $info['email'],
+                'total_paid' => isset($paidByUid[$uid]) ? (float)$paidByUid[$uid] : 0.0,
+                'is_member' => isset($memberUids[$uid]) ? 1 : 0,
+                'deposit_comment' => isset($depositCommentByUid[$uid]) ? (string)$depositCommentByUid[$uid] : '',
+            ];
+        }
+
+        usort($rows, function ($a, $b) {
+            $am = isset($a['is_member']) ? (int)$a['is_member'] : 0;
+            $bm = isset($b['is_member']) ? (int)$b['is_member'] : 0;
+            if ($am !== $bm) {
+                return $bm <=> $am;
+            }
+            $aa = isset($a['alias']) ? strtolower((string)$a['alias']) : '';
+            $ba = isset($b['alias']) ? strtolower((string)$b['alias']) : '';
+            if ($aa !== $ba) {
+                return strcmp($aa, $ba);
+            }
+            return ((int)$a['uid']) <=> ((int)$b['uid']);
+        });
 
         $result = [];
         foreach ($rows as $row) {
@@ -1920,15 +2142,15 @@ trait TeamEventTrait
             ? $this->getTeamEventMembersWithContribution($teamAdminUserId, $selectedTeamEventId, $teamEventLabel)
             : [];
 
-        // Get guest donations
-        $guestDonations = $selectedTeamEventId > 0
-            ? $this->getTeamEventGuestDonations($selectedTeamEventId)
-            : [];
+        // Use enriched rows from stats (contains relevant_members/share_per_member),
+        // fall back to direct table reads only when stats did not populate them.
+        $guestDonations = isset($stats['guest_donations']) && is_array($stats['guest_donations'])
+            ? $stats['guest_donations']
+            : ($selectedTeamEventId > 0 ? $this->getTeamEventGuestDonations($selectedTeamEventId) : []);
 
-        // Get extra costs
-        $extraCosts = $selectedTeamEventId > 0
-            ? $this->getTeamEventExtraCosts($selectedTeamEventId)
-            : [];
+        $extraCosts = isset($stats['extra_costs']) && is_array($stats['extra_costs'])
+            ? $stats['extra_costs']
+            : ($selectedTeamEventId > 0 ? $this->getTeamEventExtraCosts($selectedTeamEventId) : []);
 
         // Get member candidates for management
         $canManageMembers = $selectedTeamEventId > 0;

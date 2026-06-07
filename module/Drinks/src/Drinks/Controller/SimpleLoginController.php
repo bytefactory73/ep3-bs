@@ -457,8 +457,10 @@ class SimpleLoginController extends AbstractActionController
         // Get team alias from the team admin
         $teamAliasRow = $db->query('SELECT alias FROM drink_aliases WHERE user_id = ?', [$teamAdminUserId])->current();
         
-        $requestedTeamEventLabel = $this->normalizeTeamEventLabel($this->params()->fromQuery('spieltag', isset($session->current_spieltag) ? $session->current_spieltag : ''));
-        if ($requestedTeamEventLabel === '') {
+        $requestedSpieltagRaw = trim((string)$this->params()->fromQuery('spieltag', isset($session->current_spieltag) ? $session->current_spieltag : ''));
+        $requestedTeamEventId = ctype_digit($requestedSpieltagRaw) ? (int)$requestedSpieltagRaw : 0;
+        $requestedTeamEventLabel = $this->normalizeTeamEventLabel($requestedSpieltagRaw);
+        if ($requestedTeamEventId <= 0 && $requestedTeamEventLabel === '') {
             return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Kein Spieltag ausgewählt.']));
         }
 
@@ -507,7 +509,15 @@ class SimpleLoginController extends AbstractActionController
 
         // Resolve the team event using both admin-owned and member-assigned events
         $selectedTeamEvent = null;
-        if ($requestedTeamEventLabel !== '') {
+        if ($requestedTeamEventId > 0) {
+            foreach ($teamEvents as $te) {
+                if ((int)$te['id'] === $requestedTeamEventId) {
+                    $selectedTeamEvent = $te;
+                    break;
+                }
+            }
+        }
+        if (!$selectedTeamEvent && $requestedTeamEventLabel !== '') {
             foreach ($teamEvents as $te) {
                 if (trim((string)$te['label']) === $requestedTeamEventLabel) {
                     $selectedTeamEvent = $te;
@@ -517,6 +527,9 @@ class SimpleLoginController extends AbstractActionController
         }
         if ($selectedTeamEvent) {
             $session->current_teamevent_id = (int)$selectedTeamEvent['id'];
+            if (isset($selectedTeamEvent['label'])) {
+                $session->current_spieltag = trim((string)$selectedTeamEvent['label']);
+            }
         }
         
         // Determine selected event ID for passing to buildTeamStatsPayload
@@ -535,8 +548,11 @@ class SimpleLoginController extends AbstractActionController
         }
 
         // Build payload with event ID to handle member-only events from different teams
+        $resolvedTeamEventLabel = $selectedTeamEvent && isset($selectedTeamEvent['label'])
+            ? trim((string)$selectedTeamEvent['label'])
+            : $requestedTeamEventLabel;
         try {
-            $payload = $this->buildTeamStatsPayload($selectedTeamAdminUserId, $requestedTeamEventLabel, ['team_event_id' => $selectedEventId]);
+            $payload = $this->buildTeamStatsPayload($selectedTeamAdminUserId, $resolvedTeamEventLabel, ['team_event_id' => $selectedEventId]);
         } catch (\Exception $e) {
             return $this->getResponse()->setStatusCode(500)->setContent(json_encode([
                 'success' => false,
@@ -694,7 +710,7 @@ class SimpleLoginController extends AbstractActionController
             'success' => true,
             'spieltage' => $this->getAvailableTeamEventLabels($teamAdminUserId, true),
             'open_spieltage' => $this->getAvailableTeamEventLabels($teamAdminUserId, false),
-        ], $this->buildTeamStatsPayload($teamAdminUserId, $teamEventLabel))));
+        ], $this->buildTeamStatsPayload($teamAdminUserId, $teamEventLabel, ['team_event_id' => $teamEventId]))));
     }
 
     public function teamExtraCostAction()
@@ -781,7 +797,7 @@ class SimpleLoginController extends AbstractActionController
             'success' => true,
             'spieltage' => $this->getAvailableTeamEventLabels($teamAdminUserId, true),
             'open_spieltage' => $this->getAvailableTeamEventLabels($teamAdminUserId, false),
-        ], $this->buildTeamStatsPayload($teamAdminUserId, $teamEventLabel))));
+        ], $this->buildTeamStatsPayload($teamAdminUserId, $teamEventLabel, ['team_event_id' => $teamEventId]))));
     }
 
     public function teamUpdateExtraCostAction()
@@ -851,7 +867,7 @@ class SimpleLoginController extends AbstractActionController
             'success' => true,
             'spieltage' => $this->getAvailableTeamEventLabels($teamAdminUserId, true),
             'open_spieltage' => $this->getAvailableTeamEventLabels($teamAdminUserId, false),
-        ], $this->buildTeamStatsPayload($teamAdminUserId, $teamEventLabel))));
+        ], $this->buildTeamStatsPayload($teamAdminUserId, $teamEventLabel, ['team_event_id' => $teamEventId]))));
     }
 
     public function teamDeleteExtraCostAction()
@@ -901,7 +917,7 @@ class SimpleLoginController extends AbstractActionController
             'success' => true,
             'spieltage' => $this->getAvailableTeamEventLabels($teamAdminUserId, true),
             'open_spieltage' => $this->getAvailableTeamEventLabels($teamAdminUserId, false),
-        ], $this->buildTeamStatsPayload($teamAdminUserId, $teamEventLabel))));
+        ], $this->buildTeamStatsPayload($teamAdminUserId, $teamEventLabel, ['team_event_id' => $teamEventId]))));
     }
 
     public function teamGuestDonationAction()
@@ -977,7 +993,7 @@ class SimpleLoginController extends AbstractActionController
             'success' => true,
             'spieltage' => $this->getAvailableTeamEventLabels($teamAdminUserId, true),
             'open_spieltage' => $this->getAvailableTeamEventLabels($teamAdminUserId, false),
-        ], $this->buildTeamStatsPayload($teamAdminUserId, $teamEventLabel))));
+        ], $this->buildTeamStatsPayload($teamAdminUserId, $teamEventLabel, ['team_event_id' => $teamEventId]))));
     }
 
     public function teamUpdateGuestDonationAction()
@@ -1036,7 +1052,7 @@ class SimpleLoginController extends AbstractActionController
             'success' => true,
             'spieltage' => $this->getAvailableTeamEventLabels($teamAdminUserId, true),
             'open_spieltage' => $this->getAvailableTeamEventLabels($teamAdminUserId, false),
-        ], $this->buildTeamStatsPayload($teamAdminUserId, $teamEventLabel))));
+        ], $this->buildTeamStatsPayload($teamAdminUserId, $teamEventLabel, ['team_event_id' => $teamEventId]))));
     }
 
     public function teamDeleteGuestDonationAction()
@@ -1086,7 +1102,7 @@ class SimpleLoginController extends AbstractActionController
             'success' => true,
             'spieltage' => $this->getAvailableTeamEventLabels($teamAdminUserId, true),
             'open_spieltage' => $this->getAvailableTeamEventLabels($teamAdminUserId, false),
-        ], $this->buildTeamStatsPayload($teamAdminUserId, $teamEventLabel))));
+        ], $this->buildTeamStatsPayload($teamAdminUserId, $teamEventLabel, ['team_event_id' => $teamEventId]))));
     }
 
     public function closeTeamEventAction()
@@ -1194,6 +1210,20 @@ class SimpleLoginController extends AbstractActionController
             if ($isNewTeamEventRequest) {
                 $selected = $this->normalizeTeamEventLabel($this->params()->fromPost('new_spieltag', ''));
             }
+
+            // Accept numeric event IDs and normalize them to the event label.
+            if (!$isNewTeamEventRequest && $selected !== '' && ctype_digit($selected)) {
+                $selectedEventId = (int)$selected;
+                if ($selectedEventId > 0) {
+                    $eventById = $this->getTeamEventById($teamAdminUserId, $selectedEventId);
+                    if ($eventById && isset($eventById['comment'])) {
+                        $selected = $this->normalizeTeamEventLabel((string)$eventById['comment']);
+                    } else {
+                        $selected = '';
+                    }
+                }
+            }
+
             if ($selected === '') {
                 return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungueltiger Spieltag.']));
             }

@@ -1023,7 +1023,7 @@ class DrinksController extends AbstractActionController
             'team_event_id' => $teamEventId,
             'team_events' => $teamEvents,
             'account_balance' => $accountBalance,
-        ], $this->buildTeamStatsPayload($uid, $teamEventLabel))));
+        ], $this->buildTeamStatsPayload($uid, $teamEventLabel, ['team_event_id' => $teamEventId]))));
     }
 
     public function updateUserHistoryTeamEventAction()

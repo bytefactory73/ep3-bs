@@ -209,6 +209,9 @@
                     user_id: uid,
                     name: String((member && member.name) || ''),
                     email: String((member && member.email) || ''),
+                    total_paid: Number((member && member.total_paid) || 0),
+                    total_refunded: Number((member && member.total_refunded) || 0),
+                    deposit_comment: String((member && member.deposit_comment) || ''),
                     is_member: (member && typeof member.is_member !== 'undefined') ? !!member.is_member : true
                 };
             }).filter(function(member) {
