@@ -1017,13 +1017,52 @@ class DrinksController extends AbstractActionController
         $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
         $accountBalance = (float)$drinkManager->calculateUserDrinkBalance($uid, $serviceManager);
 
+        // Deposits page is admin-only for team accounts: all team events are manageable here.
+        // The shared modal uses events[].can_manage_members to enable editing controls.
+        $events = [];
+        foreach ($teamEvents as $eventRow) {
+            $eventId = isset($eventRow['id']) ? (int)$eventRow['id'] : 0;
+            $eventLabel = isset($eventRow['label']) ? trim((string)$eventRow['label']) : '';
+            if ($eventId <= 0 || $eventLabel === '') {
+                continue;
+            }
+            $events[] = [
+                'id' => $eventId,
+                'label' => $eventLabel,
+                'team_admin_user_id' => $uid,
+                'can_manage_members' => 1,
+                'role' => 'Mannschaftsführer',
+                'closed' => isset($eventRow['closed']) ? (int)$eventRow['closed'] : 0,
+            ];
+        }
+
+        $statsPayload = $this->buildTeamStatsPayload($uid, $teamEventLabel, ['team_event_id' => $teamEventId]);
+        if (!isset($statsPayload['members']) || !is_array($statsPayload['members'])) {
+            $statsPayload['members'] = isset($statsPayload['active_members']) && is_array($statsPayload['active_members'])
+                ? $statsPayload['active_members']
+                : [];
+        }
+
+        $memberCandidates = [];
+        if ($teamEventId > 0) {
+            try {
+                $memberCandidates = $this->getTeamEventMemberCandidates($uid, $teamEventId);
+            } catch (\Throwable $e) {
+                $memberCandidates = [];
+            }
+        }
+
         return $this->getResponse()->setContent(json_encode(array_merge([
             'success' => true,
             'team_uid' => $uid,
             'team_event_id' => $teamEventId,
             'team_events' => $teamEvents,
+            'events' => $events,
+            'is_editable' => 1,
+            'user_role' => 'Mannschaftsführer',
+            'member_candidates' => $memberCandidates,
             'account_balance' => $accountBalance,
-        ], $this->buildTeamStatsPayload($uid, $teamEventLabel, ['team_event_id' => $teamEventId]))));
+        ], $statsPayload)));
     }
 
     public function updateUserHistoryTeamEventAction()
@@ -1601,6 +1640,93 @@ class DrinksController extends AbstractActionController
         }
 
         return $this->getResponse()->setContent(json_encode(['success' => true]));
+    }
+
+    public function teamleadCloseTeamEventAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $request = $this->getRequest();
+        if (!$request->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required.']));
+        }
+
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\\Manager\\UserSessionManager');
+        $user = $userSessionManager->getSessionUser();
+        if (!$user) {
+            return $this->getResponse()->setStatusCode(401)->setContent(json_encode(['success' => false, 'error' => 'Not authenticated.']));
+        }
+
+        $teamEventId = (int)$this->params()->fromPost('team_event_id', 0);
+        $settlementRefundsRaw = $this->params()->fromPost('settlement_refunds', '');
+        if ($teamEventId <= 0) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültiger Spieltag.']));
+        }
+
+        $dbAdapter = $serviceManager->get('Zend\\Db\\Adapter\\Adapter');
+        $teamEvent = $dbAdapter->query(
+            'SELECT id, comment, team_admin_user_id, closed FROM drinks_teamevents WHERE id = ? LIMIT 1',
+            [$teamEventId]
+        )->current();
+        if (!$teamEvent || !isset($teamEvent['team_admin_user_id'])) {
+            return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'Spieltag nicht gefunden.']));
+        }
+
+        $teamAdminUserId = (int)$teamEvent['team_admin_user_id'];
+        if ($teamAdminUserId <= 0) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültiger Team-Account.']));
+        }
+
+        $closeResult = $this->closeTeamEventWithStatus($teamAdminUserId, $teamEventId);
+        if (empty($closeResult['success'])) {
+            $error = isset($closeResult['error']) ? $closeResult['error'] : '';
+            if ($error === 'feature_unavailable') {
+                return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Team-Event Schließen ist noch nicht verfügbar.']));
+            }
+            if ($error === 'not_found') {
+                return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'Spieltag nicht gefunden.']));
+            }
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültiger Spieltag.']));
+        }
+
+        $settlementRefunds = [];
+        if (is_string($settlementRefundsRaw) && trim($settlementRefundsRaw) !== '') {
+            $decodedRefunds = json_decode($settlementRefundsRaw, true);
+            if (is_array($decodedRefunds)) {
+                $settlementRefunds = $decodedRefunds;
+            }
+        } elseif (is_array($settlementRefundsRaw)) {
+            $settlementRefunds = $settlementRefundsRaw;
+        }
+
+        $settlementResult = ['success' => true, 'total_refund' => 0.0, 'transfers' => []];
+        if (!empty($settlementRefunds)) {
+            $settlementResult = $this->processTeamEventSettlementRefunds($teamAdminUserId, $teamEventId, $settlementRefunds, true);
+            if (empty($settlementResult['success'])) {
+                $errorCode = isset($settlementResult['error']) ? (string)$settlementResult['error'] : '';
+                $errorMessage = 'Ausgleichszahlungen konnten nicht vollständig ausgeführt werden.';
+                if ($errorCode === 'insufficient_settlement_balance') {
+                    $errorMessage = 'Spieltagssaldo reicht für die gewünschten Ausgleichszahlungen nicht aus.';
+                } elseif ($errorCode === 'insufficient_team_balance') {
+                    $errorMessage = 'Nicht genügend Guthaben für die Ausgleichszahlungen vorhanden.';
+                } elseif ($errorCode === 'transfer_failed') {
+                    $errorMessage = 'Mindestens eine Ausgleichszahlung ist fehlgeschlagen.';
+                }
+
+                return $this->getResponse()->setStatusCode(400)->setContent(json_encode([
+                    'success' => false,
+                    'error' => $errorMessage,
+                    'error_code' => $errorCode !== '' ? $errorCode : 'settlement_failed',
+                    'settlement' => $settlementResult,
+                ]));
+            }
+        }
+
+        return $this->getResponse()->setContent(json_encode([
+            'success' => true,
+            'already_closed' => !empty($closeResult['already_closed']),
+            'settlement' => $settlementResult,
+        ]));
     }
 
     /**

@@ -1357,7 +1357,7 @@ trait TeamEventTrait
             $amountRaw = isset($refundRow['amount']) ? (string)$refundRow['amount'] : '0';
             $amountRaw = str_replace(',', '.', trim($amountRaw));
             $amount = MoneyCalculator::roundMoney((float)$amountRaw);
-            if ($receiverUserId <= 0 || $amount <= 0) {
+            if ($receiverUserId <= 0 || $amount == 0.0) {
                 continue;
             }
             if (!isset($allowedMemberIds[$receiverUserId])) {
@@ -1376,26 +1376,49 @@ trait TeamEventTrait
 
         $serviceManager = $this->getServiceLocator();
         $teamEventLabel = isset($teamEvent['comment']) ? trim((string)$teamEvent['comment']) : '';
-        $teamBalance = 0.0;
+        $eventBalance = 0.0;
         if ($teamEventLabel !== '') {
-            $teamBalance = (float)$this->calculateTeamEventBalance($teamAdminUserId, $teamEventId, $teamEventLabel);
-        } else {
-            $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
-            $teamBalance = (float)$drinkManager->calculateUserDrinkBalance($teamAdminUserId, $serviceManager);
+            $eventBalance = (float)$this->calculateTeamEventBalance($teamAdminUserId, $teamEventId, $teamEventLabel);
         }
         $totalRefund = 0.0;
+        $totalCharge = 0.0;
+        $netOutgoing = 0.0;
         foreach ($validRefunds as $refundRow) {
-            $totalRefund = MoneyCalculator::add($totalRefund, $refundRow['amount']);
+            $amount = MoneyCalculator::roundMoney((float)$refundRow['amount']);
+            if ($amount > 0) {
+                $totalRefund = MoneyCalculator::add($totalRefund, $amount);
+            } else {
+                $totalCharge = MoneyCalculator::add($totalCharge, abs($amount));
+            }
+            $netOutgoing = MoneyCalculator::add($netOutgoing, $amount);
         }
-        if (MoneyCalculator::roundMoney($teamBalance) < MoneyCalculator::roundMoney($totalRefund)) {
-            return ['success' => false, 'error' => 'insufficient_team_balance', 'balance' => $teamBalance, 'total_refund' => $totalRefund];
+        // Settlement is valid when event balance after requested charges/payouts is non-negative.
+        $eventRemaining = MoneyCalculator::add($eventBalance, MoneyCalculator::subtract($totalCharge, $totalRefund));
+        if (MoneyCalculator::roundMoney($eventRemaining) < 0) {
+            return [
+                'success' => false,
+                'error' => 'insufficient_settlement_balance',
+                'event_balance' => $eventBalance,
+                'event_remaining' => $eventRemaining,
+                'total_refund' => $totalRefund,
+                'total_charge' => $totalCharge,
+                'net_outgoing' => $netOutgoing,
+            ];
         }
 
         $transfers = [];
         foreach ($validRefunds as $refundRow) {
             $receiverUserId = (int)$refundRow['receiver_user_id'];
             $amount = MoneyCalculator::roundMoney((float)$refundRow['amount']);
-            $transferResult = $this->executeMoneyTransfer($teamAdminUserId, $receiverUserId, $amount, $teamEventId);
+            if ($amount > 0) {
+                $transferResult = $this->executeMoneyTransfer($teamAdminUserId, $receiverUserId, $amount, $teamEventId, true);
+                $direction = 'team_to_member';
+                $effectiveAmount = $amount;
+            } else {
+                $transferResult = $this->executeMoneyTransfer($receiverUserId, $teamAdminUserId, abs($amount), $teamEventId, true);
+                $direction = 'member_to_team';
+                $effectiveAmount = 0.0 - abs($amount);
+            }
             $statusCode = isset($transferResult['statusCode']) ? (int)$transferResult['statusCode'] : 500;
             $payload = isset($transferResult['payload']) && is_array($transferResult['payload']) ? $transferResult['payload'] : [];
             if ($statusCode !== 200 || empty($payload['success'])) {
@@ -1403,20 +1426,23 @@ trait TeamEventTrait
                     'success' => false,
                     'error' => 'transfer_failed',
                     'receiver_user_id' => $receiverUserId,
-                    'amount' => $amount,
+                    'amount' => $effectiveAmount,
                     'transfer_result' => $payload,
                     'transfers' => $transfers,
                 ];
             }
             $transfers[] = [
                 'receiver_user_id' => $receiverUserId,
-                'amount' => $amount,
+                'amount' => $effectiveAmount,
+                'direction' => $direction,
             ];
         }
 
         return [
             'success' => true,
             'total_refund' => $totalRefund,
+            'total_charge' => $totalCharge,
+            'net_outgoing' => $netOutgoing,
             'transfers' => $transfers,
         ];
     }

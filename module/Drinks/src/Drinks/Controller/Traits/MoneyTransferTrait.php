@@ -63,12 +63,13 @@ trait MoneyTransferTrait
         return 0;
     }
 
-    protected function executeMoneyTransfer($senderUserId, $receiverUserId, $amount, $receiverTeamEventId = 0)
+    protected function executeMoneyTransfer($senderUserId, $receiverUserId, $amount, $receiverTeamEventId = 0, $allowClosedReceiverTeamEvent = false)
     {
         $senderUserId = (int)$senderUserId;
         $receiverUserId = (int)$receiverUserId;
         $amount = round((float)$amount, 2);
         $receiverTeamEventId = (int)$receiverTeamEventId;
+        $allowClosedReceiverTeamEvent = (bool)$allowClosedReceiverTeamEvent;
 
         if ($senderUserId <= 0) {
             return [
@@ -130,7 +131,14 @@ trait MoneyTransferTrait
                     'payload' => ['success' => false, 'error' => 'Spieltag konnte nicht geprüft werden.'],
                 ];
             }
-            $receiverTeamEvent = $this->resolveTeamEventForSelection($receiverUserId, $receiverTeamEventId, '');
+
+            $receiverTeamEvent = null;
+            if ($allowClosedReceiverTeamEvent && method_exists($this, 'getTeamEventById')) {
+                $receiverTeamEvent = $this->getTeamEventById($receiverUserId, $receiverTeamEventId);
+            }
+            if (!$receiverTeamEvent) {
+                $receiverTeamEvent = $this->resolveTeamEventForSelection($receiverUserId, $receiverTeamEventId, '');
+            }
             if (!$receiverTeamEvent || empty($receiverTeamEvent['id'])) {
                 return [
                     'statusCode' => 400,

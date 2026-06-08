@@ -152,7 +152,7 @@ $this->setup([
     </div>
 </div>
 
-<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260607-04') ?>"></script>
+<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260608-13') ?>"></script>
 <script>
 function formatCurrency(amount) {
     return amount != null ? amount.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) : '';
@@ -344,7 +344,13 @@ document.addEventListener('DOMContentLoaded', function() {
             balanceHeaderId: 'deposits-team-event-stats-balance-header',
             selectId: 'deposits-team-event-stats-select',
             titleId: 'deposits-team-event-stats-title',
+            memberInputId: 'deposits-team-stats-member-search',
+            memberListId: 'deposits-team-stats-member-list',
+            memberAddBtnId: 'deposits-team-stats-member-add',
+            memberClearBtnId: 'deposits-team-stats-member-clear',
             rowClass: 'deposits-team-stats-member-row',
+            removeButtonClass: 'deposits-team-stats-member-remove',
+            addDirectButtonClass: 'deposits-team-stats-member-add-direct',
             closeEventBtnId: 'deposits-team-stats-close-event-btn',
             getTitle: function(teamAlias) {
                 var alias = String(teamAlias || '').trim();
@@ -375,6 +381,28 @@ document.addEventListener('DOMContentLoaded', function() {
                     url += '&team_event_id=' + encodeURIComponent(teamEventId);
                 }
                 return url;
+            },
+            buildMemberUpdateRequest: function(operation, memberUserId, state) {
+                return {
+                    url: '<?= $this->url('user/teamlead-team-members') ?>',
+                    body: new URLSearchParams({
+                        operation: String(operation || ''),
+                        team_event_id: String(state.currentEventId || 0),
+                        member_user_id: String(memberUserId || 0)
+                    })
+                };
+            },
+            buildCloseEventRequest: function(state, settlement) {
+                var body = new URLSearchParams({
+                    team_event_id: String(state.currentEventId || 0)
+                });
+                if (settlement && Array.isArray(settlement.refunds) && settlement.refunds.length > 0) {
+                    body.set('settlement_refunds', JSON.stringify(settlement.refunds));
+                }
+                return {
+                    url: '<?= $this->url('user/teamlead-close-team-event') ?>',
+                    body: body
+                };
             },
             afterLoadData: function(data, state, refs) {
                 state.preferredTeamEventId = String(data.team_event_id || '');

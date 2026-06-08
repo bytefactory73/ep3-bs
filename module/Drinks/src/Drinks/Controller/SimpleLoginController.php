@@ -1158,6 +1158,24 @@ class SimpleLoginController extends AbstractActionController
         $settlementResult = ['success' => true, 'total_refund' => 0.0, 'transfers' => []];
         if (!empty($settlementRefunds)) {
             $settlementResult = $this->processTeamEventSettlementRefunds($teamAdminUserId, $teamEventId, $settlementRefunds, true);
+            if (empty($settlementResult['success'])) {
+                $errorCode = isset($settlementResult['error']) ? (string)$settlementResult['error'] : '';
+                $errorMessage = 'Ausgleichszahlungen konnten nicht vollständig ausgeführt werden.';
+                if ($errorCode === 'insufficient_settlement_balance') {
+                    $errorMessage = 'Spieltagssaldo reicht für die gewünschten Ausgleichszahlungen nicht aus.';
+                } elseif ($errorCode === 'insufficient_team_balance') {
+                    $errorMessage = 'Nicht genügend Guthaben für die Ausgleichszahlungen vorhanden.';
+                } elseif ($errorCode === 'transfer_failed') {
+                    $errorMessage = 'Mindestens eine Ausgleichszahlung ist fehlgeschlagen.';
+                }
+
+                return $this->getResponse()->setStatusCode(400)->setContent(json_encode([
+                    'success' => false,
+                    'error' => $errorMessage,
+                    'error_code' => $errorCode !== '' ? $errorCode : 'settlement_failed',
+                    'settlement' => $settlementResult,
+                ]));
+            }
         }
 
         $eventRow = isset($closeResult['event']) ? $closeResult['event'] : null;
