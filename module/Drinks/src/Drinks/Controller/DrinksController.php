@@ -858,6 +858,52 @@ class DrinksController extends AbstractActionController
         $showStorno = $this->params()->fromQuery('showStorno') === '1';
         $orders = iterator_to_array($drinkOrderManager->getByUser($uid, $showStorno));
         $deposits = iterator_to_array($drinkDepositManager->getByUser($uid, $showStorno));
+
+        // Resolve referenced team event labels for all users (team + individual users).
+        // Individual users can have entries assigned to team events and should see the same badges.
+        $referencedTeamEventIds = [];
+        foreach ($deposits as $d) {
+            $eventId = isset($d['teamevent_id']) ? (int)$d['teamevent_id'] : 0;
+            if ($eventId > 0) {
+                $referencedTeamEventIds[$eventId] = true;
+            }
+        }
+        foreach ($orders as $o) {
+            $eventId = isset($o['teamevent_id']) ? (int)$o['teamevent_id'] : 0;
+            if ($eventId > 0) {
+                $referencedTeamEventIds[$eventId] = true;
+            }
+        }
+
+        if (!empty($referencedTeamEventIds)) {
+            $missingTeamEventIds = [];
+            foreach (array_keys($referencedTeamEventIds) as $eventId) {
+                if (!isset($teamEventLabelById[$eventId])) {
+                    $missingTeamEventIds[] = (int)$eventId;
+                }
+            }
+
+            if (!empty($missingTeamEventIds)) {
+                $placeholders = implode(',', array_fill(0, count($missingTeamEventIds), '?'));
+                try {
+                    $eventRows = $dbAdapter->query(
+                        'SELECT id, comment, closed FROM drinks_teamevents WHERE id IN (' . $placeholders . ')',
+                        $missingTeamEventIds
+                    )->toArray();
+                    foreach ($eventRows as $er) {
+                        $eventId = isset($er['id']) ? (int)$er['id'] : 0;
+                        $label = isset($er['comment']) ? trim((string)$er['comment']) : '';
+                        if ($eventId > 0 && $label !== '') {
+                            $teamEventLabelById[$eventId] = $label;
+                            $teamEventClosedById[$eventId] = isset($er['closed']) ? (bool)$er['closed'] : false;
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    // Keep history rendering stable even if event lookup fails.
+                }
+            }
+        }
+
         $history = [];
         foreach ($deposits as $d) {
             $creatorName = null;
