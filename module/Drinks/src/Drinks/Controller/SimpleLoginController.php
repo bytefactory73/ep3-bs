@@ -460,9 +460,6 @@ class SimpleLoginController extends AbstractActionController
         $requestedSpieltagRaw = trim((string)$this->params()->fromQuery('spieltag', isset($session->current_spieltag) ? $session->current_spieltag : ''));
         $requestedTeamEventId = ctype_digit($requestedSpieltagRaw) ? (int)$requestedSpieltagRaw : 0;
         $requestedTeamEventLabel = $this->normalizeTeamEventLabel($requestedSpieltagRaw);
-        if ($requestedTeamEventId <= 0 && $requestedTeamEventLabel === '') {
-            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Kein Spieltag ausgewählt.']));
-        }
 
         // Get all team events for the user (admin + member) using the new trait method
         $eventsData = $this->getTeamEventsForUser($userId, $isTeamAccount);
@@ -524,6 +521,9 @@ class SimpleLoginController extends AbstractActionController
                     break;
                 }
             }
+        }
+        if (!$selectedTeamEvent && !empty($teamEvents)) {
+            $selectedTeamEvent = $teamEvents[0];
         }
         if ($selectedTeamEvent) {
             $session->current_teamevent_id = (int)$selectedTeamEvent['id'];

@@ -86,46 +86,39 @@ if ($partyModeEnabled) {
 </div>
 <script src="<?= $this->basePath('js/team-stats-modal.js?v=20260608-13') ?>"></script>
 <script>
-function getTeamStatsSpieltagOptions() {
+function getCurrentBookingSpieltag() {
     var bookingSelect = document.getElementById('spieltag-select');
-    var options = [];
-    if (!bookingSelect) return options;
-
-    for (var i = 0; i < bookingSelect.options.length; i++) {
-        var option = bookingSelect.options[i];
-        var value = String(option && option.value ? option.value : '').trim();
-        if (!value || value === '__new__') continue;
-        options.push(value);
-    }
-
-    return options;
+    if (!bookingSelect) return '';
+    var value = String(bookingSelect.value || '').trim();
+    return value === '__new__' ? '' : value;
 }
 
 function syncTeamStatsSpieltagSelect(preferredValue) {
+    // Keep this helper minimal to avoid overwriting the modal dropdown
+    // with the booking select options before the API response arrives.
     var modalSelect = document.getElementById('team-stats-spieltag-select');
     if (!modalSelect) return '';
+    if (!preferredValue) return '';
 
-    var options = getTeamStatsSpieltagOptions();
-    while (modalSelect.firstChild) {
-        modalSelect.removeChild(modalSelect.firstChild);
+    var selected = String(preferredValue).trim();
+    if (!selected || selected === '__new__') {
+        return '';
     }
 
-    for (var i = 0; i < options.length; i++) {
-        var value = options[i];
+    var existing = false;
+    for (var i = 0; i < modalSelect.options.length; i++) {
+        if (String(modalSelect.options[i].value || '').trim() === selected) {
+            existing = true;
+            break;
+        }
+    }
+    if (!existing) {
         var opt = document.createElement('option');
-        opt.value = value;
-        opt.textContent = value;
+        opt.value = selected;
+        opt.textContent = selected;
         modalSelect.appendChild(opt);
     }
-
-    var selected = String(preferredValue || '').trim();
-    if (!selected || options.indexOf(selected) === -1) {
-        selected = options.length > 0 ? options[0] : '';
-    }
-    if (selected) {
-        modalSelect.value = selected;
-    }
-
+    modalSelect.value = selected;
     return selected;
 }
 
@@ -178,10 +171,14 @@ var teamStatsModalController = createTeamStatsModal({
     removeButtonClass: 'team-stats-member-remove',
     addDirectButtonClass: 'team-stats-member-add-direct',
     buildStatsUrl: function(selectedSpieltag) {
-        if (!selectedSpieltag || selectedSpieltag === '__new__') {
+        if (selectedSpieltag === '__new__') {
             throw new Error('Bitte zuerst einen Spieltag auswählen.');
         }
-        return 'simple-order/team-stats?spieltag=' + encodeURIComponent(selectedSpieltag);
+        var url = 'simple-order/team-stats';
+        if (selectedSpieltag) {
+            url += '?spieltag=' + encodeURIComponent(selectedSpieltag);
+        }
+        return url;
     },
     buildMemberUpdateRequest: function(operation, memberUserId, state) {
         return {
@@ -354,8 +351,7 @@ var teamStatsModalController = createTeamStatsModal({
         refs.select.disabled = spieltage.length === 0;
     },
     getInitialSpieltag: function() {
-        var bookingSelect = document.getElementById('spieltag-select');
-        var preferredSpieltag = bookingSelect ? (bookingSelect.value || '') : '';
+        var preferredSpieltag = getCurrentBookingSpieltag();
         return syncTeamStatsSpieltagSelect(preferredSpieltag);
     }
 });
