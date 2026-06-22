@@ -1374,7 +1374,8 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
         if (clearBtn) {
             clearBtn.addEventListener('click', function() { clearSelectionAndLogout(false); });
         }
-        var spieltagSelect = document.getElementById('spieltag-select');
+            var spieltagSelect = document.getElementById('spieltag-select');
+            var spieltagLastRealValue = '';
         if (spieltagSelect) {
             function getDefaultSpieltagName() {
                 var today = new Date();
@@ -1592,10 +1593,10 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
             spieltagSelect.addEventListener('change', function() {
                 var selected = spieltagSelect.value || '';
                 if (selected === '__new__') {
+                    openSpieltagCreateModal();
                     if (spieltagLastRealValue) {
                         spieltagSelect.value = spieltagLastRealValue;
                     }
-                    openSpieltagCreateModal();
                     return;
                 }
 

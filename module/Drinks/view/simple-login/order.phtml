@@ -147,6 +147,17 @@ window.teamSpieltagUpdateFromApi = function(data) {
         if (name === selected) opt.selected = true;
         select.appendChild(opt);
     }
+    // If there are no other spieltage (or only one), add a neutral placeholder
+    // so the user can choose the "Neuen Spieltag anlegen" option.
+    if (options.length <= 1) {
+        var placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = '---';
+        // Insert placeholder at the top so it's selectable when nothing else should be preselected
+        select.insertBefore(placeholder, select.firstChild);
+        // If nothing selected yet, make the placeholder the selected value
+        if (!selected) placeholder.selected = true;
+    }
     var newOpt = document.createElement('option');
     newOpt.value = '__new__';
     newOpt.textContent = 'Neuen Spieltag anlegen';
