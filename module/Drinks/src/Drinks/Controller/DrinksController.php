@@ -2276,6 +2276,120 @@ class DrinksController extends AbstractActionController
     }
 
     /**
+     * Admin: Deposit overview showing all member deposits with balance after deposit
+     */
+    public function depositOverviewAction()
+    {
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $user = $userSessionManager->getSessionUser();
+        if (!$user || $user->get('status') !== 'admin') {
+            return $this->redirect()->toRoute('user/settings');
+        }
+
+        $userManager = $serviceManager->get('User\Manager\UserManager');
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+
+        $users = $userManager->getAll('alias ASC');
+        $userMap = [];
+        foreach ($users as $u) {
+            $uid = $u->get('uid');
+            $userMap[$uid] = [
+                'display' => $u->get('alias') ?: $u->get('name'),
+                'email' => $u->get('email'),
+            ];
+        }
+
+        $showTransfers = $this->params()->fromQuery('showTransfers', '0') === '1';
+        $hasTransferReference = false;
+        try {
+            $transferCol = $dbAdapter->query("SHOW COLUMNS FROM drink_deposits LIKE 'transfer_reference'", [])->current();
+            $hasTransferReference = (bool)$transferCol;
+        } catch (\Exception $e) {
+            $hasTransferReference = false;
+        }
+
+        $depositSql = 'SELECT * FROM drink_deposits WHERE deleted IS NULL OR deleted = 0';
+        $depositParams = [];
+        if (!$showTransfers && $hasTransferReference) {
+            $depositSql .= ' AND (transfer_reference IS NULL OR transfer_reference = "")';
+        }
+        $depositSql .= ' ORDER BY deposit_time ASC';
+
+        $depositRows = iterator_to_array($dbAdapter->query($depositSql, $depositParams));
+        $orderRows = iterator_to_array($dbAdapter->query(
+            'SELECT * FROM drink_orders WHERE deleted IS NULL OR deleted = 0 ORDER BY order_time ASC',
+            []
+        ));
+
+        $ordersByUser = [];
+        foreach ($orderRows as $orderRow) {
+            $uid = isset($orderRow['user_id']) ? (int)$orderRow['user_id'] : 0;
+            if ($uid <= 0) {
+                continue;
+            }
+            $ordersByUser[$uid][] = $orderRow;
+        }
+
+        $orderPositions = [];
+        $orderSums = [];
+        $depositSums = [];
+        $depositEntries = [];
+
+        foreach ($depositRows as $depositRow) {
+            $uid = isset($depositRow['user_id']) ? (int)$depositRow['user_id'] : 0;
+            if ($uid <= 0 || !isset($userMap[$uid])) {
+                continue;
+            }
+
+            if (!isset($orderPositions[$uid])) {
+                $orderPositions[$uid] = 0;
+                $orderSums[$uid] = 0.0;
+            }
+            if (!isset($depositSums[$uid])) {
+                $depositSums[$uid] = 0.0;
+            }
+
+            $depositTime = isset($depositRow['deposit_time']) ? $depositRow['deposit_time'] : '';
+            if (isset($ordersByUser[$uid])) {
+                while (isset($ordersByUser[$uid][$orderPositions[$uid]])
+                    && strcmp($ordersByUser[$uid][$orderPositions[$uid]]['order_time'], $depositTime) <= 0
+                ) {
+                    $entry = $ordersByUser[$uid][$orderPositions[$uid]];
+                    $orderSums[$uid] += (float)$entry['quantity'] * (float)$entry['price'];
+                    $orderPositions[$uid]++;
+                }
+            }
+
+            $depositSums[$uid] += (float)$depositRow['amount'];
+            $balanceAfter = $depositSums[$uid] - $orderSums[$uid];
+            $comment = isset($depositRow['comment']) ? trim((string)$depositRow['comment']) : '';
+
+            $depositEntries[] = [
+                'id' => isset($depositRow['id']) ? (int)$depositRow['id'] : null,
+                'user_id' => $uid,
+                'name' => $userMap[$uid]['display'],
+                'email' => $userMap[$uid]['email'],
+                'date' => $depositTime,
+                'amount' => (float)$depositRow['amount'],
+                'balance_after' => $balanceAfter,
+                'comment' => $comment,
+            ];
+        }
+
+        usort($depositEntries, function ($a, $b) {
+            return strcmp($b['date'], $a['date']);
+        });
+
+        $viewModel = new ViewModel([
+            'deposits' => $depositEntries,
+            'showTransfers' => $showTransfers,
+        ]);
+        $viewModel->setTemplate('deposit-overview.phtml');
+        return $viewModel;
+    }
+
+    /**
      * Toggle deleted status of deposit or order entries
      */
     public function toggleDepositOrderDeletedAction()

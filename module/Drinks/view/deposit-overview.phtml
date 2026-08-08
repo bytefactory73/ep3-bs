@@ -1,0 +1,56 @@
+<?php
+// Admin-only: Einzahlungsübersicht
+$this->setup([
+    'title' => 'Einzahlungsübersicht',
+    'panel' => 'centered-panel',
+    'back' => $this->url('user/drinks-admin'),
+    'links' => [
+        'Drinks Verwaltung' => $this->url('user/drinks-admin'),
+    ],
+]);
+?>
+
+<h1><?= $this->t('Einzahlungsübersicht') ?></h1>
+<div class="separator-small"></div>
+<p><?= $this->t('Hier sehen Sie alle Einzahlungen der Mitglieder, sortiert nach Datum absteigend.') ?></p>
+
+<form method="get" style="margin-bottom:18px;">
+    <label style="font-weight:normal; display:inline-flex; align-items:center; gap:8px;">
+        <input id="show-transfers-checkbox" type="checkbox" name="showTransfers" value="1" <?= $this->showTransfers ? 'checked' : '' ?> onchange="this.form.submit()">
+        <?= $this->t('Transfers von anderem Account anzeigen') ?>
+    </label>
+</form>
+
+<table class="table table-striped" style="margin-top:24px; width:100%;">
+    <thead>
+        <tr>
+            <th style="width:4em; text-align:right;">#</th>
+            <th><?= $this->t('Mitglied') ?></th>
+            <th><?= $this->t('Datum') ?></th>
+            <th><?= $this->t('Kommentar') ?></th>
+            <th style="text-align:right;"><?= $this->t('Einzahlung') ?></th>
+        </tr>
+    </thead>
+    <tbody>
+        <?php $rownum = 1; foreach ($this->deposits as $deposit): ?>
+            <tr>
+                <td style="font-weight:bold; color:#888; text-align:right;"> <?= $rownum++ ?>. </td>
+                <td>
+                    <a href="<?= $this->url('user/deposits') . '?uid=' . urlencode($deposit['user_id']) ?>"
+                       style="color:#1976d2; text-decoration:underline; font-weight:bold;">
+                        <?= $this->escapeHtml($deposit['name']) ?>
+                    </a>
+                </td>
+                <td style="white-space:nowrap; padding-right: 18px;">
+                    <?= $this->escapeHtml(date('d.m.Y H:i', strtotime($deposit['date']))) ?>
+                </td>
+                <td style="padding-left: 18px;">
+                    <?= $deposit['comment'] !== '' ? $this->escapeHtml($deposit['comment']) : '&ndash;' ?>
+                </td>
+                <td style="text-align:right; font-weight:bold;">
+                    <?= number_format($deposit['amount'], 2, ',', '.') ?> €
+                </td>
+            </tr>
+        <?php endforeach; ?>
+    </tbody>
+</table>

@@ -545,6 +545,16 @@ return array(
                             ),
                         ),
                     ),
+                    'deposit-overview' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/deposit-overview',
+                            'defaults' => array(
+                                'controller' => 'Drinks\Controller\Drinks',
+                                'action' => 'depositOverview',
+                            ),
+                        ),
+                    ),
                     'get-user-deposits-data' => array(
                         'type' => 'Literal',
                         'options' => array(
