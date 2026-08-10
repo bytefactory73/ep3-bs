@@ -567,16 +567,16 @@ class DrinksController extends AbstractActionController
     }
 
     /**
-     * Admin: PayPal settings page
+     * Thekenadmin: PayPal settings page
      */
     public function paypalSettingsAction()
     {
-        $serviceManager = @$this->getServiceLocator();
-        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
-        $user = $userSessionManager->getSessionUser();
-        if (!$user || $user->get('status') !== 'admin') {
-            return $this->redirect()->toRoute('user/settings');
+        $check = $this->checkThekenadminAccess();
+        if ($check !== true) {
+            return $check;
         }
+
+        $serviceManager = @$this->getServiceLocator();
 
         $optionManager = $serviceManager->get('Base\Manager\OptionManager');
         $paypalSettings = [
@@ -618,7 +618,7 @@ class DrinksController extends AbstractActionController
     }
 
     /**
-     * Admin: Save PayPal settings
+     * Admin only: Save PayPal settings (credentials)
      */
     public function savePaypalSettingsAction()
     {
@@ -628,6 +628,12 @@ class DrinksController extends AbstractActionController
         }
 
         $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $user = $userSessionManager->getSessionUser();
+        if (!$user || $user->get('status') !== 'admin') {
+            return $this->redirect()->toRoute('user/settings');
+        }
+
         $optionManager = $serviceManager->get('Base\Manager\OptionManager');
 
         $fields = [
@@ -640,11 +646,24 @@ class DrinksController extends AbstractActionController
             'paypal_client_secret',
         ];
 
+        // Sensitive fields that should not be updated if masked with bullets
+        $sensitiveFields = ['imap_password', 'paypal_client_secret'];
+
         foreach ($fields as $field) {
             $value = trim((string)$this->params()->fromPost($field, ''));
+            
             if ($field === 'imap_ssl') {
                 $value = $this->params()->fromPost('imap_ssl', '') ? '1' : '0';
             }
+            
+            // Skip sensitive fields if they contain only bullet characters (●)
+            if (in_array($field, $sensitiveFields) && !empty($value)) {
+                // Check if value contains only bullet characters (●) or is empty
+                if (preg_match('/^[●\s]*$/', $value) || $value === '') {
+                    continue; // Skip this field, keep existing value
+                }
+            }
+            
             $optionManager->set('paypal.' . $field, $value);
         }
 
@@ -657,12 +676,12 @@ class DrinksController extends AbstractActionController
     public function triggerPaypalFetchAction()
     {
         $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
-        $serviceManager = @$this->getServiceLocator();
-        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
-        $admin = $userSessionManager->getSessionUser();
-        if (!$admin || $admin->get('status') !== 'admin') {
-            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'No permission']));
+        $check = $this->checkThekenadminAccess();
+        if ($check !== true) {
+            return $check;
         }
+
+        $serviceManager = @$this->getServiceLocator();
 
         $request = $this->getRequest();
         if (!$request->isPost()) {
@@ -705,7 +724,9 @@ class DrinksController extends AbstractActionController
 
             // Auto-assign synced transactions to users where email is unambiguous
             $depositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
-            $autoResult = $paypalManager->autoAssignSyncedTransactions($depositManager, $admin->get('uid'));
+            $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+            $currentUser = $userSessionManager->getSessionUser();
+            $autoResult = $paypalManager->autoAssignSyncedTransactions($depositManager, $currentUser->get('uid'));
 
             $message = sprintf('PayPal Abruf abgeschlossen. %d neue Nachrichten importiert, %d übersprungen.', $result['imported'], $result['skipped']);
             if ($syncResult !== null) {
@@ -740,17 +761,17 @@ class DrinksController extends AbstractActionController
     }
 
     /**
-     * Admin: Trigger PayPal history import (API only, no IMAP, last 30 days)
+     * Thekenadmin: Trigger PayPal history import (API only, no IMAP, last 30 days)
      */
     public function triggerPaypalHistoryImportAction()
     {
         $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
-        $serviceManager = @$this->getServiceLocator();
-        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
-        $admin = $userSessionManager->getSessionUser();
-        if (!$admin || $admin->get('status') !== 'admin') {
-            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'No permission']));
+        $check = $this->checkThekenadminAccess();
+        if ($check !== true) {
+            return $check;
         }
+
+        $serviceManager = @$this->getServiceLocator();
         $request = $this->getRequest();
         if (!$request->isPost()) {
             return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required']));
@@ -823,7 +844,10 @@ class DrinksController extends AbstractActionController
             $syncResult = $paypalManager->syncEmailReceivedTransactions($clientId, $clientSecret, 100);
 
             // Auto-assign after all imports
-            $autoResult = $paypalManager->autoAssignSyncedTransactions($depositManager, $admin->get('uid'));
+            $depositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
+            $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+            $currentUser = $userSessionManager->getSessionUser();
+            $autoResult = $paypalManager->autoAssignSyncedTransactions($depositManager, $currentUser->get('uid'));
 
             $message = sprintf('Historie-Import: %d importiert, %d übersprungen.', $importResult['imported'], $importResult['skipped']);
             if (!empty($importResult['errors'])) {
@@ -1349,12 +1373,12 @@ class DrinksController extends AbstractActionController
     public function reassignPaypalTransactionAction()
     {
         $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
-        $serviceManager = @$this->getServiceLocator();
-        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
-        $admin = $userSessionManager->getSessionUser();
-        if (!$admin || $admin->get('status') !== 'admin') {
-            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'No permission']));
+        $check = $this->checkThekenadminAccess();
+        if ($check !== true) {
+            return $check;
         }
+
+        $serviceManager = @$this->getServiceLocator();
         $request = $this->getRequest();
         if (!$request->isPost()) {
             return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required']));
@@ -1382,12 +1406,12 @@ class DrinksController extends AbstractActionController
     public function ignorePaypalTransactionAction()
     {
         $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
-        $serviceManager = @$this->getServiceLocator();
-        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
-        $admin = $userSessionManager->getSessionUser();
-        if (!$admin || $admin->get('status') !== 'admin') {
-            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'No permission']));
+        $check = $this->checkThekenadminAccess();
+        if ($check !== true) {
+            return $check;
         }
+
+        $serviceManager = @$this->getServiceLocator();
         $request = $this->getRequest();
         if (!$request->isPost()) {
             return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required']));
@@ -3280,5 +3304,32 @@ class DrinksController extends AbstractActionController
         }
 
         return $lastInsertId;
+    }
+
+    /**
+     * Helper: Check if user is thekenadmin
+     * @return bool|JsonModel false if thekenadmin, JsonModel with error if not
+     */
+    private function checkThekenadminAccess()
+    {
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $user = $userSessionManager->getSessionUser();
+        
+        if (!$user) {
+            $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+            return $this->getResponse()->setStatusCode(401)->setContent(json_encode(['success' => false, 'error' => 'Not logged in']));
+        }
+
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+        $aliasRow = $dbAdapter->query('SELECT thekenadmin FROM drink_aliases WHERE user_id = ?', [$user->get('uid')])->current();
+        $thekenadmin = ($aliasRow && isset($aliasRow['thekenadmin']) && (int)$aliasRow['thekenadmin'] === 1);
+
+        if (!$thekenadmin) {
+            $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'No permission']));
+        }
+
+        return true;
     }
 }
