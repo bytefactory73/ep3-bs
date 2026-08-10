@@ -523,6 +523,26 @@ return array(
                                     ),
                                 ),
                             ),
+                            'paypal-settings' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/paypal-settings',
+                                    'defaults' => array(
+                                        'controller' => 'Drinks\Controller\Drinks',
+                                        'action' => 'paypalSettings',
+                                    ),
+                                ),
+                            ),
+                            'save-paypal-settings' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/save-paypal-settings',
+                                    'defaults' => array(
+                                        'controller' => 'Drinks\Controller\Drinks',
+                                        'action' => 'savePaypalSettings',
+                                    ),
+                                ),
+                            ),
                         ),
                     ),
                     'deposits' => array(
@@ -562,6 +582,56 @@ return array(
                             'defaults' => array(
                                 'controller' => 'Drinks\Controller\Drinks',
                                 'action' => 'getUserDepositsData',
+                            ),
+                        ),
+                    ),
+                    'paypal-fetch' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/paypal-fetch',
+                            'defaults' => array(
+                                'controller' => 'Drinks\Controller\Drinks',
+                                'action' => 'triggerPaypalFetch',
+                            ),
+                        ),
+                    ),
+                    'paypal-history-import' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/paypal-history-import',
+                            'defaults' => array(
+                                'controller' => 'Drinks\Controller\Drinks',
+                                'action' => 'triggerPaypalHistoryImport',
+                            ),
+                        ),
+                    ),
+                    'create-deposit-from-paypal' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/create-deposit-from-paypal',
+                            'defaults' => array(
+                                'controller' => 'Drinks\Controller\Drinks',
+                                'action' => 'createDepositFromPaypal',
+                            ),
+                        ),
+                    ),
+                    'reassign-paypal-transaction' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/reassign-paypal-transaction',
+                            'defaults' => array(
+                                'controller' => 'Drinks\Controller\Drinks',
+                                'action' => 'reassignPaypalTransaction',
+                            ),
+                        ),
+                    ),
+                    'ignore-paypal-transaction' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/ignore-paypal-transaction',
+                            'defaults' => array(
+                                'controller' => 'Drinks\Controller\Drinks',
+                                'action' => 'ignorePaypalTransaction',
                             ),
                         ),
                     ),

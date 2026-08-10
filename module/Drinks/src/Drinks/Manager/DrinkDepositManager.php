@@ -26,15 +26,25 @@ class DrinkDepositManager
         return $statement->execute();
     }
 
-    public function addDeposit($userId, $amount, $comment = null, $createdByUserId = null, $userIdDeleted = null, $teamEventId = null)
+    public function addDeposit($userId, $amount, $comment = null, $createdByUserId = null, $userIdDeleted = null, $teamEventId = null, $depositTime = null)
     {
         // Both deleted and user_id_deleted are optional/nullable
         if ($userIdDeleted === null) {
-            $sql = 'INSERT INTO drink_deposits (user_id, amount, comment, teamevent_id, createdbyuserid) VALUES (?, ?, ?, ?, ?)';
-            $params = [$userId, $amount, $comment, $teamEventId, $createdByUserId];
+            if ($depositTime !== null) {
+                $sql = 'INSERT INTO drink_deposits (user_id, amount, comment, teamevent_id, createdbyuserid, deposit_time) VALUES (?, ?, ?, ?, ?, ?)';
+                $params = [$userId, $amount, $comment, $teamEventId, $createdByUserId, $depositTime];
+            } else {
+                $sql = 'INSERT INTO drink_deposits (user_id, amount, comment, teamevent_id, createdbyuserid) VALUES (?, ?, ?, ?, ?)';
+                $params = [$userId, $amount, $comment, $teamEventId, $createdByUserId];
+            }
         } else {
-            $sql = 'INSERT INTO drink_deposits (user_id, amount, comment, teamevent_id, createdbyuserid, user_id_deleted) VALUES (?, ?, ?, ?, ?, ?)';
-            $params = [$userId, $amount, $comment, $teamEventId, $createdByUserId, $userIdDeleted];
+            if ($depositTime !== null) {
+                $sql = 'INSERT INTO drink_deposits (user_id, amount, comment, teamevent_id, createdbyuserid, user_id_deleted, deposit_time) VALUES (?, ?, ?, ?, ?, ?, ?)';
+                $params = [$userId, $amount, $comment, $teamEventId, $createdByUserId, $userIdDeleted, $depositTime];
+            } else {
+                $sql = 'INSERT INTO drink_deposits (user_id, amount, comment, teamevent_id, createdbyuserid, user_id_deleted) VALUES (?, ?, ?, ?, ?, ?)';
+                $params = [$userId, $amount, $comment, $teamEventId, $createdByUserId, $userIdDeleted];
+            }
         }
         $statement = $this->dbAdapter->createStatement($sql, $params);
         return $statement->execute();

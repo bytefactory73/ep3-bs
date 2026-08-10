@@ -27,6 +27,14 @@ class MailService extends AbstractService
         $toAddress = $recipient->need('email');
         $toName = $recipient->get('alias') ?: $recipient->get('name') ?: '';
 
+        // In test environments, redirect all outgoing mail to a catch-all address
+        $host = isset($_SERVER['HTTP_HOST']) ? strtolower($_SERVER['HTTP_HOST']) : '';
+        if ($host !== '' && strpos($host, 'bookingtest.') === 0) {
+            $toAddress = 'sport@kuehn-clan.de';
+            $toName = $toName . ' [TEST redirect from ' . $recipient->need('email') . ']';
+            $subject = '[TEST] ' . $subject;
+        }
+
         // Compatibility: if 4th argument is not an array or is a numerically indexed array, treat as attachments (old usage)
         $isHtml = false;
         $attachments = array();

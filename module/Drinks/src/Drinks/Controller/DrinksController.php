@@ -567,6 +567,287 @@ class DrinksController extends AbstractActionController
     }
 
     /**
+     * Admin: PayPal settings page
+     */
+    public function paypalSettingsAction()
+    {
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $user = $userSessionManager->getSessionUser();
+        if (!$user || $user->get('status') !== 'admin') {
+            return $this->redirect()->toRoute('user/settings');
+        }
+
+        $optionManager = $serviceManager->get('Base\Manager\OptionManager');
+        $paypalSettings = [
+            'imap_host' => '',
+            'imap_port' => '',
+            'imap_user' => '',
+            'imap_password' => '',
+            'imap_ssl' => '0',
+            'paypal_client_id' => '',
+            'paypal_client_secret' => '',
+        ];
+
+        $getPaypalOption = function($optionKey) use ($optionManager) {
+            try {
+                return (string)$optionManager->get($optionKey, '');
+            } catch (\RuntimeException $e) {
+                return '';
+            }
+        };
+
+        foreach ($paypalSettings as $key => $value) {
+            $optionKey = 'paypal.' . $key;
+            $storedValue = $getPaypalOption($optionKey);
+            if ($storedValue === '' && strpos($key, '_') !== false) {
+                $legacyKey = 'paypal.' . str_replace('_', '.', $key);
+                $storedValue = $getPaypalOption($legacyKey);
+            }
+            $paypalSettings[$key] = $storedValue;
+        }
+
+        $saved = $this->params()->fromQuery('saved', '0') === '1';
+
+        $viewModel = new ViewModel([
+            'paypalSettings' => $paypalSettings,
+            'saved' => $saved,
+        ]);
+        $viewModel->setTemplate('paypal-settings.phtml');
+        return $viewModel;
+    }
+
+    /**
+     * Admin: Save PayPal settings
+     */
+    public function savePaypalSettingsAction()
+    {
+        $request = $this->getRequest();
+        if (!$request->isPost()) {
+            return $this->redirect()->toRoute('user/drinks-admin/paypal-settings');
+        }
+
+        $serviceManager = @$this->getServiceLocator();
+        $optionManager = $serviceManager->get('Base\Manager\OptionManager');
+
+        $fields = [
+            'imap_host',
+            'imap_port',
+            'imap_user',
+            'imap_password',
+            'imap_ssl',
+            'paypal_client_id',
+            'paypal_client_secret',
+        ];
+
+        foreach ($fields as $field) {
+            $value = trim((string)$this->params()->fromPost($field, ''));
+            if ($field === 'imap_ssl') {
+                $value = $this->params()->fromPost('imap_ssl', '') ? '1' : '0';
+            }
+            $optionManager->set('paypal.' . $field, $value);
+        }
+
+        return $this->redirect()->toRoute('user/drinks-admin/paypal-settings', [], ['query' => ['saved' => 1]], true);
+    }
+
+    /**
+     * Admin: Trigger manual PayPal fetch
+     */
+    public function triggerPaypalFetchAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $admin = $userSessionManager->getSessionUser();
+        if (!$admin || $admin->get('status') !== 'admin') {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'No permission']));
+        }
+
+        $request = $this->getRequest();
+        if (!$request->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required']));
+        }
+
+        $optionManager = $serviceManager->get('Base\Manager\OptionManager');
+        $loadOption = function($key) use ($optionManager) {
+            try {
+                $value = (string)$optionManager->get('paypal.' . $key, '');
+                if ($value === '' && strpos($key, '_') !== false) {
+                    $value = (string)$optionManager->get('paypal.' . str_replace('_', '.', $key), '');
+                }
+                return trim($value);
+            } catch (\RuntimeException $e) {
+                return '';
+            }
+        };
+
+        $imapHost = $loadOption('imap_host');
+        $imapPort = $loadOption('imap_port');
+        $imapUser = $loadOption('imap_user');
+        $imapPassword = $loadOption('imap_password');
+        $imapSsl = $loadOption('imap_ssl');
+
+        if ($imapHost === '' || $imapPort === '' || $imapUser === '' || $imapPassword === '') {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'PayPal IMAP settings are incomplete.']));
+        }
+
+        try {
+            $paypalManager = $serviceManager->get('Drinks\\Manager\\PaypalTransactionManager');
+            $result = $paypalManager->importFromImap($imapHost, $imapPort, $imapUser, $imapPassword, $imapSsl === '1');
+
+            $clientId = $loadOption('paypal_client_id');
+            $clientSecret = $loadOption('paypal_client_secret');
+            $syncResult = null;
+            if ($clientId !== '' && $clientSecret !== '') {
+                $syncResult = $paypalManager->syncEmailReceivedTransactions($clientId, $clientSecret, 100);
+            }
+
+            // Auto-assign synced transactions to users where email is unambiguous
+            $depositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
+            $autoResult = $paypalManager->autoAssignSyncedTransactions($depositManager, $admin->get('uid'));
+
+            $message = sprintf('PayPal Abruf abgeschlossen. %d neue Nachrichten importiert, %d übersprungen.', $result['imported'], $result['skipped']);
+            if ($syncResult !== null) {
+                $message .= sprintf(' API-Crosscheck: %d synchronisiert, %d übersprungen.', $syncResult['synced'], $syncResult['skipped']);
+                if (!empty($syncResult['errors'])) {
+                    $message .= ' Fehler: ' . implode(' | ', $syncResult['errors']);
+                }
+            } else {
+                $message .= ' PayPal-API-Credentials nicht konfiguriert, kein Crosscheck ausgeführt.';
+            }
+            if ($autoResult['assigned'] > 0 || !empty($autoResult['errors'])) {
+                $message .= sprintf(' Auto-Zuweisung: %d Deposits angelegt, %d übersprungen.', $autoResult['assigned'], $autoResult['skipped']);
+                if (!empty($autoResult['errors'])) {
+                    $message .= ' Fehler: ' . implode(' | ', $autoResult['errors']);
+                }
+            }
+
+            $response = [
+                'success' => true,
+                'message' => $message,
+                'result' => $result,
+            ];
+            if ($syncResult !== null) {
+                $response['sync_result'] = $syncResult;
+            }
+            $response['auto_result'] = $autoResult;
+
+            return $this->getResponse()->setContent(json_encode($response));
+        } catch (\Throwable $e) {
+            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => $e->getMessage()]));
+        }
+    }
+
+    /**
+     * Admin: Trigger PayPal history import (API only, no IMAP, last 30 days)
+     */
+    public function triggerPaypalHistoryImportAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $admin = $userSessionManager->getSessionUser();
+        if (!$admin || $admin->get('status') !== 'admin') {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'No permission']));
+        }
+        $request = $this->getRequest();
+        if (!$request->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required']));
+        }
+
+        // Get date range from query params
+        $fromDateStr = (string)$this->params()->fromQuery('from', '');
+        $toDateStr = (string)$this->params()->fromQuery('to', '');
+
+        if ($fromDateStr === '' || $toDateStr === '') {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'from and to dates required']));
+        }
+
+        try {
+            $startDate = new \DateTime($fromDateStr, new \DateTimeZone('UTC'));
+            $startDate->setTime(0, 0, 0);
+            $endDate = new \DateTime($toDateStr, new \DateTimeZone('UTC'));
+            $endDate->setTime(23, 59, 59);
+        } catch (\Exception $e) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Invalid date format']));
+        }
+
+        $optionManager = $serviceManager->get('Base\Manager\OptionManager');
+        $loadOption = function($key) use ($optionManager) {
+            try {
+                $value = (string)$optionManager->get('paypal.' . $key, '');
+                if ($value === '' && strpos($key, '_') !== false) {
+                    $value = (string)$optionManager->get('paypal.' . str_replace('_', '.', $key), '');
+                }
+                return trim($value);
+            } catch (\RuntimeException $e) {
+                return '';
+            }
+        };
+
+        $clientId = $loadOption('paypal_client_id');
+        $clientSecret = $loadOption('paypal_client_secret');
+        if ($clientId === '' || $clientSecret === '') {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'PayPal API-Credentials nicht konfiguriert.']));
+        }
+
+        try {
+            $paypalManager = $serviceManager->get('Drinks\\Manager\\PaypalTransactionManager');
+            $depositManager = $serviceManager->get('Drinks\\Manager\\DrinkDepositManager');
+            $dbAdapter = $serviceManager->get('Zend\\Db\\Adapter\\Adapter');
+
+            // Split date range into 30-day blocks (going backwards from endDate to startDate)
+            $importResult = ['imported' => 0, 'skipped' => 0, 'errors' => []];
+
+            $current = clone $endDate;
+            while ($current >= $startDate) {
+                $blockStart = clone $current;
+                $blockStart->modify('-30 days');
+                if ($blockStart < $startDate) {
+                    $blockStart = clone $startDate;
+                }
+
+                // Import for this block
+                $blockImportResult = $paypalManager->importFromReportingApi($clientId, $clientSecret, 30, $blockStart->format('Y-m-d'), $current->format('Y-m-d'));
+                $importResult['imported'] += $blockImportResult['imported'];
+                $importResult['skipped'] += $blockImportResult['skipped'];
+                $importResult['errors'] = array_merge($importResult['errors'], $blockImportResult['errors']);
+
+                if ($current === $blockStart) break;
+                $current = clone $blockStart;
+                $current->modify('-1 second');
+            }
+
+            // Sync API once after all imports
+            $syncResult = $paypalManager->syncEmailReceivedTransactions($clientId, $clientSecret, 100);
+
+            // Auto-assign after all imports
+            $autoResult = $paypalManager->autoAssignSyncedTransactions($depositManager, $admin->get('uid'));
+
+            $message = sprintf('Historie-Import: %d importiert, %d übersprungen.', $importResult['imported'], $importResult['skipped']);
+            if (!empty($importResult['errors'])) {
+                $message .= ' Import-Fehler: ' . implode(' | ', array_slice($importResult['errors'], 0, 3));
+            }
+            $message .= sprintf(' API-Crosscheck: %d synchronisiert, %d übersprungen.', $syncResult['synced'], $syncResult['skipped']);
+            $message .= sprintf(' Auto-Zuweisung: %d Buchungen verknüpft, %d übersprungen.', $autoResult['assigned'], $autoResult['skipped']);
+            if (!empty($autoResult['errors'])) {
+                $message .= ' Fehler: ' . implode(' | ', array_slice($autoResult['errors'], 0, 3));
+            }
+
+            return $this->getResponse()->setContent(json_encode([
+                'success'       => true,
+                'message'       => $message,
+                'import_result' => $importResult,
+                'sync_result'   => $syncResult,
+                'auto_result'   => $autoResult,
+            ]));
+        } catch (\Throwable $e) {
+            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => $e->getMessage()]));
+        }
+    }
+
+    /**
      * Admin: Manage drinks (add/edit/delete drinks and prices)
      */
     public function manageDrinksAction()
@@ -758,29 +1039,7 @@ class DrinksController extends AbstractActionController
                         }
                         $teamEventId = (int)$eventRow['id'];
                     }
-                    $serviceManager->get('Drinks\Manager\DrinkDepositManager')->addDeposit($depositUserId, $depositAmount, $depositComment, $createdByUserId, null, $teamEventId);
-                    // Use DrinkManager for balance calculation
-                    $balance = $drinkManager->calculateUserDrinkBalance($depositUserId, $serviceManager);
-                    // E-Mail an den Nutzer senden
-                    try {
-                        $userManager = $serviceManager->get('User\Manager\UserManager');
-                        $mailService = $serviceManager->get('User\Service\MailService');
-                        $empfaenger = $userManager->get($depositUserId);
-                        $adminAlias = $user ? $user->get('alias') : 'Admin';
-                        $subject = 'Neue Einzahlung auf Ihr Getränkekonto';
-                        $body =
-                            '<p>Es wurde soeben eine Einzahlung auf Dein Getränkekonto vorgenommen:</p>' .
-                            '<ul>' .
-                            ($depositComment ? '<li><strong>Bemerkung:</strong> ' . htmlspecialchars($depositComment) . '</li>' : '') .
-                            '<li><strong>Hinzugefügt von:</strong> ' . htmlspecialchars($adminAlias) . '</li>' .
-                            '<li><strong>Einzahlungsbetrag:</strong> ' . number_format($depositAmount, 2, ',', '.') . ' €</li>' .
-                            '<li><strong>Neuer Kontostand:</strong> ' . number_format($balance, 2, ',', '.') . ' €</li>' .
-                            '</ul>' .
-                            '<p>Viele Grüße<br>Dein Theken-Team</p>';
-                        $this->sendFromTheke($mailService, $dbAdapter, $empfaenger, $subject, $body, ['isHtml' => true]);
-                    } catch (\Exception $e) {
-                        error_log('Fehler beim Senden der Einzahlungsbenachrichtigung: ' . $e->getMessage());
-                    }
+                    $this->addDepositAndNotify($serviceManager, $depositUserId, $depositAmount, $depositComment, $createdByUserId, $teamEventId);
                     return $this->redirect()->toRoute(null, [], ['query' => ['message' => 'Deposit added.']], true);
                 } else {
                     $message = 'Invalid deposit data.';
@@ -999,6 +1258,151 @@ class DrinksController extends AbstractActionController
             'team_events' => $teamEvents,
             'current_teamevent_id' => $currentTeamEventId,
         ]));
+    }
+
+    /**
+     * AJAX: Create a deposit from a PayPal transaction
+     */
+    public function createDepositFromPaypalAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $admin = $userSessionManager->getSessionUser();
+        if (!$admin || $admin->get('status') !== 'admin') {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'No permission']));
+        }
+
+        $request = $this->getRequest();
+        if (!$request->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required']));
+        }
+
+        $paypalId = (int)$this->params()->fromPost('paypal_id', 0);
+        $userId = (int)$this->params()->fromPost('user_id', 0);
+        if ($paypalId <= 0 || $userId <= 0) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Invalid paypal_id or user_id']));
+        }
+
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+        $userManager = $serviceManager->get('User\Manager\UserManager');
+        $paypalManager = $serviceManager->get('Drinks\Manager\PaypalTransactionManager');
+        $depositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
+
+        $paypalRow = $paypalManager->getById($paypalId);
+        if (!$paypalRow) {
+            return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'PayPal transaction not found']));
+        }
+
+        $user = $userManager->get($userId);
+        if (!$user) {
+            return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'User not found']));
+        }
+
+        $amount = isset($paypalRow['amount']) ? (float)$paypalRow['amount'] : 0.0;
+        $paypalDate = '';
+        if (!empty($paypalRow['received_at'])) {
+            $timestamp = strtotime($paypalRow['received_at']);
+            if ($timestamp !== false) {
+                $paypalDate = date('d.m.Y', $timestamp);
+            }
+        }
+        $payerName = isset($paypalRow['payer_name']) ? trim((string)$paypalRow['payer_name']) : '';
+        $transactionNote = isset($paypalRow['transaction_note']) ? trim((string)$paypalRow['transaction_note']) : '';
+        $commentParts = [];
+        $commentParts[] = 'PayPal';
+        if ($payerName !== '') {
+            $commentParts[] = $payerName;
+        }
+        if ($transactionNote !== '') {
+            $commentParts[] = $transactionNote;
+        }
+        $comment = implode(' - ', $commentParts);
+        if ($amount <= 0) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Invalid PayPal amount']));
+        }
+
+        $depositTime = null;
+        if (!empty($paypalRow['received_at'])) {
+            $depositTime = $paypalRow['received_at'];
+        }
+
+        try {
+            $lastInsertId = $this->addDepositAndNotify($serviceManager, $userId, $amount, $comment, $admin->get('uid'), null, $depositTime);
+            if (!$lastInsertId) {
+                return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Deposit creation failed']));
+            }
+            $linked = $paypalManager->linkToDeposit($paypalId, $lastInsertId, $userId);
+            if (!$linked) {
+                return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Failed to link PayPal transaction']));
+            }
+        } catch (\Throwable $e) {
+            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => $e->getMessage()]));
+        }
+
+        return $this->getResponse()->setContent(json_encode(['success' => true, 'deposit_id' => $lastInsertId]));
+    }
+
+    /**
+     * AJAX: Reassign a PayPal transaction (and its linked deposit) to a different user
+     */
+    public function reassignPaypalTransactionAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $admin = $userSessionManager->getSessionUser();
+        if (!$admin || $admin->get('status') !== 'admin') {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'No permission']));
+        }
+        $request = $this->getRequest();
+        if (!$request->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required']));
+        }
+        $paypalId = (int)$this->params()->fromPost('paypal_id', 0);
+        $newUserId = (int)$this->params()->fromPost('user_id', 0);
+        if ($paypalId <= 0 || $newUserId <= 0) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Invalid paypal_id or user_id']));
+        }
+        $paypalManager = $serviceManager->get('Drinks\Manager\PaypalTransactionManager');
+        $result = $paypalManager->reassignTransaction($paypalId, $newUserId);
+        if (empty($result['success'])) {
+            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => isset($result['error']) ? $result['error'] : 'Reassignment failed']));
+        }
+        return $this->getResponse()->setContent(json_encode([
+            'success' => true,
+            'deposit_linked' => !empty($result['deposit_linked']),
+            'linked_deposit_id' => $result['linked_deposit_id'] ?? null,
+        ]));
+    }
+
+    /**
+     * AJAX: Ignore a PayPal transaction (mark as 'ignored' state)
+     */
+    public function ignorePaypalTransactionAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $admin = $userSessionManager->getSessionUser();
+        if (!$admin || $admin->get('status') !== 'admin') {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'No permission']));
+        }
+        $request = $this->getRequest();
+        if (!$request->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required']));
+        }
+        $paypalId = (int)$this->params()->fromPost('paypal_id', 0);
+        if ($paypalId <= 0) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Invalid paypal_id']));
+        }
+        try {
+            $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+            $dbAdapter->query('UPDATE drinks_paypal SET state = ? WHERE id = ?', ['ignored', $paypalId]);
+            return $this->getResponse()->setContent(json_encode(['success' => true]));
+        } catch (\Throwable $e) {
+            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => $e->getMessage()]));
+        }
     }
 
     /**
@@ -2292,12 +2696,18 @@ class DrinksController extends AbstractActionController
 
         $users = $userManager->getAll('alias ASC');
         $userMap = [];
+        $userEmailMap = [];
         foreach ($users as $u) {
             $uid = $u->get('uid');
+            $email = trim(strtolower($u->get('email')));
+            $display = $u->get('alias') ?: $u->get('name');
             $userMap[$uid] = [
-                'display' => $u->get('alias') ?: $u->get('name'),
+                'display' => $display,
                 'email' => $u->get('email'),
             ];
+            if ($email !== '') {
+                $userEmailMap[$email] = $uid;
+            }
         }
 
         $showTransfers = $this->params()->fromQuery('showTransfers', '0') === '1';
@@ -2335,6 +2745,37 @@ class DrinksController extends AbstractActionController
         $orderSums = [];
         $depositSums = [];
         $depositEntries = [];
+        $depositPaypalInfo = [];
+        $depositIds = [];
+        foreach ($depositRows as $depositRow) {
+            $depositId = isset($depositRow['id']) ? (int)$depositRow['id'] : 0;
+            if ($depositId > 0) {
+                $depositIds[] = $depositId;
+            }
+        }
+        if (!empty($depositIds)) {
+            $placeholders = implode(',', array_fill(0, count($depositIds), '?'));
+            try {
+                $paypalLinkedRows = iterator_to_array($dbAdapter->query(
+                    'SELECT id, linked_deposit_id, payer_email, state, paypal_transaction_id, transaction_note FROM drinks_paypal WHERE linked_deposit_id IN (' . $placeholders . ')',
+                    $depositIds
+                ));
+                foreach ($paypalLinkedRows as $paypalLinkedRow) {
+                    $linkedDepositId = isset($paypalLinkedRow['linked_deposit_id']) ? (int)$paypalLinkedRow['linked_deposit_id'] : 0;
+                    if ($linkedDepositId > 0 && !isset($depositPaypalInfo[$linkedDepositId])) {
+                        $depositPaypalInfo[$linkedDepositId] = [
+                            'drinks_paypal_id' => isset($paypalLinkedRow['id']) ? (int)$paypalLinkedRow['id'] : null,
+                            'payer_email' => isset($paypalLinkedRow['payer_email']) ? trim((string)$paypalLinkedRow['payer_email']) : '',
+                            'paypal_state' => isset($paypalLinkedRow['state']) ? trim((string)$paypalLinkedRow['state']) : null,
+                            'paypal_transaction_id' => isset($paypalLinkedRow['paypal_transaction_id']) ? trim((string)$paypalLinkedRow['paypal_transaction_id']) : null,
+                            'transaction_note' => trim((string)($paypalLinkedRow['transaction_note'] ?? '')),
+                        ];
+                    }
+                }
+            } catch (\Throwable $e) {
+                // ignore paypal lookup failures for deposit overview
+            }
+        }
 
         foreach ($depositRows as $depositRow) {
             $uid = isset($depositRow['user_id']) ? (int)$depositRow['user_id'] : 0;
@@ -2365,8 +2806,10 @@ class DrinksController extends AbstractActionController
             $balanceAfter = $depositSums[$uid] - $orderSums[$uid];
             $comment = isset($depositRow['comment']) ? trim((string)$depositRow['comment']) : '';
 
+            $depositId = isset($depositRow['id']) ? (int)$depositRow['id'] : 0;
+            $paypalInfo = isset($depositPaypalInfo[$depositId]) ? $depositPaypalInfo[$depositId] : null;
             $depositEntries[] = [
-                'id' => isset($depositRow['id']) ? (int)$depositRow['id'] : null,
+                'id' => $depositId,
                 'user_id' => $uid,
                 'name' => $userMap[$uid]['display'],
                 'email' => $userMap[$uid]['email'],
@@ -2374,7 +2817,74 @@ class DrinksController extends AbstractActionController
                 'amount' => (float)$depositRow['amount'],
                 'balance_after' => $balanceAfter,
                 'comment' => $comment,
+                'is_paypal' => $paypalInfo !== null ? 1 : 0,
+                'is_paypal_deposit' => $paypalInfo !== null ? 1 : 0,
+                'is_paypal_transaction' => 0,
+                'drinks_paypal_id' => $paypalInfo !== null ? $paypalInfo['drinks_paypal_id'] : null,
+                'paypal_state' => $paypalInfo !== null ? $paypalInfo['paypal_state'] : null,
+                'payer_email' => $paypalInfo !== null ? $paypalInfo['payer_email'] : null,
+                'paypal_transaction_id' => $paypalInfo !== null ? $paypalInfo['paypal_transaction_id'] : null,
+                'paypal_note' => $paypalInfo !== null ? ($paypalInfo['transaction_note'] ?? '') : '',
             ];
+        }
+
+        // Append PayPal transactions: show those linked to a user as additional deposit rows
+        try {
+            if ($serviceManager->has('Drinks\\Manager\\PaypalTransactionManager')) {
+                $paypalManager = $serviceManager->get('Drinks\\Manager\\PaypalTransactionManager');
+                $paypalRows = $paypalManager->getUnlinked(500);
+                foreach ($paypalRows as $p) {
+                    $linkedUid = isset($p['linked_user_id']) ? (int)$p['linked_user_id'] : 0;
+                $payerEmail = isset($p['payer_email']) ? trim((string)$p['payer_email']) : '';
+                $matchedUid = 0;
+                if ($linkedUid <= 0 && $payerEmail !== '') {
+                    $emailKey = strtolower($payerEmail);
+                    if (isset($userEmailMap[$emailKey])) {
+                        $matchedUid = $userEmailMap[$emailKey];
+                    }
+                }
+                $name = 'PayPal';
+                $displayEmail = $payerEmail;
+                if ($linkedUid > 0 && isset($userMap[$linkedUid])) {
+                    $name = $userMap[$linkedUid]['display'];
+                    $displayEmail = $userMap[$linkedUid]['email'];
+                } elseif ($matchedUid > 0 && isset($userMap[$matchedUid])) {
+                    $name = $userMap[$matchedUid]['display'] . ' (PayPal Match)';
+                } else {
+                    $name = 'PayPal (unlinked)';
+                }
+                $date = isset($p['received_at']) && $p['received_at'] ? $p['received_at'] : (isset($p['created_at']) ? $p['created_at'] : date('Y-m-d H:i:s'));
+                $payerName = isset($p['payer_name']) ? trim((string)$p['payer_name']) : '';
+                $transactionNote = trim((string)($p['transaction_note'] ?? ''));
+                $commentParts = [];
+                if ($payerName !== '') {
+                    $commentParts[] = $payerName;
+                }
+                if ($transactionNote !== '') {
+                    $commentParts[] = $transactionNote;
+                }
+                $comment = $commentParts ? implode(' - ', $commentParts) : ('PayPal ' . (isset($p['paypal_transaction_id']) ? $p['paypal_transaction_id'] : ''));
+                $depositEntries[] = [
+                    'id' => isset($p['id']) ? (int)$p['id'] : null,
+                    'user_id' => ($linkedUid > 0 ? $linkedUid : ($matchedUid > 0 ? $matchedUid : null)),
+                    'linked_user_id' => ($linkedUid > 0 ? $linkedUid : null),
+                    'matched_user_id' => ($matchedUid > 0 ? $matchedUid : null),
+                    'name' => $name,
+                    'email' => $displayEmail,
+                    'date' => $date,
+                    'amount' => isset($p['amount']) ? (float)$p['amount'] : 0.0,
+                    'balance_after' => null,
+                    'comment' => $comment,
+                    'is_paypal_deposit' => 0,
+                    'is_paypal_transaction' => 1,
+                    'paypal_state' => isset($p['state']) ? $p['state'] : null,
+                    'payer_email' => $payerEmail,
+                    'paypal_note' => $transactionNote,
+                ];
+                }
+            }
+        } catch (\Throwable $e) {
+            // ignore paypal errors to keep deposit overview stable
         }
 
         usort($depositEntries, function ($a, $b) {
@@ -2384,6 +2894,7 @@ class DrinksController extends AbstractActionController
         $viewModel = new ViewModel([
             'deposits' => $depositEntries,
             'showTransfers' => $showTransfers,
+            'allUsers' => $userMap,
         ]);
         $viewModel->setTemplate('deposit-overview.phtml');
         return $viewModel;
@@ -2734,5 +3245,40 @@ class DrinksController extends AbstractActionController
         if ($mailService && $user) {
             $mailService->send($user, $subject, $body, $options);
         }
+    }
+
+    /**
+     * Helper: Create a deposit and send notification email to the user
+     */
+    private function addDepositAndNotify($serviceManager, $userId, $amount, $comment, $createdByUserId, $teamEventId = null, $depositTime = null)
+    {
+        $depositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
+        $depositManager->addDeposit($userId, $amount, $comment, $createdByUserId, null, $teamEventId, $depositTime);
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+        $lastInsertId = $dbAdapter->getDriver()->getLastGeneratedValue();
+
+        try {
+            $userManager = $serviceManager->get('User\Manager\UserManager');
+            $mailService = $serviceManager->get('User\Service\MailService');
+            $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
+            $recipient = $userManager->get($userId);
+            if ($recipient) {
+                $balance = $drinkManager->calculateUserDrinkBalance($userId, $serviceManager);
+                $subject = 'Neue Einzahlung auf Ihr Getränkekonto';
+                $body =
+                    '<p>Es wurde soeben eine Einzahlung auf Dein Getränkekonto vorgenommen:</p>' .
+                    '<ul>' .
+                    ($comment ? '<li><strong>Bemerkung:</strong> ' . htmlspecialchars($comment) . '</li>' : '') .
+                    '<li><strong>Einzahlungsbetrag:</strong> ' . number_format($amount, 2, ',', '.') . ' €</li>' .
+                    '<li><strong>Neuer Kontostand:</strong> ' . number_format($balance, 2, ',', '.') . ' €</li>' .
+                    '</ul>' .
+                    '<p>Viele Grüße<br>Dein Theken-Team</p>';
+                $this->sendFromTheke($mailService, $dbAdapter, $recipient, $subject, $body, ['isHtml' => true]);
+            }
+        } catch (\Throwable $e) {
+            error_log('Fehler beim Senden der Einzahlungsbenachrichtigung: ' . $e->getMessage());
+        }
+
+        return $lastInsertId;
     }
 }

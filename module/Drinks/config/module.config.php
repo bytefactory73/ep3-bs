@@ -6,6 +6,7 @@ return [
             'Drinks\Manager\DrinkOrderManager' => 'Drinks\Manager\DrinkOrderManagerFactory',
             'Drinks\Manager\DrinkDepositManager' => 'Drinks\Manager\DrinkDepositManagerFactory',
             'Drinks\Manager\DrinkCategoryManager' => 'Drinks\Manager\DrinkCategoryManagerFactory',
+            'Drinks\Manager\PaypalTransactionManager' => 'Drinks\Manager\PaypalTransactionManagerFactory',
             'Drinks\Controller\SimpleLogin' => 'Drinks\Controller\SimpleLoginControllerFactory',
         ],
     ],

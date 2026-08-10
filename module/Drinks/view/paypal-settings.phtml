@@ -1,0 +1,62 @@
+<?php
+$this->setup([
+    'title' => 'PayPal Einstellungen',
+    'panel' => 'centered-panel',
+    'back' => $this->url('user/drinks-admin'),
+    'links' => [
+        'Drinks Verwaltung' => $this->url('user/drinks-admin'),
+    ],
+]);
+?>
+
+<h1><?= $this->t('PayPal Einstellungen') ?></h1>
+<div class="separator-small"></div>
+<p><?= $this->t('Hier konfigurieren Sie die PayPal-IMAP-Zugangsdaten und speichern die Einstellungen für manuelle Abrufe.') ?></p>
+
+<?php if (!empty($this->saved)): ?>
+    <div style="margin: 12px 0; padding: 12px; border: 1px solid #c3e6cb; background: #d4edda; color: #155724; border-radius: 6px;">
+        <?= $this->t('PayPal-Einstellungen wurden gespeichert.') ?>
+    </div>
+<?php endif; ?>
+
+<form method="post" action="<?= $this->url('user/drinks-admin/save-paypal-settings') ?>" style="margin-top: 16px; max-width: 680px;">
+    <div style="margin-bottom: 16px;">
+        <label for="imap-host" style="font-weight:bold; display:block; margin-bottom: 6px;">IMAP Host</label>
+        <input id="imap-host" name="imap_host" type="text" value="<?= $this->escapeHtmlAttr($this->paypalSettings['imap_host']) ?>" style="width:100%; padding:8px; box-sizing:border-box;">
+    </div>
+    <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:16px;">
+        <div style="flex:1 1 220px; min-width:220px;">
+            <label for="imap-port" style="font-weight:bold; display:block; margin-bottom: 6px;">IMAP Port</label>
+            <input id="imap-port" name="imap_port" type="text" value="<?= $this->escapeHtmlAttr($this->paypalSettings['imap_port']) ?>" style="width:100%; padding:8px; box-sizing:border-box;">
+        </div>
+        <div style="flex:1 1 220px; min-width:220px;">
+            <label for="imap-ssl" style="font-weight:bold; display:block; margin-bottom: 6px;">IMAP SSL</label>
+            <label style="display:flex; align-items:center; gap:8px;">
+                <input id="imap-ssl" name="imap_ssl" type="checkbox" value="1" <?= $this->paypalSettings['imap_ssl'] === '1' ? 'checked' : '' ?>>
+                <?= $this->t('SSL/TLS verwenden') ?>
+            </label>
+        </div>
+    </div>
+    <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:16px;">
+        <div style="flex:1 1 320px; min-width:220px;">
+            <label for="imap-user" style="font-weight:bold; display:block; margin-bottom:6px;">IMAP Benutzername</label>
+            <input id="imap-user" name="imap_user" type="text" value="<?= $this->escapeHtmlAttr($this->paypalSettings['imap_user']) ?>" style="width:100%; padding:8px; box-sizing:border-box;">
+        </div>
+        <div style="flex:1 1 320px; min-width:220px;">
+            <label for="imap-password" style="font-weight:bold; display:block; margin-bottom:6px;">IMAP Passwort</label>
+            <input id="imap-password" name="imap_password" type="password" value="<?= $this->escapeHtmlAttr($this->paypalSettings['imap_password']) ?>" style="width:100%; padding:8px; box-sizing:border-box;">
+        </div>
+    </div>
+    <div style="margin-bottom:16px;">
+        <label for="paypal-client-id" style="font-weight:bold; display:block; margin-bottom:6px;">PayPal Client ID</label>
+        <input id="paypal-client-id" name="paypal_client_id" type="text" value="<?= $this->escapeHtmlAttr($this->paypalSettings['paypal_client_id']) ?>" style="width:100%; padding:8px; box-sizing:border-box;">
+    </div>
+    <div style="margin-bottom:16px;">
+        <label for="paypal-client-secret" style="font-weight:bold; display:block; margin-bottom:6px;">PayPal Client Secret</label>
+        <input id="paypal-client-secret" name="paypal_client_secret" type="password" value="<?= $this->escapeHtmlAttr($this->paypalSettings['paypal_client_secret']) ?>" style="width:100%; padding:8px; box-sizing:border-box;">
+    </div>
+    <div style="margin-bottom:16px; color:#555; font-size:0.95rem;">
+        <?= $this->t('Hinweis: Die aktuelle Implementierung speichert die Zugangsdaten. Der manuelle Abruf wird als Platzhalter angezeigt.') ?>
+    </div>
+    <button type="submit" class="default-button" style="font-weight:bold; padding:10px 18px;"><?= $this->t('Speichern') ?></button>
+</form>

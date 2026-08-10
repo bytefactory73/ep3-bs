@@ -14,12 +14,152 @@ $this->setup([
 <div class="separator-small"></div>
 <p><?= $this->t('Hier sehen Sie alle Einzahlungen der Mitglieder, sortiert nach Datum absteigend.') ?></p>
 
-<form method="get" style="margin-bottom:18px;">
-    <label style="font-weight:normal; display:inline-flex; align-items:center; gap:8px;">
-        <input id="show-transfers-checkbox" type="checkbox" name="showTransfers" value="1" <?= $this->showTransfers ? 'checked' : '' ?> onchange="this.form.submit()">
-        <?= $this->t('Transfers von anderem Account anzeigen') ?>
-    </label>
-</form>
+<div style="margin-bottom:18px; display:flex; flex-direction:column; gap:10px;">
+    <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center;">
+        <button id="paypal-fetch-button" type="button" class="default-button" style="padding:8px 14px; font-weight:bold;">
+            <?= $this->t('PayPal abrufen') ?>
+        </button>
+        <button id="paypal-history-button" type="button" class="default-button" style="padding:8px 14px;">
+            <?= $this->t('PayPal Historie importieren') ?>
+        </button>
+        <span id="paypal-fetch-status" style="font-size:0.95em; color:#444;"></span>
+    </div>
+    <form method="get" style="display:flex; flex-wrap:wrap; gap:16px; align-items:center;">
+        <label style="font-weight:normal; display:inline-flex; align-items:center; gap:8px;">
+            <input id="show-transfers-checkbox" type="checkbox" name="showTransfers" value="1" <?= $this->showTransfers ? 'checked' : '' ?> onchange="this.form.submit()">
+            <?= $this->t('Transfers von anderem Account anzeigen') ?>
+        </label>
+        <label style="font-weight:normal; display:inline-flex; align-items:center; gap:8px;">
+            <input id="show-unassigned-paypal-checkbox" type="checkbox">
+            <?= $this->t('Nur nicht zugewiesene PayPal') ?>
+        </label>
+    </form>
+</div>
+
+<!-- Modal für PayPal Historie Datumswahl -->
+<div id="paypal-history-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); z-index:9999; justify-content:center; align-items:center;">
+    <div style="background:white; border-radius:8px; padding:24px; max-width:380px; box-shadow:0 4px 12px rgba(0,0,0,0.2);">
+        <h3 style="margin:0 0 16px 0; font-size:1.2em;"><?= $this->t('PayPal Historie - Zeitraum') ?></h3>
+        <div style="margin-bottom:12px;">
+            <label style="display:block; font-weight:bold; margin-bottom:4px;">Von:</label>
+            <input id="history-date-from" type="date" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
+        </div>
+        <div style="margin-bottom:16px;">
+            <label style="display:block; font-weight:bold; margin-bottom:4px;">Bis:</label>
+            <input id="history-date-to" type="date" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
+        </div>
+        <div style="display:flex; gap:8px;">
+            <button id="history-submit" type="button" class="default-button" style="flex:1; padding:10px; font-weight:bold;"><?= $this->t('Importieren') ?></button>
+            <button id="history-cancel" type="button" class="default-button" style="flex:1; padding:10px;"><?= $this->t('Abbrechen') ?></button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function(){
+    var button = document.getElementById('paypal-fetch-button');
+    var historyButton = document.getElementById('paypal-history-button');
+    var status = document.getElementById('paypal-fetch-status');
+
+    // Restore status message after page reload
+    (function() {
+        var savedMsg = sessionStorage.getItem('paypalStatusMessage');
+        if (savedMsg) {
+            status.style.color = sessionStorage.getItem('paypalStatusColor') || '#155724';
+            status.textContent = savedMsg;
+            sessionStorage.removeItem('paypalStatusMessage');
+            sessionStorage.removeItem('paypalStatusColor');
+        }
+    })();
+
+    function doPaypalPost(url, loadingText) {
+        [button, historyButton].forEach(function(b) { if (b) b.disabled = true; });
+        status.style.color = '#444';
+        status.textContent = loadingText;
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', url, true);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState !== 4) return;
+            [button, historyButton].forEach(function(b) { if (b) b.disabled = false; });
+            try {
+                var data = JSON.parse(xhr.responseText);
+                if (xhr.status === 200 && data.success) {
+                    status.style.color = '#155724';
+                    status.textContent = data.message || '<?= $this->t('Erfolgreich.') ?>';
+                    sessionStorage.setItem('paypalStatusMessage', data.message || '<?= $this->t('Erfolgreich.') ?>');
+                    sessionStorage.setItem('paypalStatusColor', '#155724');
+                    setTimeout(function() { location.reload(); }, 1200);
+                } else {
+                    status.style.color = '#721c24';
+                    status.textContent = data.error || '<?= $this->t('Fehler.') ?>';
+                }
+            } catch (e) {
+                status.style.color = '#721c24';
+                status.textContent = '<?= $this->t('Unerwartete Antwort vom Server.') ?>';
+            }
+        };
+        xhr.send('');
+    }
+
+    if (button) {
+        button.addEventListener('click', function() {
+            doPaypalPost('<?= $this->url('user/paypal-fetch') ?>', '<?= $this->t('PayPal-Abruf wird gestartet...') ?>');
+        });
+    }
+    if (historyButton) {
+        historyButton.addEventListener('click', function() {
+            var today = new Date();
+            var thirtyDaysAgo = new Date(today);
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            document.getElementById('history-date-from').value = thirtyDaysAgo.toISOString().split('T')[0];
+            document.getElementById('history-date-to').value = today.toISOString().split('T')[0];
+            document.getElementById('paypal-history-modal').style.display = 'flex';
+        });
+        document.getElementById('history-cancel').addEventListener('click', function() {
+            document.getElementById('paypal-history-modal').style.display = 'none';
+        });
+        document.getElementById('history-submit').addEventListener('click', function() {
+            var fromDate = document.getElementById('history-date-from').value;
+            var toDate = document.getElementById('history-date-to').value;
+            if (!fromDate || !toDate) {
+                alert('<?= $this->t('Bitte Datum eingeben') ?>');
+                return;
+            }
+            if (fromDate > toDate) {
+                alert('<?= $this->t('Von-Datum muss vor Bis-Datum liegen') ?>');
+                return;
+            }
+            document.getElementById('paypal-history-modal').style.display = 'none';
+            doPaypalPost('<?= $this->url('user/paypal-history-import') ?>?from=' + encodeURIComponent(fromDate) + '&to=' + encodeURIComponent(toDate), '<?= $this->t('Historie wird importiert...') ?>');
+        });
+        document.getElementById('paypal-history-modal').addEventListener('click', function(e) {
+            if (e.target === this) document.getElementById('paypal-history-modal').style.display = 'none';
+        });
+    }
+
+    // Unassigned PayPal filter
+    var unassignedCb = document.getElementById('show-unassigned-paypal-checkbox');
+    if (unassignedCb) {
+        function applyPaypalFilter() {
+            var onlyUnassigned = unassignedCb.checked;
+            var rows = document.querySelectorAll('tbody tr[data-paypal-unassigned]');
+            var allRows = document.querySelectorAll('tbody tr');
+            allRows.forEach(function(r) {
+                if (!onlyUnassigned) {
+                    r.style.display = '';
+                } else {
+                    var isUnassigned = r.getAttribute('data-paypal-unassigned') === '1';
+                    var state = r.getAttribute('data-paypal-state');
+                    var isNotIgnored = state !== 'ignored';
+                    r.style.display = (isUnassigned && isNotIgnored) ? '' : 'none';
+                }
+            });
+        }
+        unassignedCb.addEventListener('change', applyPaypalFilter);
+    }
+})();
+</script>
 
 <table class="table table-striped" style="margin-top:24px; width:100%;">
     <thead>
@@ -33,19 +173,65 @@ $this->setup([
     </thead>
     <tbody>
         <?php $rownum = 1; foreach ($this->deposits as $deposit): ?>
-            <tr>
+            <tr<?= !empty($deposit['is_paypal_transaction']) ? ' data-paypal-unassigned="1" data-paypal-state="' . $this->escapeHtmlAttr($deposit['paypal_state'] ?? '') . '"' : '' ?>>
                 <td style="font-weight:bold; color:#888; text-align:right;"> <?= $rownum++ ?>. </td>
                 <td>
-                    <a href="<?= $this->url('user/deposits') . '?uid=' . urlencode($deposit['user_id']) ?>"
-                       style="color:#1976d2; text-decoration:underline; font-weight:bold;">
-                        <?= $this->escapeHtml($deposit['name']) ?>
-                    </a>
+                    <?php $isPaypalEntry = !empty($deposit['is_paypal_transaction']) || !empty($deposit['is_paypal_deposit']) || !empty($deposit['paypal_state']) || !empty($deposit['paypal_transaction_id']); ?>
+                    <?php if ($isPaypalEntry && empty($deposit['user_id'])): ?>
+                        <span style="font-weight:bold; color:#1976d2; display:inline-flex; align-items:center; gap:6px;">
+                            <?= $this->escapeHtml($deposit['name']) ?>
+                        </span>
+                    <?php else: ?>
+                        <a href="<?= $this->url('user/deposits') . '?uid=' . urlencode($deposit['user_id']) ?>"
+                           style="color:#1976d2; text-decoration:underline; font-weight:bold;">
+                            <?= $this->escapeHtml($deposit['name']) ?>
+                        </a>
+                    <?php endif; ?>
+                    <?php if (!empty($deposit['is_paypal_transaction']) && !empty($deposit['payer_email'])): ?>
+                        <div style="font-size:0.9em; color:#666;"><?= $this->escapeHtml($deposit['payer_email']) ?></div>
+                    <?php endif; ?>
                 </td>
                 <td style="white-space:nowrap; padding-right: 18px;">
                     <?= $this->escapeHtml(date('d.m.Y H:i', strtotime($deposit['date']))) ?>
                 </td>
                 <td style="padding-left: 18px;">
-                    <?= $deposit['comment'] !== '' ? $this->escapeHtml($deposit['comment']) : '&ndash;' ?>
+                    <?php if ($isPaypalEntry): ?>
+                        <?php
+                            $badgePaypalId = !empty($deposit['is_paypal_deposit']) && !empty($deposit['drinks_paypal_id'])
+                                ? $deposit['drinks_paypal_id']
+                                : $deposit['id'];
+                        ?>
+                        <?php
+                            $badgeStyle = '#f8d7da; color: #721c24;';
+                            if (!empty($deposit['is_paypal_deposit'])) {
+                                $badgeStyle = '#e6f4ea; color: #19692b;';
+                            } elseif (isset($deposit['paypal_state']) && $deposit['paypal_state'] === 'ignored') {
+                                $badgeStyle = '#c3e6cb; color: #155724;';
+                            }
+                        ?>
+                        <span
+                            class="paypal-badge"
+                            data-paypal-id="<?= $this->escapeHtmlAttr($badgePaypalId) ?>"
+                            data-paypal-email="<?= $this->escapeHtmlAttr($deposit['payer_email'] ?? '') ?>"
+                            data-paypal-note="<?= $this->escapeHtmlAttr($deposit['paypal_note'] ?? '') ?>"
+                            data-paypal-state="<?= $this->escapeHtmlAttr($deposit['paypal_state'] ?? '') ?>"
+                            title="<?= $this->escapeHtmlAttr(implode(' | ', array_filter([
+                                $deposit['payer_email'] ?? '',
+                                !empty($deposit['paypal_note']) ? $deposit['paypal_note'] : '',
+                                !empty($deposit['paypal_state']) ? $deposit['paypal_state'] : '',
+                            ]))) ?>"
+                            style="display:inline-flex; align-items:center; gap:6px; margin-right:8px; padding:2px 6px; background:<?= $badgeStyle ?>; border-radius:6px; font-size:0.75rem; cursor:pointer; user-select:none;"
+                        >PayPal</span>
+                        <?= $deposit['comment'] !== '' ? $this->escapeHtml($deposit['comment']) : '&ndash;' ?>
+                        <?php if (!empty($deposit['is_paypal_transaction']) && !empty($deposit['user_id']) && (!isset($deposit['paypal_state']) || $deposit['paypal_state'] !== 'ignored')): ?>
+                            <button type="button" class="mini-button deposit-anlegen-btn" data-paypal-id="<?= $this->escapeHtmlAttr($deposit['id']) ?>" data-user-id="<?= $this->escapeHtmlAttr($deposit['user_id']) ?>" style="padding:4px 10px; font-size:0.85rem; margin-left:12px;"><?= $this->t('Deposit anlegen') ?></button>
+                        <?php endif; ?>
+                        <?php if (!empty($deposit['is_paypal_transaction']) && isset($deposit['paypal_state']) && $deposit['paypal_state'] === 'apifoundsynced'): ?>
+                            <button type="button" class="mini-button paypal-ignore-btn" data-paypal-id="<?= $this->escapeHtmlAttr($deposit['id']) ?>" style="padding:4px 10px; font-size:0.85rem; margin-left:6px; background:#f0f0f0; color:#555;"><?= $this->t('Ignorieren') ?></button>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <?= $deposit['comment'] !== '' ? $this->escapeHtml($deposit['comment']) : '&ndash;' ?>
+                    <?php endif; ?>
                 </td>
                 <td style="text-align:right; font-weight:bold;">
                     <?= number_format($deposit['amount'], 2, ',', '.') ?> €
@@ -54,3 +240,191 @@ $this->setup([
         <?php endforeach; ?>
     </tbody>
 </table>
+
+<!-- PayPal Reassign Modal -->
+<div id="paypal-reassign-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.55); z-index:10010; align-items:center; justify-content:center;">
+    <div style="position:relative; width:min(480px,94vw); background:#fff; border-radius:10px; box-shadow:0 10px 28px rgba(0,0,0,0.25); padding:20px 18px 18px 18px;">
+        <button type="button" id="paypal-reassign-close-x" style="position:absolute;top:10px;right:12px;background:#eee;border:none;border-radius:50%;width:34px;height:34px;font-size:20px;cursor:pointer;">&times;</button>
+        <h3 style="margin:0 40px 6px 0; color:#1769aa;">PayPal-Zuordnung ändern</h3>
+        <p id="paypal-reassign-info" style="margin:0 0 12px 0; font-size:0.9em; color:#555;"></p>
+        <input type="text" id="paypal-reassign-search" autocomplete="off" placeholder="Benutzer filtern..." style="width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid #ccc; border-radius:6px; font-size:1em; margin-bottom:8px;">
+        <div id="paypal-reassign-list" style="max-height:260px; overflow-y:auto; border:1px solid #e0e0e0; border-radius:6px; background:#fafafa;"></div>
+        <div id="paypal-reassign-status" style="min-height:20px; margin-top:8px; font-size:0.9em;"></div>
+        <div style="display:flex; justify-content:flex-end; margin-top:12px;">
+            <button type="button" id="paypal-reassign-cancel" class="mini-button">Abbrechen</button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var users = <?php
+        $usersArr = [];
+        foreach ($this->allUsers as $_uid => $_udata) {
+            $usersArr[] = [
+                'uid' => (int)$_uid,
+                'name' => isset($_udata['display']) ? $_udata['display'] : '',
+                'email' => isset($_udata['email']) ? $_udata['email'] : '',
+            ];
+        }
+        echo json_encode($usersArr, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    ?>;
+
+    var modal = document.getElementById('paypal-reassign-modal');
+    var searchInput = document.getElementById('paypal-reassign-search');
+    var listEl = document.getElementById('paypal-reassign-list');
+    var statusEl = document.getElementById('paypal-reassign-status');
+    var infoEl = document.getElementById('paypal-reassign-info');
+    var currentPaypalId = null;
+
+    function renderList(filter) {
+        listEl.innerHTML = '';
+        var f = (filter || '').toLowerCase().trim();
+        var shown = 0;
+        users.forEach(function(u) {
+            var label = u.name + (u.email ? ' (' + u.email + ')' : '');
+            if (f && label.toLowerCase().indexOf(f) === -1) return;
+            shown++;
+            var item = document.createElement('div');
+            item.style.cssText = 'padding:8px 12px; cursor:pointer; border-bottom:1px solid #eee; font-size:0.95em;';
+            item.textContent = label;
+            item.addEventListener('mouseenter', function() { item.style.background = '#e3f0fa'; });
+            item.addEventListener('mouseleave', function() { item.style.background = ''; });
+            item.addEventListener('click', function() { doReassign(u.uid, label); });
+            listEl.appendChild(item);
+        });
+        if (shown === 0) {
+            var empty = document.createElement('div');
+            empty.style.cssText = 'padding:10px 12px; color:#888; font-size:0.9em;';
+            empty.textContent = 'Kein Benutzer gefunden.';
+            listEl.appendChild(empty);
+        }
+    }
+
+    function doReassign(userId, userName) {
+        statusEl.style.color = '#555';
+        statusEl.textContent = 'Wird gespeichert...';
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '<?= $this->url('user/reassign-paypal-transaction') ?>', true);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState !== 4) return;
+            try {
+                var data = JSON.parse(xhr.responseText);
+                if (xhr.status === 200 && data.success) {
+                    statusEl.style.color = '#19692b';
+                    var msg = 'Zugeordnet an: ' + userName;
+                    if (data.deposit_linked) {
+                        msg += ' — Buchung automatisch verknüpft.';
+                    }
+                    statusEl.textContent = msg;
+                    setTimeout(function() { location.reload(); }, 900);
+                } else {
+                    statusEl.style.color = '#721c24';
+                    statusEl.textContent = data.error || 'Fehler beim Speichern.';
+                }
+            } catch(e) {
+                statusEl.style.color = '#721c24';
+                statusEl.textContent = 'Unerwartete Antwort.';
+            }
+        };
+        xhr.send('paypal_id=' + encodeURIComponent(currentPaypalId) + '&user_id=' + encodeURIComponent(userId));
+    }
+
+    function openModal(paypalId, payerEmail, paypalNote) {
+        currentPaypalId = paypalId;
+        var infoText = payerEmail ? ('PayPal E-Mail: ' + payerEmail) : 'Keine E-Mail bekannt';
+        if (paypalNote && paypalNote.trim() !== '') {
+            infoText += '\nNotiz: ' + paypalNote.trim();
+        }
+        infoEl.style.whiteSpace = 'pre-line';
+        infoEl.textContent = infoText;
+        searchInput.value = '';
+        statusEl.textContent = '';
+        renderList('');
+        modal.style.display = 'flex';
+        setTimeout(function() { searchInput.focus(); }, 80);
+    }
+
+    document.addEventListener('click', function(e) {
+        var badge = e.target.closest ? e.target.closest('.paypal-badge') : null;
+        if (!badge) {
+            if (e.target === modal) closeModal();
+            return;
+        }
+        openModal(badge.getAttribute('data-paypal-id'), badge.getAttribute('data-paypal-email'), badge.getAttribute('data-paypal-note'));
+    });
+
+    searchInput.addEventListener('input', function() { renderList(searchInput.value); });
+
+    function closeModal() {
+        modal.style.display = 'none';
+        currentPaypalId = null;
+    }
+
+    document.getElementById('paypal-reassign-close-x').addEventListener('click', closeModal);
+    document.getElementById('paypal-reassign-cancel').addEventListener('click', closeModal);
+    modal.addEventListener('mousedown', function(e) { if (e.target === modal) closeModal(); });
+
+    // Ignore PayPal button
+    document.addEventListener('click', function(e) {
+        var btn = e.target.closest ? e.target.closest('.paypal-ignore-btn') : null;
+        if (!btn) return;
+        var paypalId = btn.getAttribute('data-paypal-id');
+        if (!paypalId) return;
+        btn.disabled = true;
+        btn.textContent = '...';
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '<?= $this->url('user/ignore-paypal-transaction') ?>', true);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState !== 4) return;
+            try {
+                var data = JSON.parse(xhr.responseText);
+                if (xhr.status === 200 && data.success) {
+                    location.reload();
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = '<?= $this->t('Ignorieren') ?>';
+                }
+            } catch (e) {
+                btn.disabled = false;
+                btn.textContent = '<?= $this->t('Ignorieren') ?>';
+            }
+        };
+        xhr.send('paypal_id=' + encodeURIComponent(paypalId));
+    });
+
+    // Deposit anlegen buttons — AJAX instead of form POST
+    document.addEventListener('click', function(e) {
+        var btn = e.target.closest ? e.target.closest('.deposit-anlegen-btn') : null;
+        if (!btn) return;
+        var paypalId = btn.getAttribute('data-paypal-id');
+        var userId = btn.getAttribute('data-user-id');
+        if (!paypalId || !userId) return;
+        btn.disabled = true;
+        btn.textContent = '...';
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '<?= $this->url('user/create-deposit-from-paypal') ?>', true);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState !== 4) return;
+            try {
+                var data = JSON.parse(xhr.responseText);
+                if (xhr.status === 200 && data.success) {
+                    location.reload();
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = '<?= $this->t('Deposit anlegen') ?>';
+                    alert(data.error || 'Fehler beim Anlegen des Deposits.');
+                }
+            } catch(ex) {
+                btn.disabled = false;
+                btn.textContent = '<?= $this->t('Deposit anlegen') ?>';
+                alert('Unerwartete Antwort vom Server.');
+            }
+        };
+        xhr.send('paypal_id=' + encodeURIComponent(paypalId) + '&user_id=' + encodeURIComponent(userId));
+    });
+})();
+</script>
