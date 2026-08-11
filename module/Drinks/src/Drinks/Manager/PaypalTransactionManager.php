@@ -317,6 +317,19 @@ class PaypalTransactionManager
                     continue;
                 }
 
+                // Persist the resolved user even if no matching deposit exists yet.
+                // This keeps the payer_email -> user assignment visible in drinks_paypal.
+                try {
+                    $this->dbAdapter->query(
+                        'UPDATE drinks_paypal SET linked_user_id = ?, processed_at = NOW() WHERE id = ?',
+                        [$matchedUserId, $paypalId]
+                    );
+                } catch (\Throwable $e) {
+                    $result['errors'][] = sprintf('PayPal #%d: failed to store linked_user_id: %s', $paypalId, $e->getMessage());
+                    $result['skipped']++;
+                    continue;
+                }
+
                 // Pass 1: ±7 days; Pass 2: ±14 days
                 $existingDeposit = $this->findMatchingDeposit($matchedUserId, $amount, $row['received_at']);
 
@@ -435,9 +448,10 @@ class PaypalTransactionManager
         }
 
         // Rule 1: unique previous assignment in drinks_paypal for this email
+        // Prefer explicit historical user links, even if no deposit was linked yet.
         try {
             $previousRows = $this->dbAdapter->query(
-                'SELECT DISTINCT linked_user_id FROM drinks_paypal WHERE payer_email = ? AND linked_user_id IS NOT NULL AND linked_deposit_id IS NOT NULL',
+                'SELECT DISTINCT linked_user_id FROM drinks_paypal WHERE payer_email = ? AND linked_user_id IS NOT NULL',
                 [$email]
             )->toArray();
             $previousUserIds = array_unique(array_column($previousRows, 'linked_user_id'));
