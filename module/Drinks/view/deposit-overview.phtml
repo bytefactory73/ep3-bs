@@ -24,6 +24,10 @@ $this->setup([
         </button>
         <span id="paypal-fetch-status" style="font-size:0.95em; color:#444;"></span>
     </div>
+    <div style="font-size:0.9em; color:#666;">
+        <?= $this->t('Letzter Sync:') ?>
+        <?= !empty($this->paypalLastSyncLabel) ? $this->escapeHtml($this->paypalLastSyncLabel) : $this->t('noch nie') ?>
+    </div>
     <form method="get" style="display:flex; flex-wrap:wrap; gap:16px; align-items:center;">
         <label style="font-weight:normal; display:inline-flex; align-items:center; gap:8px;">
             <input id="show-transfers-checkbox" type="checkbox" name="showTransfers" value="1" <?= $this->showTransfers ? 'checked' : '' ?> onchange="this.form.submit()">

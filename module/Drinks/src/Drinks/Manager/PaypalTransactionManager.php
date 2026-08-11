@@ -313,10 +313,12 @@ class PaypalTransactionManager
             )->toArray();
         } catch (\Throwable $e) {
             $result['errors'][] = 'DB error fetching synced rows: ' . $e->getMessage();
+            $this->touchLastSyncTimestamp($serviceManager);
             return $result;
         }
 
         if (empty($rows)) {
+            $this->touchLastSyncTimestamp($serviceManager);
             return $result;
         }
 
@@ -434,7 +436,22 @@ class PaypalTransactionManager
             }
         }
 
+        $this->touchLastSyncTimestamp($serviceManager);
         return $result;
+    }
+
+    private function touchLastSyncTimestamp($serviceManager)
+    {
+        if ($serviceManager === null || !method_exists($serviceManager, 'get')) {
+            return;
+        }
+
+        try {
+            $optionManager = $serviceManager->get('Base\\Manager\\OptionManager');
+            $optionManager->set('paypal.last_sync_at', date('Y-m-d H:i:s'));
+        } catch (\Throwable $e) {
+            // Never fail auto-assignment because metadata update failed.
+        }
     }
 
     private function sendDepositNotification($serviceManager, $userId, $amount, $comment, $depositTime = null)

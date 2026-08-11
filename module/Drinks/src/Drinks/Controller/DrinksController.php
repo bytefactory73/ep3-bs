@@ -2741,6 +2741,24 @@ class DrinksController extends AbstractActionController
         }
 
         $showTransfers = $this->params()->fromQuery('showTransfers', '0') === '1';
+        $paypalLastSyncAt = '';
+        try {
+            $optionManager = $serviceManager->get('Base\\Manager\\OptionManager');
+            $paypalLastSyncAt = trim((string)$optionManager->get('paypal.last_sync_at', ''));
+        } catch (\Throwable $e) {
+            $paypalLastSyncAt = '';
+        }
+
+        $paypalLastSyncLabel = '';
+        if ($paypalLastSyncAt !== '') {
+            $timestamp = strtotime($paypalLastSyncAt);
+            if ($timestamp !== false) {
+                $paypalLastSyncLabel = date('d.m.Y H:i:s', $timestamp);
+            } else {
+                $paypalLastSyncLabel = $paypalLastSyncAt;
+            }
+        }
+
         $hasTransferReference = false;
         try {
             $transferCol = $dbAdapter->query("SHOW COLUMNS FROM drink_deposits LIKE 'transfer_reference'", [])->current();
@@ -2925,6 +2943,7 @@ class DrinksController extends AbstractActionController
             'deposits' => $depositEntries,
             'showTransfers' => $showTransfers,
             'allUsers' => $userMap,
+            'paypalLastSyncLabel' => $paypalLastSyncLabel,
         ]);
         $viewModel->setTemplate('deposit-overview.phtml');
         return $viewModel;
@@ -3338,4 +3357,5 @@ class DrinksController extends AbstractActionController
 
         return true;
     }
+
 }
