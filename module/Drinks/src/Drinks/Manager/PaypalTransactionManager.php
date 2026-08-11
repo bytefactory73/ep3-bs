@@ -325,29 +325,35 @@ class PaypalTransactionManager
                 $paypalId = (int)$row['id'];
                 $payerEmail = strtolower(trim((string)$row['payer_email']));
                 $amount = isset($row['amount']) ? (float)$row['amount'] : 0.0;
+                $existingLinkedUserId = isset($row['linked_user_id']) ? (int)$row['linked_user_id'] : 0;
 
                 if ($payerEmail === '' || $amount <= 0 || empty($row['received_at'])) {
                     $result['skipped']++;
                     continue;
                 }
 
-                $matchedUserId = $this->resolveUserForEmail($payerEmail);
-                if ($matchedUserId === null) {
-                    $result['skipped']++;
-                    continue;
-                }
+                if ($existingLinkedUserId > 0) {
+                    // Never auto-change an already assigned user.
+                    $matchedUserId = $existingLinkedUserId;
+                } else {
+                    $matchedUserId = $this->resolveUserForEmail($payerEmail);
+                    if ($matchedUserId === null) {
+                        $result['skipped']++;
+                        continue;
+                    }
 
-                // Persist the resolved user even if no matching deposit exists yet.
-                // This keeps the payer_email -> user assignment visible in drinks_paypal.
-                try {
-                    $this->dbAdapter->query(
-                        'UPDATE drinks_paypal SET linked_user_id = ?, processed_at = NOW() WHERE id = ?',
-                        [$matchedUserId, $paypalId]
-                    );
-                } catch (\Throwable $e) {
-                    $result['errors'][] = sprintf('PayPal #%d: failed to store linked_user_id: %s', $paypalId, $e->getMessage());
-                    $result['skipped']++;
-                    continue;
+                    // Persist the resolved user even if no matching deposit exists yet.
+                    // This keeps the payer_email -> user assignment visible in drinks_paypal.
+                    try {
+                        $this->dbAdapter->query(
+                            'UPDATE drinks_paypal SET linked_user_id = ?, processed_at = NOW() WHERE id = ?',
+                            [$matchedUserId, $paypalId]
+                        );
+                    } catch (\Throwable $e) {
+                        $result['errors'][] = sprintf('PayPal #%d: failed to store linked_user_id: %s', $paypalId, $e->getMessage());
+                        $result['skipped']++;
+                        continue;
+                    }
                 }
 
                 // Pass 1: ±7 days; Pass 2: ±14 days

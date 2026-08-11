@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS drink_deposits (
     FOREIGN KEY (createdbyuserid) REFERENCES bs_users(uid),
     FOREIGN KEY (user_id_deleted) REFERENCES bs_users(uid),
     INDEX idx_drink_deposits_transfer_reference (transfer_reference)
-);
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Create drink_barcodes table for mapping barcode to drink_id
 CREATE TABLE IF NOT EXISTS drink_barcodes (

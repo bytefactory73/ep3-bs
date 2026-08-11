@@ -187,7 +187,7 @@ $this->setup([
                             <?= $this->escapeHtml($deposit['name']) ?>
                         </a>
                     <?php endif; ?>
-                    <?php if (!empty($deposit['is_paypal_transaction']) && !empty($deposit['payer_email'])): ?>
+                    <?php if (!empty($deposit['is_paypal_transaction']) && empty($deposit['linked_user_id']) && !empty($deposit['payer_email'])): ?>
                         <div style="font-size:0.9em; color:#666;"><?= $this->escapeHtml($deposit['payer_email']) ?></div>
                     <?php endif; ?>
                 </td>

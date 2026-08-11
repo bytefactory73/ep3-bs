@@ -8,9 +8,27 @@ class DrinkDepositManager
 {
     protected $dbAdapter;
 
+    /** @var bool */
+    private $connectionUtf8mb4Initialized = false;
+
     public function __construct(Adapter $dbAdapter)
     {
         $this->dbAdapter = $dbAdapter;
+        $this->ensureUtf8mb4Connection();
+    }
+
+    private function ensureUtf8mb4Connection()
+    {
+        if ($this->connectionUtf8mb4Initialized) {
+            return;
+        }
+
+        try {
+            $this->dbAdapter->query('SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci', []);
+            $this->connectionUtf8mb4Initialized = true;
+        } catch (\Throwable $e) {
+            $this->connectionUtf8mb4Initialized = false;
+        }
     }
 
     public function getByUser($userId, $includeDeleted = false)

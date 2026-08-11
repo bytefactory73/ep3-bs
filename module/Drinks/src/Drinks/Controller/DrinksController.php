@@ -2718,6 +2718,12 @@ class DrinksController extends AbstractActionController
         $userManager = $serviceManager->get('User\Manager\UserManager');
         $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
 
+        try {
+            $dbAdapter->query('SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci', []);
+        } catch (\Throwable $e) {
+            // Keep the overview functional even if the connection charset cannot be adjusted.
+        }
+
         $users = $userManager->getAll('alias ASC');
         $userMap = [];
         $userEmailMap = [];
