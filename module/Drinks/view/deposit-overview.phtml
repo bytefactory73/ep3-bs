@@ -275,9 +275,9 @@ $this->setup([
                 </td>
                 <td style="white-space:normal; word-break:break-word; overflow-wrap:anywhere; hyphens:manual;">
                     <?php $isPaypalEntry = !empty($deposit['is_paypal_transaction']) || !empty($deposit['is_paypal_deposit']) || !empty($deposit['paypal_state']) || !empty($deposit['paypal_transaction_id']); ?>
-                    <?php if ($isPaypalEntry && empty($deposit['user_id'])): ?>
+                    <?php if (!empty($deposit['is_paypal_transaction']) && empty($deposit['linked_user_id'])): ?>
                         <span style="font-weight:bold; color:#1976d2; display:inline-block; white-space:normal; word-break:break-word; overflow-wrap:anywhere; hyphens:manual;">
-                            <?= $this->escapeHtml($deposit['name']) ?>
+                            <?= $this->escapeHtml($deposit['payer_email'] ?: $deposit['name']) ?>
                         </span>
                     <?php else: ?>
                                 <a href="<?= $this->url('user/deposits') . '?uid=' . urlencode($deposit['user_id']) ?>"
@@ -309,6 +309,11 @@ $this->setup([
                             data-paypal-id="<?= $this->escapeHtmlAttr($badgePaypalId) ?>"
                             data-paypal-email="<?= $this->escapeHtmlAttr($deposit['payer_email'] ?? '') ?>"
                             data-paypal-note="<?= $this->escapeHtmlAttr($deposit['paypal_note'] ?? '') ?>"
+                            data-paypal-match-user-ids="<?= $this->escapeHtmlAttr(json_encode(
+                                !empty($deposit['paypal_match_user_ids'])
+                                    ? $deposit['paypal_match_user_ids']
+                                    : (!empty($deposit['user_id']) ? [(int)$deposit['user_id']] : [])
+                            )) ?>"
                             data-paypal-state="<?= $this->escapeHtmlAttr($deposit['paypal_state'] ?? '') ?>"
                             title="<?= $this->escapeHtmlAttr(implode(' | ', array_filter([
                                 $deposit['payer_email'] ?? '',
@@ -318,6 +323,19 @@ $this->setup([
                             style="display:inline-flex; align-items:center; gap:4px; margin-right:2px; padding:2px 6px; background:<?= $badgeStyle ?>; border-radius:6px; font-size:0.75rem; cursor:pointer; user-select:none;"
                         >PayPal</span>
                         <?= $deposit['comment'] !== '' ? $this->escapeHtml($deposit['comment']) : '&ndash;' ?>
+                        <?php if (!empty($deposit['is_paypal_transaction']) && empty($deposit['linked_user_id']) && !empty($deposit['paypal_match_candidates'])): ?>
+                            <?php foreach ($deposit['paypal_match_candidates'] as $matchCandidate): ?>
+                                <button
+                                    type="button"
+                                    class="paypal-credit-badge"
+                                    data-paypal-id="<?= $this->escapeHtmlAttr($deposit['id']) ?>"
+                                    data-paypal-email="<?= $this->escapeHtmlAttr($deposit['payer_email'] ?? '') ?>"
+                                    data-user-id="<?= $this->escapeHtmlAttr($matchCandidate['uid']) ?>"
+                                    data-user-name="<?= $this->escapeHtmlAttr($matchCandidate['name']) ?>"
+                                    style="display:inline-block; margin:0 4px 3px 0; padding:3px 7px; border:1px solid #1976d2; border-radius:10px; background:#e8f2fb; color:#1769aa; font-weight:bold; cursor:pointer;"
+                                >💸 <?= $this->escapeHtml($matchCandidate['name']) ?></button>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
                         <?php if (!empty($deposit['is_paypal_transaction']) && !empty($deposit['user_id']) && (!isset($deposit['paypal_state']) || $deposit['paypal_state'] !== 'ignored')): ?>
                             <button type="button" class="mini-button deposit-anlegen-btn" data-paypal-id="<?= $this->escapeHtmlAttr($deposit['id']) ?>" data-user-id="<?= $this->escapeHtmlAttr($deposit['user_id']) ?>" style="padding:4px 10px; font-size:0.85rem; margin-left:12px;"><?= $this->t('Deposit anlegen') ?></button>
                         <?php endif; ?>
@@ -372,23 +390,49 @@ $this->setup([
     var statusEl = document.getElementById('paypal-reassign-status');
     var infoEl = document.getElementById('paypal-reassign-info');
     var currentPaypalId = null;
+    var currentPreferredIds = [];
 
-    function renderList(filter) {
+    function renderList(filter, preferredIds) {
         listEl.innerHTML = '';
         var f = (filter || '').toLowerCase().trim();
+        preferredIds = preferredIds || [];
         var shown = 0;
-        users.forEach(function(u) {
+        var preferredShown = 0;
+
+        function matches(u) {
             var label = u.name + (u.email ? ' (' + u.email + ')' : '');
-            if (f && label.toLowerCase().indexOf(f) === -1) return;
+            return !f || label.toLowerCase().indexOf(f) !== -1;
+        }
+
+        function appendUser(u, isPreferred) {
+            if (!matches(u)) return;
             shown++;
+            if (isPreferred) {
+                preferredShown++;
+            }
+            var label = u.name + (u.email ? ' (' + u.email + ')' : '');
             var item = document.createElement('div');
-            item.style.cssText = 'padding:8px 12px; cursor:pointer; border-bottom:1px solid #eee; font-size:0.95em;';
+            item.style.cssText = isPreferred
+                ? 'padding:8px 12px; cursor:pointer; border-bottom:1px solid #d4e6f5; background:#eef7ff; color:#1769aa; font-weight:bold; font-size:0.95em;'
+                : 'padding:8px 12px; cursor:pointer; border-bottom:1px solid #eee; font-size:0.95em;';
             item.textContent = label;
             item.addEventListener('mouseenter', function() { item.style.background = '#e3f0fa'; });
-            item.addEventListener('mouseleave', function() { item.style.background = ''; });
+            item.addEventListener('mouseleave', function() { item.style.background = isPreferred ? '#eef7ff' : ''; });
             item.addEventListener('click', function() { doReassign(u.uid, label); });
             listEl.appendChild(item);
+        }
+
+        var preferredUsers = [];
+        var otherUsers = [];
+        users.forEach(function(u) {
+            if (preferredIds.indexOf(u.uid) !== -1) {
+                preferredUsers.push(u);
+            } else {
+                otherUsers.push(u);
+            }
         });
+        preferredUsers.forEach(function(u) { appendUser(u, true); });
+        otherUsers.forEach(function(u) { appendUser(u, false); });
         if (shown === 0) {
             var empty = document.createElement('div');
             empty.style.cssText = 'padding:10px 12px; color:#888; font-size:0.9em;';
@@ -427,8 +471,9 @@ $this->setup([
         xhr.send('paypal_id=' + encodeURIComponent(currentPaypalId) + '&user_id=' + encodeURIComponent(userId));
     }
 
-    function openModal(paypalId, payerEmail, paypalNote) {
+    function openModal(paypalId, payerEmail, paypalNote, preferredIds) {
         currentPaypalId = paypalId;
+        currentPreferredIds = preferredIds || [];
         var infoText = payerEmail ? ('PayPal E-Mail: ' + payerEmail) : 'Keine E-Mail bekannt';
         if (paypalNote && paypalNote.trim() !== '') {
             infoText += '\nNotiz: ' + paypalNote.trim();
@@ -437,7 +482,7 @@ $this->setup([
         infoEl.textContent = infoText;
         searchInput.value = '';
         statusEl.textContent = '';
-        renderList('');
+        renderList('', currentPreferredIds);
         modal.style.display = 'flex';
         setTimeout(function() { searchInput.focus(); }, 80);
     }
@@ -448,19 +493,61 @@ $this->setup([
             if (e.target === modal) closeModal();
             return;
         }
-        openModal(badge.getAttribute('data-paypal-id'), badge.getAttribute('data-paypal-email'), badge.getAttribute('data-paypal-note'));
+        var preferredIds = [];
+        try {
+            preferredIds = JSON.parse(badge.getAttribute('data-paypal-match-user-ids') || '[]').map(Number);
+        } catch (e) {}
+        openModal(badge.getAttribute('data-paypal-id'), badge.getAttribute('data-paypal-email'), badge.getAttribute('data-paypal-note'), preferredIds);
     });
 
-    searchInput.addEventListener('input', function() { renderList(searchInput.value); });
+    searchInput.addEventListener('input', function() { renderList(searchInput.value, currentPreferredIds); });
 
     function closeModal() {
         modal.style.display = 'none';
         currentPaypalId = null;
+        currentPreferredIds = [];
+    }
+
+    function creditPaypal(paypalId, userId, trigger) {
+        if (!paypalId || !userId) return;
+        var userName = trigger.getAttribute('data-user-name') || trigger.textContent.trim();
+        var payerEmail = trigger.getAttribute('data-paypal-email') || '';
+        var question = 'Die Einzahlung von ' + payerEmail + ' für ' + userName + ' gutschreiben?';
+        if (!window.confirm(question)) return;
+        trigger.disabled = true;
+        trigger.style.opacity = '0.6';
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '<?= $this->url('user/create-deposit-from-paypal') ?>', true);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState !== 4) return;
+            try {
+                var data = JSON.parse(xhr.responseText);
+                if (xhr.status === 200 && data.success) {
+                    location.reload();
+                } else {
+                    trigger.disabled = false;
+                    trigger.style.opacity = '';
+                    alert(data.error || 'Fehler beim Gutschreiben der Einzahlung.');
+                }
+            } catch (e) {
+                trigger.disabled = false;
+                trigger.style.opacity = '';
+                alert('Unerwartete Antwort vom Server.');
+            }
+        };
+        xhr.send('paypal_id=' + encodeURIComponent(paypalId) + '&user_id=' + encodeURIComponent(userId));
     }
 
     document.getElementById('paypal-reassign-close-x').addEventListener('click', closeModal);
     document.getElementById('paypal-reassign-cancel').addEventListener('click', closeModal);
     modal.addEventListener('mousedown', function(e) { if (e.target === modal) closeModal(); });
+
+    document.addEventListener('click', function(e) {
+        var badge = e.target.closest ? e.target.closest('.paypal-credit-badge') : null;
+        if (!badge) return;
+        creditPaypal(badge.getAttribute('data-paypal-id'), badge.getAttribute('data-user-id'), badge);
+    });
 
     // Ignore PayPal button
     document.addEventListener('click', function(e) {
@@ -495,32 +582,7 @@ $this->setup([
     document.addEventListener('click', function(e) {
         var btn = e.target.closest ? e.target.closest('.deposit-anlegen-btn') : null;
         if (!btn) return;
-        var paypalId = btn.getAttribute('data-paypal-id');
-        var userId = btn.getAttribute('data-user-id');
-        if (!paypalId || !userId) return;
-        btn.disabled = true;
-        btn.textContent = '...';
-        var xhr = new XMLHttpRequest();
-        xhr.open('POST', '<?= $this->url('user/create-deposit-from-paypal') ?>', true);
-        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState !== 4) return;
-            try {
-                var data = JSON.parse(xhr.responseText);
-                if (xhr.status === 200 && data.success) {
-                    location.reload();
-                } else {
-                    btn.disabled = false;
-                    btn.textContent = '<?= $this->t('Deposit anlegen') ?>';
-                    alert(data.error || 'Fehler beim Anlegen des Deposits.');
-                }
-            } catch(ex) {
-                btn.disabled = false;
-                btn.textContent = '<?= $this->t('Deposit anlegen') ?>';
-                alert('Unerwartete Antwort vom Server.');
-            }
-        };
-        xhr.send('paypal_id=' + encodeURIComponent(paypalId) + '&user_id=' + encodeURIComponent(userId));
+        creditPaypal(btn.getAttribute('data-paypal-id'), btn.getAttribute('data-user-id'), btn);
     });
 })();
 </script>

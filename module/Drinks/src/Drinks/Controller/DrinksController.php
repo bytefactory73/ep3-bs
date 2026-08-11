@@ -2726,18 +2726,33 @@ class DrinksController extends AbstractActionController
 
         $users = $userManager->getAll('alias ASC');
         $userMap = [];
-        $userEmailMap = [];
         foreach ($users as $u) {
             $uid = $u->get('uid');
-            $email = trim(strtolower($u->get('email')));
             $display = $u->get('alias') ?: $u->get('name');
             $userMap[$uid] = [
                 'display' => $display,
                 'email' => $u->get('email'),
             ];
-            if ($email !== '') {
-                $userEmailMap[$email] = $uid;
+        }
+
+        $paypalLinkedUsersByEmail = [];
+        try {
+            $paypalLinkedRows = $dbAdapter->query(
+                'SELECT payer_email, linked_user_id FROM drinks_paypal WHERE payer_email IS NOT NULL AND payer_email != "" AND linked_user_id IS NOT NULL',
+                []
+            )->toArray();
+            foreach ($paypalLinkedRows as $paypalLinkedRow) {
+                $emailKey = strtolower(trim((string)$paypalLinkedRow['payer_email']));
+                $linkedUserId = (int)$paypalLinkedRow['linked_user_id'];
+                if ($emailKey !== '' && $linkedUserId > 0) {
+                    $paypalLinkedUsersByEmail[$emailKey][] = $linkedUserId;
+                }
             }
+            foreach ($paypalLinkedUsersByEmail as $emailKey => $linkedUserIds) {
+                $paypalLinkedUsersByEmail[$emailKey] = array_values(array_unique(array_map('intval', $linkedUserIds)));
+            }
+        } catch (\Throwable $e) {
+            // Keep the overview functional if historical links cannot be read.
         }
 
         $showTransfers = $this->params()->fromQuery('showTransfers', '0') === '1';
@@ -2805,15 +2820,23 @@ class DrinksController extends AbstractActionController
             $placeholders = implode(',', array_fill(0, count($depositIds), '?'));
             try {
                 $paypalLinkedRows = iterator_to_array($dbAdapter->query(
-                    'SELECT id, linked_deposit_id, payer_email, state, paypal_transaction_id, transaction_note FROM drinks_paypal WHERE linked_deposit_id IN (' . $placeholders . ')',
+                    'SELECT id, linked_deposit_id, payer_email, linked_user_id, state, paypal_transaction_id, transaction_note FROM drinks_paypal WHERE linked_deposit_id IN (' . $placeholders . ')',
                     $depositIds
                 ));
                 foreach ($paypalLinkedRows as $paypalLinkedRow) {
                     $linkedDepositId = isset($paypalLinkedRow['linked_deposit_id']) ? (int)$paypalLinkedRow['linked_deposit_id'] : 0;
                     if ($linkedDepositId > 0 && !isset($depositPaypalInfo[$linkedDepositId])) {
+                        $payerEmail = isset($paypalLinkedRow['payer_email']) ? trim((string)$paypalLinkedRow['payer_email']) : '';
+                        $emailKey = strtolower($payerEmail);
+                        $matchUserIds = isset($paypalLinkedUsersByEmail[$emailKey]) ? $paypalLinkedUsersByEmail[$emailKey] : [];
+                        $linkedUserId = isset($paypalLinkedRow['linked_user_id']) ? (int)$paypalLinkedRow['linked_user_id'] : 0;
+                        if ($linkedUserId > 0) {
+                            $matchUserIds = array_values(array_unique(array_merge([$linkedUserId], $matchUserIds)));
+                        }
                         $depositPaypalInfo[$linkedDepositId] = [
                             'drinks_paypal_id' => isset($paypalLinkedRow['id']) ? (int)$paypalLinkedRow['id'] : null,
-                            'payer_email' => isset($paypalLinkedRow['payer_email']) ? trim((string)$paypalLinkedRow['payer_email']) : '',
+                            'payer_email' => $payerEmail,
+                            'paypal_match_user_ids' => $matchUserIds,
                             'paypal_state' => isset($paypalLinkedRow['state']) ? trim((string)$paypalLinkedRow['state']) : null,
                             'paypal_transaction_id' => isset($paypalLinkedRow['paypal_transaction_id']) ? trim((string)$paypalLinkedRow['paypal_transaction_id']) : null,
                             'transaction_note' => trim((string)($paypalLinkedRow['transaction_note'] ?? '')),
@@ -2871,6 +2894,7 @@ class DrinksController extends AbstractActionController
                 'drinks_paypal_id' => $paypalInfo !== null ? $paypalInfo['drinks_paypal_id'] : null,
                 'paypal_state' => $paypalInfo !== null ? $paypalInfo['paypal_state'] : null,
                 'payer_email' => $paypalInfo !== null ? $paypalInfo['payer_email'] : null,
+                'paypal_match_user_ids' => $paypalInfo !== null ? ($paypalInfo['paypal_match_user_ids'] ?? []) : [],
                 'paypal_transaction_id' => $paypalInfo !== null ? $paypalInfo['paypal_transaction_id'] : null,
                 'paypal_note' => $paypalInfo !== null ? ($paypalInfo['transaction_note'] ?? '') : '',
             ];
@@ -2883,14 +2907,24 @@ class DrinksController extends AbstractActionController
                 $paypalRows = $paypalManager->getUnlinked(500);
                 foreach ($paypalRows as $p) {
                     $linkedUid = isset($p['linked_user_id']) ? (int)$p['linked_user_id'] : 0;
-                $payerEmail = isset($p['payer_email']) ? trim((string)$p['payer_email']) : '';
-                $matchedUid = 0;
-                if ($linkedUid <= 0 && $payerEmail !== '') {
-                    $emailKey = strtolower($payerEmail);
-                    if (isset($userEmailMap[$emailKey])) {
-                        $matchedUid = $userEmailMap[$emailKey];
+                    $payerEmail = isset($p['payer_email']) ? trim((string)$p['payer_email']) : '';
+                    $matchUserIds = [];
+                    if ($payerEmail !== '') {
+                        $emailKey = strtolower($payerEmail);
+                        $matchUserIds = isset($paypalLinkedUsersByEmail[$emailKey]) ? $paypalLinkedUsersByEmail[$emailKey] : [];
+                        $matchUserIds = array_values(array_unique(array_map('intval', $matchUserIds)));
                     }
-                }
+                    if ($linkedUid > 0) {
+                        $matchUserIds = array_values(array_unique(array_merge([$linkedUid], $matchUserIds)));
+                    }
+                    $matchedUid = ($linkedUid <= 0 && count($matchUserIds) === 1) ? $matchUserIds[0] : 0;
+                    $matchCandidates = [];
+                    if (count($matchUserIds) === 1 && isset($userMap[$matchUserIds[0]])) {
+                        $matchCandidates[] = [
+                            'uid' => $matchUserIds[0],
+                            'name' => $userMap[$matchUserIds[0]]['display'],
+                        ];
+                    }
                 $name = 'PayPal';
                 $displayEmail = $payerEmail;
                 if ($linkedUid > 0 && isset($userMap[$linkedUid])) {
@@ -2898,6 +2932,14 @@ class DrinksController extends AbstractActionController
                     $displayEmail = $userMap[$linkedUid]['email'];
                 } elseif ($matchedUid > 0 && isset($userMap[$matchedUid])) {
                     $name = $userMap[$matchedUid]['display'] . ' (PayPal Match)';
+                } elseif (count($matchUserIds) > 1) {
+                    $matchNames = [];
+                    foreach ($matchUserIds as $matchUserId) {
+                        if (isset($userMap[$matchUserId])) {
+                            $matchNames[] = $userMap[$matchUserId]['display'];
+                        }
+                    }
+                    $name = $matchNames ? 'PayPal: ' . implode(', ', $matchNames) : 'PayPal (unlinked)';
                 } else {
                     $name = 'PayPal (unlinked)';
                 }
@@ -2917,6 +2959,8 @@ class DrinksController extends AbstractActionController
                     'user_id' => ($linkedUid > 0 ? $linkedUid : ($matchedUid > 0 ? $matchedUid : null)),
                     'linked_user_id' => ($linkedUid > 0 ? $linkedUid : null),
                     'matched_user_id' => ($matchedUid > 0 ? $matchedUid : null),
+                    'paypal_match_user_ids' => $matchUserIds,
+                    'paypal_match_candidates' => $matchCandidates,
                     'name' => $name,
                     'email' => $displayEmail,
                     'date' => $date,
