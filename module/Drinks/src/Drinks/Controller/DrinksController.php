@@ -726,7 +726,7 @@ class DrinksController extends AbstractActionController
             $depositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
             $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
             $currentUser = $userSessionManager->getSessionUser();
-            $autoResult = $paypalManager->autoAssignSyncedTransactions($depositManager, $currentUser->get('uid'));
+            $autoResult = $paypalManager->autoAssignSyncedTransactions($depositManager, $currentUser->get('uid'), $serviceManager, false);
 
             $message = sprintf('PayPal Abruf abgeschlossen. %d neue Nachrichten importiert, %d übersprungen.', $result['imported'], $result['skipped']);
             if ($syncResult !== null) {
@@ -847,7 +847,7 @@ class DrinksController extends AbstractActionController
             $depositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
             $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
             $currentUser = $userSessionManager->getSessionUser();
-            $autoResult = $paypalManager->autoAssignSyncedTransactions($depositManager, $currentUser->get('uid'));
+            $autoResult = $paypalManager->autoAssignSyncedTransactions($depositManager, $currentUser->get('uid'), $serviceManager, false);
 
             $message = sprintf('Historie-Import: %d importiert, %d übersprungen.', $importResult['imported'], $importResult['skipped']);
             if (!empty($importResult['errors'])) {

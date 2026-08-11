@@ -271,15 +271,17 @@ class PaypalTransactionManager
      *  1. Unique previous assignment in drinks_paypal for that email
      *  2. Unique match of email in bs_users, with no conflicting drinks_paypal assignment
      *
-     * Only links existing deposits within ±7 days. Does NOT create new deposits.
+     * If a matching deposit already exists within the matching window, it is linked.
+     * Otherwise a new deposit is created from the PayPal row and linked to the user.
      *
-     * @param int $createdByUserId admin user id (unused, kept for signature compat)
+     * @param int $createdByUserId admin user id used for createdbyuserid on new deposits
      * @return array result stats
      */
-    public function autoAssignSyncedTransactions($depositManager, $createdByUserId)
+    public function autoAssignSyncedTransactions($depositManager, $createdByUserId, $serviceManager = null, $allowCreateDeposits = true)
     {
         $result = [
             'assigned' => 0,
+            'created'  => 0,
             'skipped'  => 0,
             'errors'   => [],
         ];
@@ -318,12 +320,74 @@ class PaypalTransactionManager
                 // Pass 1: ±7 days; Pass 2: ±14 days
                 $existingDeposit = $this->findMatchingDeposit($matchedUserId, $amount, $row['received_at']);
 
-                if (!$existingDeposit || empty($existingDeposit['id'])) {
+                if ($existingDeposit && !empty($existingDeposit['id'])) {
+                    $this->linkToDeposit($paypalId, (int)$existingDeposit['id'], $matchedUserId);
+                    $result['assigned']++;
+                    continue;
+                }
+
+                if (!$allowCreateDeposits) {
                     $result['skipped']++;
                     continue;
                 }
 
-                $this->linkToDeposit($paypalId, (int)$existingDeposit['id'], $matchedUserId);
+                $commentParts = ['PayPal'];
+                if (!empty($row['payer_name'])) {
+                    $commentParts[] = trim((string)$row['payer_name']);
+                }
+                if (!empty($row['transaction_note'])) {
+                    $commentParts[] = trim((string)$row['transaction_note']);
+                }
+                $comment = implode(' - ', array_filter($commentParts, function ($value) {
+                    return $value !== '';
+                }));
+
+                $depositTime = !empty($row['received_at']) ? $row['received_at'] : null;
+                $depositResult = $depositManager->addDeposit(
+                    $matchedUserId,
+                    $amount,
+                    $comment,
+                    $createdByUserId > 0 ? $createdByUserId : null,
+                    null,
+                    null,
+                    $depositTime
+                );
+                if (!$depositResult || method_exists($depositResult, 'getAffectedRows') && $depositResult->getAffectedRows() <= 0) {
+                    $result['skipped']++;
+                    continue;
+                }
+
+                $depositId = null;
+                if (method_exists($depositResult, 'getGeneratedValue')) {
+                    $depositId = (int)$depositResult->getGeneratedValue();
+                }
+                if (!$depositId) {
+                    $depositRow = $this->dbAdapter->query('SELECT id FROM drink_deposits WHERE user_id = ? AND amount = ? AND deposit_time = ? ORDER BY id DESC LIMIT 1', [$matchedUserId, $amount, $depositTime])->current();
+                    if ($depositRow && !empty($depositRow['id'])) {
+                        $depositId = (int)$depositRow['id'];
+                    }
+                }
+                if (!$depositId) {
+                    $result['errors'][] = sprintf('PayPal #%d: created deposit but could not resolve id', $paypalId);
+                    $result['skipped']++;
+                    continue;
+                }
+
+                if (!$this->linkToDeposit($paypalId, $depositId, $matchedUserId)) {
+                    $result['errors'][] = sprintf('PayPal #%d: created deposit %d but linking failed', $paypalId, $depositId);
+                    $result['skipped']++;
+                    continue;
+                }
+
+                if ($serviceManager !== null) {
+                    try {
+                        $this->sendDepositNotification($serviceManager, $matchedUserId, $amount, $comment, $depositTime);
+                    } catch (\Throwable $e) {
+                        $result['errors'][] = sprintf('PayPal #%d: deposit notification failed: %s', $paypalId, $e->getMessage());
+                    }
+                }
+
+                $result['created']++;
                 $result['assigned']++;
             } catch (\Throwable $e) {
                 $result['errors'][] = sprintf('PayPal #%d: %s', $row['id'] ?? '?', $e->getMessage());
@@ -332,6 +396,31 @@ class PaypalTransactionManager
         }
 
         return $result;
+    }
+
+    private function sendDepositNotification($serviceManager, $userId, $amount, $comment, $depositTime = null)
+    {
+        $userManager = $serviceManager->get('User\Manager\UserManager');
+        $mailService = $serviceManager->get('User\Service\MailService');
+        $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
+
+        $recipient = $userManager->get($userId);
+        if (!$recipient) {
+            return;
+        }
+
+        $balance = $drinkManager->calculateUserDrinkBalance($userId, $serviceManager);
+        $subject = 'Neue Einzahlung auf Ihr Getränkekonto';
+        $body =
+            '<p>Es wurde soeben eine Einzahlung auf Dein Getränkekonto vorgenommen:</p>' .
+            '<ul>' .
+            ($comment ? '<li><strong>Bemerkung:</strong> ' . htmlspecialchars($comment) . '</li>' : '') .
+            '<li><strong>Einzahlungsbetrag:</strong> ' . number_format($amount, 2, ',', '.') . ' €</li>' .
+            '<li><strong>Neuer Kontostand:</strong> ' . number_format($balance, 2, ',', '.') . ' €</li>' .
+            '</ul>' .
+            '<p>Viele Grüße<br>Dein Theken-Team</p>';
+
+        $mailService->sendFromTheke($recipient, $subject, $body, ['isHtml' => true]);
     }
 
     /**
@@ -462,7 +551,7 @@ class PaypalTransactionManager
         ];
 
         try {
-            $messages = @imap_search($inbox, 'UNSEEN FROM "paypal"');
+            $messages = @imap_search($inbox, 'UNSEEN FROM "service@paypal.de"');
             if ($messages === false) {
                 $messages = @imap_search($inbox, 'UNSEEN');
             }
@@ -1102,17 +1191,7 @@ class PaypalTransactionManager
 
     private function isLikelyPaypalMessage($fromEmail, $subject, $body)
     {
-        $lowerFrom = strtolower($fromEmail);
-        if ($lowerFrom === 'paypal@paypal.com' || strpos($lowerFrom, 'paypal') !== false) {
-            return true;
-        }
-        if (preg_match('/paypal/i', $subject)) {
-            return true;
-        }
-        if (preg_match('/(Geld erhalten|Zahlung erhalten|Payment received|Transaction|Transaktion|PayPal)/i', $body)) {
-            return true;
-        }
-        return false;
+        return strtolower(trim((string)$fromEmail)) === 'service@paypal.de';
     }
 
     private function findTransactionId($body, $subject)
