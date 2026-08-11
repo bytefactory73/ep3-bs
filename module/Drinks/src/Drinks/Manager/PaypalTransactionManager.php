@@ -9,9 +9,28 @@ class PaypalTransactionManager
     /** @var AdapterInterface */
     private $dbAdapter;
 
+    /** @var bool */
+    private $connectionUtf8mb4Initialized = false;
+
     public function __construct(AdapterInterface $dbAdapter)
     {
         $this->dbAdapter = $dbAdapter;
+        $this->ensureUtf8mb4Connection();
+    }
+
+    private function ensureUtf8mb4Connection()
+    {
+        if ($this->connectionUtf8mb4Initialized) {
+            return;
+        }
+
+        try {
+            $this->dbAdapter->query('SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci', []);
+            $this->connectionUtf8mb4Initialized = true;
+        } catch (\Throwable $e) {
+            // Keep legacy behavior if the DB user cannot run SET NAMES explicitly.
+            $this->connectionUtf8mb4Initialized = false;
+        }
     }
 
     /**
@@ -222,6 +241,7 @@ class PaypalTransactionManager
                     $payerName = isset($payer['name']['alternate_full_name']) ? trim($payer['name']['alternate_full_name'])
                         : (isset($payer['name']['full_name']) ? trim($payer['name']['full_name']) : null);
                     $transactionNote = isset($info['transaction_note']) ? trim($info['transaction_note']) : (isset($info['transaction_subject']) ? trim($info['transaction_subject']) : null);
+                    $transactionNote = $this->normalizeTransactionNoteForStorage($transactionNote);
                     if ($feeRaw != 0.0) {
                         $feeDisplay = number_format(abs($feeRaw), 2, ',', '.') . ' € Gebühren';
                         $transactionNote = $transactionNote !== null && $transactionNote !== ''
@@ -590,7 +610,7 @@ class PaypalTransactionManager
                     $amount = $this->findAmount($plainBody);
                     $payerEmail = $this->findPayerEmail($plainBody, $fromAddress['email']);
                     $payerName = $this->findPayerName($body, $plainBody, $fromAddress['name']);
-                    $transactionNote = $this->findTransactionNote($body, $plainBody, $subject);
+                    $transactionNote = $this->normalizeTransactionNoteForStorage($this->findTransactionNote($body, $plainBody, $subject));
                     $receivedAt = $this->findReceivedAt($plainBody, $header);
                     $sourceMailId = $this->findMessageId($header, $msgNo);
 
@@ -817,6 +837,7 @@ class PaypalTransactionManager
         if ($transactionNote === null || $transactionNote === '') {
             $transactionNote = isset($row['transaction_note']) ? $row['transaction_note'] : '';
         }
+        $transactionNote = $this->normalizeTransactionNoteForStorage($transactionNote);
 
         $sql = 'UPDATE drinks_paypal SET state = ?, account_id = ?, payer_name = ?, payer_email = ?, amount = ?, transaction_status = ?, transaction_note = ?, transaction_json = ?, processed_at = NOW() WHERE id = ?';
         $params = [
@@ -1342,6 +1363,21 @@ class PaypalTransactionManager
         $note = isset($lines[0]) ? trim($lines[0]) : '';
         $note = preg_replace('/[ \t]+$/m', '', $note);
         return preg_replace('/\n+$/', '', $note);
+    }
+
+    private function normalizeTransactionNoteForStorage($value)
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $text = (string)$value;
+        $normalized = @iconv('UTF-8', 'UTF-8//IGNORE', $text);
+        if ($normalized !== false) {
+            $text = $normalized;
+        }
+
+        return $text;
     }
 
     private function findReceivedAt($body, $header)

@@ -33,4 +33,4 @@ CREATE TABLE IF NOT EXISTS `drinks_paypal` (
     REFERENCES `drink_deposits` (`id`)
     ON DELETE SET NULL
     ON UPDATE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
