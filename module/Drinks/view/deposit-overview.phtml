@@ -168,26 +168,26 @@ $this->setup([
 <table class="table table-striped" style="margin-top:24px; width:100%;">
     <thead>
         <tr>
-            <th style="width:4em; text-align:right;">#</th>
-            <th><?= $this->t('Mitglied') ?></th>
-            <th><?= $this->t('Datum') ?></th>
-            <th><?= $this->t('Kommentar') ?></th>
+                <th style="width:4em; text-align:right; padding-right:10px; white-space:nowrap;">#</th>
+                <th style="text-align:left; padding-left:0; white-space:nowrap;"><?= $this->t('Mitglied') ?></th>
+                <th style="text-align:left; white-space:nowrap;"><?= $this->t('Datum') ?></th>
+                <th style="text-align:left; padding-left:4px; white-space:nowrap;"><?= $this->t('Art / Kommentar') ?></th>
             <th style="text-align:right;"><?= $this->t('Einzahlung') ?></th>
         </tr>
     </thead>
     <tbody>
         <?php $rownum = 1; foreach ($this->deposits as $deposit): ?>
             <tr<?= !empty($deposit['is_paypal_transaction']) ? ' data-paypal-unassigned="1" data-paypal-state="' . $this->escapeHtmlAttr($deposit['paypal_state'] ?? '') . '"' : '' ?>>
-                <td style="font-weight:bold; color:#888; text-align:right;"> <?= $rownum++ ?>. </td>
-                <td>
+                <td style="font-weight:bold; color:#888; text-align:right; padding-right:10px;"> <?= $rownum++ ?>. </td>
+                <td style="white-space:normal; word-break:normal; overflow-wrap:normal; hyphens:manual;">
                     <?php $isPaypalEntry = !empty($deposit['is_paypal_transaction']) || !empty($deposit['is_paypal_deposit']) || !empty($deposit['paypal_state']) || !empty($deposit['paypal_transaction_id']); ?>
                     <?php if ($isPaypalEntry && empty($deposit['user_id'])): ?>
-                        <span style="font-weight:bold; color:#1976d2; display:inline-flex; align-items:center; gap:6px;">
+                        <span style="font-weight:bold; color:#1976d2; display:inline-block; white-space:normal; word-break:normal; overflow-wrap:normal; hyphens:manual;">
                             <?= $this->escapeHtml($deposit['name']) ?>
                         </span>
                     <?php else: ?>
-                        <a href="<?= $this->url('user/deposits') . '?uid=' . urlencode($deposit['user_id']) ?>"
-                           style="color:#1976d2; text-decoration:underline; font-weight:bold;">
+                                <a href="<?= $this->url('user/deposits') . '?uid=' . urlencode($deposit['user_id']) ?>"
+                                    style="color:#1976d2; text-decoration:underline; font-weight:bold; white-space:normal; word-break:normal; overflow-wrap:normal; hyphens:manual;">
                             <?= $this->escapeHtml($deposit['name']) ?>
                         </a>
                     <?php endif; ?>
@@ -195,10 +195,13 @@ $this->setup([
                         <div style="font-size:0.9em; color:#666;"><?= $this->escapeHtml($deposit['payer_email']) ?></div>
                     <?php endif; ?>
                 </td>
-                <td style="white-space:nowrap; padding-right: 18px;">
-                    <?= $this->escapeHtml(date('d.m.Y H:i', strtotime($deposit['date']))) ?>
+                <td style="white-space:nowrap; padding-right: 4px;">
+                    <?= $this->escapeHtml(date('d.m.y', strtotime($deposit['date']))) ?>
+                    <span style="font-size:0.85em; color:#9a9a9a;">
+                        <?= $this->escapeHtml(date('H:i', strtotime($deposit['date']))) ?>
+                    </span>
                 </td>
-                <td style="padding-left: 18px;">
+                <td style="padding-left: 4px;">
                     <?php if ($isPaypalEntry): ?>
                         <?php
                             $badgePaypalId = !empty($deposit['is_paypal_deposit']) && !empty($deposit['drinks_paypal_id'])
@@ -224,7 +227,7 @@ $this->setup([
                                 !empty($deposit['paypal_note']) ? $deposit['paypal_note'] : '',
                                 !empty($deposit['paypal_state']) ? $deposit['paypal_state'] : '',
                             ]))) ?>"
-                            style="display:inline-flex; align-items:center; gap:6px; margin-right:8px; padding:2px 6px; background:<?= $badgeStyle ?>; border-radius:6px; font-size:0.75rem; cursor:pointer; user-select:none;"
+                            style="display:inline-flex; align-items:center; gap:4px; margin-right:2px; padding:2px 6px; background:<?= $badgeStyle ?>; border-radius:6px; font-size:0.75rem; cursor:pointer; user-select:none;"
                         >PayPal</span>
                         <?= $deposit['comment'] !== '' ? $this->escapeHtml($deposit['comment']) : '&ndash;' ?>
                         <?php if (!empty($deposit['is_paypal_transaction']) && !empty($deposit['user_id']) && (!isset($deposit['paypal_state']) || $deposit['paypal_state'] !== 'ignored')): ?>
