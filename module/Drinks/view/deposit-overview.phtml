@@ -14,6 +14,95 @@ $this->setup([
 <div class="separator-small"></div>
 <p><?= $this->t('Hier sehen Sie alle Einzahlungen der Mitglieder, sortiert nach Datum absteigend.') ?></p>
 
+<style>
+    .deposit-overview-table-scroll {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .deposit-overview-table {
+        width: 100%;
+        min-width: 720px;
+        border-collapse: separate;
+        border-spacing: 0 1px;
+    }
+
+    .deposit-overview-table th,
+    .deposit-overview-table td {
+        vertical-align: top;
+    }
+
+    .deposit-overview-table td:first-child {
+        white-space: nowrap;
+    }
+
+    .deposit-overview-table td:first-child span {
+        display: inline;
+        margin-left: 0;
+        font-size: 0.85em;
+        line-height: 1;
+        color: #9a9a9a;
+    }
+
+    @media (max-width: 1024px) {
+        #content {
+            padding-left: 12px !important;
+            padding-right: 12px !important;
+        }
+
+        .content-panel.centered-panel {
+            padding-left: 12px;
+            padding-right: 12px;
+        }
+
+        .deposit-overview-table-scroll {
+            margin-left: 0;
+            margin-right: 0;
+            width: 100%;
+        }
+
+        .deposit-overview-table {
+            min-width: 0;
+            width: 100%;
+            margin-left: 0;
+            margin-right: 0;
+        }
+
+        .deposit-overview-table td:nth-child(2) {
+            white-space: normal;
+        }
+
+        .deposit-overview-table th,
+        .deposit-overview-table td {
+            padding-top: 4px;
+            padding-bottom: 4px;
+        }
+
+        .deposit-overview-table th {
+            font-size: 0.95em;
+        }
+
+        .deposit-overview-table td {
+            font-size: 0.96em;
+        }
+    }
+
+    @media (max-width: 700px) {
+        .deposit-overview-table td:first-child {
+            white-space: normal;
+        }
+
+        .deposit-overview-table td:first-child span {
+            display: block;
+            margin-left: 0;
+            margin-top: 0;
+            line-height: 1;
+        }
+    }
+</style>
+
 <div style="margin-bottom:18px; display:flex; flex-direction:column; gap:10px;">
     <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center;">
         <button id="paypal-fetch-button" type="button" class="default-button" style="padding:8px 14px; font-weight:bold;">
@@ -165,41 +254,40 @@ $this->setup([
 })();
 </script>
 
-<table class="table table-striped" style="margin-top:24px; width:100%;">
+<div class="deposit-overview-table-scroll">
+<table class="table table-striped deposit-overview-table" style="margin-top:24px; width:100%;">
     <thead>
         <tr>
-                <th style="width:4em; text-align:right; padding-right:10px; white-space:nowrap;">#</th>
-                <th style="text-align:left; padding-left:0; white-space:nowrap;"><?= $this->t('Mitglied') ?></th>
                 <th style="text-align:left; white-space:nowrap;"><?= $this->t('Datum') ?></th>
+                <th style="text-align:left; padding-left:0; white-space:nowrap;"><?= $this->t('Mitglied') ?></th>
                 <th style="text-align:left; padding-left:4px; white-space:nowrap;"><?= $this->t('Art / Kommentar') ?></th>
             <th style="text-align:right;"><?= $this->t('Einzahlung') ?></th>
         </tr>
     </thead>
     <tbody>
-        <?php $rownum = 1; foreach ($this->deposits as $deposit): ?>
+        <?php foreach ($this->deposits as $deposit): ?>
             <tr<?= !empty($deposit['is_paypal_transaction']) ? ' data-paypal-unassigned="1" data-paypal-state="' . $this->escapeHtmlAttr($deposit['paypal_state'] ?? '') . '"' : '' ?>>
-                <td style="font-weight:bold; color:#888; text-align:right; padding-right:10px;"> <?= $rownum++ ?>. </td>
-                <td style="white-space:normal; word-break:normal; overflow-wrap:normal; hyphens:manual;">
-                    <?php $isPaypalEntry = !empty($deposit['is_paypal_transaction']) || !empty($deposit['is_paypal_deposit']) || !empty($deposit['paypal_state']) || !empty($deposit['paypal_transaction_id']); ?>
-                    <?php if ($isPaypalEntry && empty($deposit['user_id'])): ?>
-                        <span style="font-weight:bold; color:#1976d2; display:inline-block; white-space:normal; word-break:normal; overflow-wrap:normal; hyphens:manual;">
-                            <?= $this->escapeHtml($deposit['name']) ?>
-                        </span>
-                    <?php else: ?>
-                                <a href="<?= $this->url('user/deposits') . '?uid=' . urlencode($deposit['user_id']) ?>"
-                                    style="color:#1976d2; text-decoration:underline; font-weight:bold; white-space:normal; word-break:normal; overflow-wrap:normal; hyphens:manual;">
-                            <?= $this->escapeHtml($deposit['name']) ?>
-                        </a>
-                    <?php endif; ?>
-                    <?php if (!empty($deposit['is_paypal_transaction']) && empty($deposit['linked_user_id']) && !empty($deposit['payer_email'])): ?>
-                        <div style="font-size:0.9em; color:#666;"><?= $this->escapeHtml($deposit['payer_email']) ?></div>
-                    <?php endif; ?>
-                </td>
                 <td style="white-space:nowrap; padding-right: 4px;">
                     <?= $this->escapeHtml(date('d.m.y', strtotime($deposit['date']))) ?>
                     <span style="font-size:0.85em; color:#9a9a9a;">
                         <?= $this->escapeHtml(date('H:i', strtotime($deposit['date']))) ?>
                     </span>
+                </td>
+                <td style="white-space:normal; word-break:break-word; overflow-wrap:anywhere; hyphens:manual;">
+                    <?php $isPaypalEntry = !empty($deposit['is_paypal_transaction']) || !empty($deposit['is_paypal_deposit']) || !empty($deposit['paypal_state']) || !empty($deposit['paypal_transaction_id']); ?>
+                    <?php if ($isPaypalEntry && empty($deposit['user_id'])): ?>
+                        <span style="font-weight:bold; color:#1976d2; display:inline-block; white-space:normal; word-break:break-word; overflow-wrap:anywhere; hyphens:manual;">
+                            <?= $this->escapeHtml($deposit['name']) ?>
+                        </span>
+                    <?php else: ?>
+                                <a href="<?= $this->url('user/deposits') . '?uid=' . urlencode($deposit['user_id']) ?>"
+                                    style="color:#1976d2; text-decoration:underline; font-weight:bold; white-space:normal; word-break:break-word; overflow-wrap:anywhere; hyphens:manual;">
+                            <?= $this->escapeHtml($deposit['name']) ?>
+                        </a>
+                    <?php endif; ?>
+                    <?php if (!empty($deposit['is_paypal_transaction']) && empty($deposit['linked_user_id']) && !empty($deposit['payer_email'])): ?>
+                        <div style="font-size:0.9em; color:#666; white-space:normal; word-break:break-word; overflow-wrap:anywhere; hyphens:manual;"><?= $this->escapeHtml($deposit['payer_email']) ?></div>
+                    <?php endif; ?>
                 </td>
                 <td style="padding-left: 4px;">
                     <?php if ($isPaypalEntry): ?>
@@ -247,6 +335,7 @@ $this->setup([
         <?php endforeach; ?>
     </tbody>
 </table>
+</div>
 
 <!-- PayPal Reassign Modal -->
 <div id="paypal-reassign-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.55); z-index:10010; align-items:center; justify-content:center;">
