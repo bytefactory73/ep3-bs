@@ -676,8 +676,7 @@ class PaypalTransactionManager
             throw new \RuntimeException('PayPal IMAP settings are incomplete.');
         }
 
-        $protocol = '/imap' . ($imapSsl ? '/ssl' : '');
-        $mailbox = sprintf('{%s:%d%s/novalidate-cert}INBOX', $imapHost, $imapPort, $protocol);
+        $mailbox = $this->buildImapConnectionPrefix($imapHost, $imapPort, $imapSsl) . 'INBOX';
         $inbox = @imap_open($mailbox, $imapUser, $imapPassword);
 
         if ($inbox === false) {
@@ -702,11 +701,12 @@ class PaypalTransactionManager
 
             foreach ($messages as $msgNo) {
                 try {
-                    $header = imap_headerinfo($inbox, $msgNo);
-                    $subject = $this->decodeMimeHeader(isset($header->subject) ? $header->subject : '');
-                    $fromAddress = $this->parseHeaderAddress($header->from[0] ?? null);
-                    $body = $this->fetchMessageBody($inbox, $msgNo);
-                    $plainBody = $this->normalizeText($body);
+                    $msgData = $this->parseImapMessageData($inbox, $msgNo);
+                    $header = $msgData['header'];
+                    $subject = $msgData['subject'];
+                    $fromAddress = ['email' => $msgData['fromEmail'], 'name' => $msgData['fromName']];
+                    $body = $msgData['body'];
+                    $plainBody = $msgData['plainBody'];
 
                     if (! $this->isLikelyPaypalMessage($fromAddress['email'], $subject, $plainBody)) {
                         $result['skipped']++;
@@ -716,13 +716,18 @@ class PaypalTransactionManager
                     $transactionId = $this->findTransactionId($plainBody, $subject);
                     $amount = $this->findAmount($plainBody);
                     $payerEmail = $this->findPayerEmail($plainBody, $fromAddress['email']);
-                    $payerName = $this->findPayerName($body, $plainBody, $fromAddress['name']);
+                    $payerName = $this->findPayerName($plainBody);
                     $transactionNote = $this->normalizeTransactionNoteForStorage($this->findTransactionNote($body, $plainBody, $subject));
                     $receivedAt = $this->findReceivedAt($plainBody, $header);
                     $sourceMailId = $this->findMessageId($header, $msgNo);
 
                     if ($transactionId === '') {
                         $transactionId = 'email-' . preg_replace('/[^a-zA-Z0-9_-]/', '-', $sourceMailId);
+                    }
+
+                    if ($payerName === '') {
+                        $result['skipped']++;
+                        continue;
                     }
 
                     if ($amount === null) {
@@ -1408,22 +1413,17 @@ class PaypalTransactionManager
         return $defaultEmail;
     }
 
-    private function findPayerName($body, $defaultName)
+    private function findPayerName($plainBody)
     {
-        $patterns = [
-            '/Mitteilung von\s*(?:[:\-]?\s*)?\n*\s*([^\n]+)/i',
-            '/Absender\s*[:\-]?\s*([^\n]+)/i',
-            '/From\s*[:\-]?\s*([^<\n]+)/i',
-        ];
-        foreach ($patterns as $pattern) {
-            if (preg_match($pattern, $body, $matches)) {
-                $name = trim(strip_tags($matches[1]));
-                if ($name !== '') {
-                    return $name;
-                }
+        // "X hat dir …" in body text (multiline)
+        if (preg_match('/^(.+?)\s+hat\s+dir\b/im', (string)$plainBody, $matches)) {
+            $name = trim(strip_tags($matches[1]));
+            if ($name !== '' && !filter_var($name, FILTER_VALIDATE_EMAIL)) {
+                return $name;
             }
         }
-        return trim($defaultName);
+
+        return '';
     }
 
     private function findTransactionStatus($body, $subject)
@@ -1509,5 +1509,210 @@ class PaypalTransactionManager
             return trim($header->message_id, ' <>');
         }
         return 'msg-' . (int)$msgNo;
+    }
+
+    // -------------------------------------------------------------------------
+    // Shared IMAP helpers (used by importFromImap and fillPayerNamesFromImap)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Build the IMAP connection string prefix (without folder/mailbox name appended).
+     * Example result: {imap.example.com:993/imap/ssl/novalidate-cert}
+     */
+    private function buildImapConnectionPrefix($imapHost, $imapPort, $imapSsl)
+    {
+        $protocol = '/imap' . ($imapSsl ? '/ssl' : '');
+        return sprintf('{%s:%d%s/novalidate-cert}', $imapHost, $imapPort, $protocol);
+    }
+
+    /**
+     * Parse header, from-address, and body for a single IMAP message number.
+     *
+     * @param resource $inbox  Open IMAP stream
+     * @param int      $msgNo  Message sequence number
+     * @return array{header: object, subject: string, fromEmail: string, fromName: string, body: string, plainBody: string}
+     */
+    private function parseImapMessageData($inbox, $msgNo)
+    {
+        $header    = imap_headerinfo($inbox, $msgNo);
+        $subject   = $this->decodeMimeHeader(isset($header->subject) ? $header->subject : '');
+        $fromAddr  = $this->parseHeaderAddress($header->from[0] ?? null);
+        $body      = $this->fetchMessageBody($inbox, $msgNo);
+        $plainBody = $this->normalizeText($body);
+
+        return [
+            'header'    => $header,
+            'subject'   => $subject,
+            'fromEmail' => $fromAddr['email'],
+            'fromName'  => $fromAddr['name'],
+            'body'      => $body,
+            'plainBody' => $plainBody,
+        ];
+    }
+
+    // -------------------------------------------------------------------------
+    // Public: fill payer names from historical IMAP scan
+    // -------------------------------------------------------------------------
+
+    /**
+     * Scan all accessible IMAP folders for PayPal Guthaben emails in the given
+     * date range and fill payer_name in existing drinks_paypal rows where it is
+     * still NULL or empty.
+     *
+     * Constraints:
+     *  - No new rows are inserted.
+     *  - No deposits, user assignments, or API calls are made.
+     *  - Email flags (Seen, …) are never modified.
+     *  - Only a real transaction ID from the email body is used for matching;
+     *    fallback IDs are intentionally not generated here.
+     *
+     * @param string    $imapHost
+     * @param int|string $imapPort
+     * @param string    $imapUser
+     * @param string    $imapPassword
+     * @param bool|string|int $imapSsl
+     * @param \DateTime $startDate  Inclusive start (time will be set to 00:00:00 by caller)
+     * @param \DateTime $endDate    Inclusive end   (time will be set to 23:59:59 by caller)
+     * @return array{folders: int, messages: int, matched: int, updated: int, skipped: int, errors: string[]}
+     */
+    public function fillPayerNamesFromImap($imapHost, $imapPort, $imapUser, $imapPassword, $imapSsl, \DateTime $startDate, \DateTime $endDate)
+    {
+        if (!function_exists('imap_open')) {
+            throw new \RuntimeException('IMAP PHP extension is not available.');
+        }
+
+        $imapHost     = trim((string)$imapHost);
+        $imapPort     = (int)$imapPort;
+        $imapUser     = trim((string)$imapUser);
+        $imapPassword = trim((string)$imapPassword);
+        $imapSsl      = ($imapSsl === true || $imapSsl === '1' || $imapSsl === 1);
+
+        if ($imapHost === '' || $imapPort <= 0 || $imapUser === '' || $imapPassword === '') {
+            throw new \RuntimeException('PayPal IMAP settings are incomplete.');
+        }
+
+        $connPrefix = $this->buildImapConnectionPrefix($imapHost, $imapPort, $imapSsl);
+
+        // Open INBOX once to enumerate all accessible folders via imap_list
+        $enumBox = @imap_open($connPrefix . 'INBOX', $imapUser, $imapPassword, 0, 1);
+        if ($enumBox === false) {
+            $error = imap_last_error();
+            throw new \RuntimeException('IMAP connection failed: ' . ($error ?: 'unknown error'));
+        }
+
+        $folderMailboxes = [$connPrefix . 'INBOX'];
+        try {
+            $listed = @imap_list($enumBox, $connPrefix, '*');
+            if (is_array($listed)) {
+                foreach ($listed as $folder) {
+                    $folder = trim((string)$folder);
+                    if ($folder === '' || $folder === $connPrefix . 'INBOX') {
+                        continue;
+                    }
+                    $folderMailboxes[] = $folder;
+                }
+            }
+        } finally {
+            @imap_close($enumBox);
+        }
+
+        // IMAP SINCE is inclusive; BEFORE is exclusive → use day after endDate so
+        // the full selected end-day is included.
+        $sinceStr   = $startDate->format('d-M-Y');
+        $beforeDate = clone $endDate;
+        $beforeDate->modify('+1 day');
+        $beforeStr  = $beforeDate->format('d-M-Y');
+
+        $searchWithFrom  = 'FROM "service@paypal.de" SINCE "' . $sinceStr . '" BEFORE "' . $beforeStr . '"';
+        $searchDateOnly  = 'SINCE "' . $sinceStr . '" BEFORE "' . $beforeStr . '"';
+
+        $result = [
+            'folders'  => 0,
+            'messages' => 0,
+            'matched'  => 0,
+            'updated'  => 0,
+            'skipped'  => 0,
+            'errors'   => [],
+        ];
+
+        foreach ($folderMailboxes as $folderMailbox) {
+            $inbox = @imap_open($folderMailbox, $imapUser, $imapPassword, 0, 1);
+            if ($inbox === false) {
+                $result['errors'][] = 'Cannot open folder: ' . basename(str_replace('}', '} ', $folderMailbox))
+                    . ' – ' . (imap_last_error() ?: 'unknown');
+                continue;
+            }
+
+            $result['folders']++;
+
+            try {
+                $messages = @imap_search($inbox, $searchWithFrom);
+                if ($messages === false) {
+                    // Fallback: some servers reject combined FROM + date criteria
+                    $messages = @imap_search($inbox, $searchDateOnly);
+                }
+                if ($messages === false) {
+                    $messages = [];
+                }
+
+                foreach ($messages as $msgNo) {
+                    $result['messages']++;
+                    try {
+                        $msgData = $this->parseImapMessageData($inbox, $msgNo);
+
+                        if (!$this->isLikelyPaypalMessage($msgData['fromEmail'], $msgData['subject'], $msgData['plainBody'])) {
+                            $result['skipped']++;
+                            continue;
+                        }
+
+                        $transactionId = $this->findTransactionId($msgData['plainBody'], $msgData['subject']);
+                        if ($transactionId === '') {
+                            // No real transaction ID found → cannot safely match to an existing row
+                            $result['skipped']++;
+                            continue;
+                        }
+
+                        $payerName = $this->findPayerName($msgData['plainBody']);
+                        if ($payerName === null || trim((string)$payerName) === '') {
+                            $result['skipped']++;
+                            continue;
+                        }
+
+                        $result['matched']++;
+
+                        // Look up the existing row by transaction ID
+                        $existing = $this->dbAdapter->query(
+                            'SELECT id, payer_name FROM drinks_paypal WHERE paypal_transaction_id = ? LIMIT 1',
+                            [$transactionId]
+                        )->current();
+
+                        if (!$existing) {
+                            // Transaction not yet in DB – outside the scope of this action
+                            $result['skipped']++;
+                            continue;
+                        }
+
+                        $existingName = isset($existing['payer_name']) ? trim((string)$existing['payer_name']) : '';
+                        if ($existingName !== '') {
+                            // Name already present; nothing to do
+                            $result['skipped']++;
+                            continue;
+                        }
+
+                        $this->dbAdapter->query(
+                            'UPDATE drinks_paypal SET payer_name = ?, updated_at = NOW() WHERE id = ?',
+                            [trim((string)$payerName), (int)$existing['id']]
+                        );
+                        $result['updated']++;
+                    } catch (\Throwable $e) {
+                        $result['errors'][] = $e->getMessage();
+                    }
+                }
+            } finally {
+                @imap_close($inbox);
+            }
+        }
+
+        return $result;
     }
 }

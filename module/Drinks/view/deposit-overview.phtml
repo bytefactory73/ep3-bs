@@ -111,6 +111,9 @@ $this->setup([
         <button id="paypal-history-button" type="button" class="default-button" style="padding:8px 14px;">
             <?= $this->t('PayPal Historie importieren') ?>
         </button>
+        <button id="emails-import-button" type="button" class="default-button" style="padding:8px 14px;">
+            <?= $this->t('Emails importieren') ?>
+        </button>
         <span id="paypal-fetch-status" style="font-size:0.95em; color:#444;"></span>
     </div>
     <div style="font-size:0.9em; color:#666;">
@@ -148,10 +151,30 @@ $this->setup([
     </div>
 </div>
 
+<!-- Modal für E-Mail-Import Datumswahl -->
+<div id="emails-import-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); z-index:9999; justify-content:center; align-items:center;">
+    <div style="background:white; border-radius:8px; padding:24px; max-width:380px; box-shadow:0 4px 12px rgba(0,0,0,0.2);">
+        <h3 style="margin:0 0 16px 0; font-size:1.2em;"><?= $this->t('Emails importieren - Zeitraum') ?></h3>
+        <div style="margin-bottom:12px;">
+            <label style="display:block; font-weight:bold; margin-bottom:4px;">Von:</label>
+            <input id="emails-import-date-from" type="date" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
+        </div>
+        <div style="margin-bottom:16px;">
+            <label style="display:block; font-weight:bold; margin-bottom:4px;">Bis:</label>
+            <input id="emails-import-date-to" type="date" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
+        </div>
+        <div style="display:flex; gap:8px;">
+            <button id="emails-import-submit" type="button" class="default-button" style="flex:1; padding:10px; font-weight:bold;"><?= $this->t('Importieren') ?></button>
+            <button id="emails-import-cancel" type="button" class="default-button" style="flex:1; padding:10px;"><?= $this->t('Abbrechen') ?></button>
+        </div>
+    </div>
+</div>
+
 <script>
 (function(){
     var button = document.getElementById('paypal-fetch-button');
     var historyButton = document.getElementById('paypal-history-button');
+    var emailsImportButton = document.getElementById('emails-import-button');
     var status = document.getElementById('paypal-fetch-status');
 
     // Restore status message after page reload
@@ -166,7 +189,7 @@ $this->setup([
     })();
 
     function doPaypalPost(url, loadingText) {
-        [button, historyButton].forEach(function(b) { if (b) b.disabled = true; });
+        [button, historyButton, emailsImportButton].forEach(function(b) { if (b) b.disabled = true; });
         status.style.color = '#444';
         status.textContent = loadingText;
         var xhr = new XMLHttpRequest();
@@ -174,7 +197,7 @@ $this->setup([
         xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
         xhr.onreadystatechange = function() {
             if (xhr.readyState !== 4) return;
-            [button, historyButton].forEach(function(b) { if (b) b.disabled = false; });
+            [button, historyButton, emailsImportButton].forEach(function(b) { if (b) b.disabled = false; });
             try {
                 var data = JSON.parse(xhr.responseText);
                 if (xhr.status === 200 && data.success) {
@@ -228,6 +251,37 @@ $this->setup([
         });
         document.getElementById('paypal-history-modal').addEventListener('click', function(e) {
             if (e.target === this) document.getElementById('paypal-history-modal').style.display = 'none';
+        });
+    }
+
+    if (emailsImportButton) {
+        emailsImportButton.addEventListener('click', function() {
+            var today = new Date();
+            var thirtyDaysAgo = new Date(today);
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            document.getElementById('emails-import-date-from').value = thirtyDaysAgo.toISOString().split('T')[0];
+            document.getElementById('emails-import-date-to').value = today.toISOString().split('T')[0];
+            document.getElementById('emails-import-modal').style.display = 'flex';
+        });
+        document.getElementById('emails-import-cancel').addEventListener('click', function() {
+            document.getElementById('emails-import-modal').style.display = 'none';
+        });
+        document.getElementById('emails-import-submit').addEventListener('click', function() {
+            var fromDate = document.getElementById('emails-import-date-from').value;
+            var toDate = document.getElementById('emails-import-date-to').value;
+            if (!fromDate || !toDate) {
+                alert('<?= $this->t('Bitte Datum eingeben') ?>');
+                return;
+            }
+            if (fromDate > toDate) {
+                alert('<?= $this->t('Von-Datum muss vor Bis-Datum liegen') ?>');
+                return;
+            }
+            document.getElementById('emails-import-modal').style.display = 'none';
+            doPaypalPost('<?= $this->url('user/emails-import') ?>?from=' + encodeURIComponent(fromDate) + '&to=' + encodeURIComponent(toDate), '<?= $this->t('E-Mails werden durchsucht...') ?>');
+        });
+        document.getElementById('emails-import-modal').addEventListener('click', function(e) {
+            if (e.target === this) document.getElementById('emails-import-modal').style.display = 'none';
         });
     }
 

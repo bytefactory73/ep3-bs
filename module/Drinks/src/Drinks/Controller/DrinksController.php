@@ -699,23 +699,12 @@ class DrinksController extends AbstractActionController
         }
 
         $optionManager = $serviceManager->get('Base\Manager\OptionManager');
-        $loadOption = function($key) use ($optionManager) {
-            try {
-                $value = (string)$optionManager->get('paypal.' . $key, '');
-                if ($value === '' && strpos($key, '_') !== false) {
-                    $value = (string)$optionManager->get('paypal.' . str_replace('_', '.', $key), '');
-                }
-                return trim($value);
-            } catch (\RuntimeException $e) {
-                return '';
-            }
-        };
 
-        $imapHost = $loadOption('imap_host');
-        $imapPort = $loadOption('imap_port');
-        $imapUser = $loadOption('imap_user');
-        $imapPassword = $loadOption('imap_password');
-        $imapSsl = $loadOption('imap_ssl');
+        $imapHost     = $this->loadPaypalOption('imap_host', $optionManager);
+        $imapPort     = $this->loadPaypalOption('imap_port', $optionManager);
+        $imapUser     = $this->loadPaypalOption('imap_user', $optionManager);
+        $imapPassword = $this->loadPaypalOption('imap_password', $optionManager);
+        $imapSsl      = $this->loadPaypalOption('imap_ssl', $optionManager);
 
         if ($imapHost === '' || $imapPort === '' || $imapUser === '' || $imapPassword === '') {
             return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'PayPal IMAP settings are incomplete.']));
@@ -725,8 +714,8 @@ class DrinksController extends AbstractActionController
             $paypalManager = $serviceManager->get('Drinks\\Manager\\PaypalTransactionManager');
             $result = $paypalManager->importFromImap($imapHost, $imapPort, $imapUser, $imapPassword, $imapSsl === '1');
 
-            $clientId = $loadOption('paypal_client_id');
-            $clientSecret = $loadOption('paypal_client_secret');
+            $clientId     = $this->loadPaypalOption('paypal_client_id', $optionManager);
+            $clientSecret = $this->loadPaypalOption('paypal_client_secret', $optionManager);
             $syncResult = null;
             if ($clientId !== '' && $clientSecret !== '') {
                 $syncResult = $paypalManager->syncEmailReceivedTransactions($clientId, $clientSecret, 100);
@@ -787,38 +776,17 @@ class DrinksController extends AbstractActionController
             return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required']));
         }
 
-        // Get date range from query params
-        $fromDateStr = (string)$this->params()->fromQuery('from', '');
-        $toDateStr = (string)$this->params()->fromQuery('to', '');
-
-        if ($fromDateStr === '' || $toDateStr === '') {
-            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'from and to dates required']));
-        }
-
         try {
-            $startDate = new \DateTime($fromDateStr, new \DateTimeZone('UTC'));
-            $startDate->setTime(0, 0, 0);
-            $endDate = new \DateTime($toDateStr, new \DateTimeZone('UTC'));
-            $endDate->setTime(23, 59, 59);
-        } catch (\Exception $e) {
-            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Invalid date format']));
+            $dates = $this->parseDateRangeFromQuery();
+        } catch (\InvalidArgumentException $e) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => $e->getMessage()]));
         }
+        $startDate = $dates['start'];
+        $endDate   = $dates['end'];
 
         $optionManager = $serviceManager->get('Base\Manager\OptionManager');
-        $loadOption = function($key) use ($optionManager) {
-            try {
-                $value = (string)$optionManager->get('paypal.' . $key, '');
-                if ($value === '' && strpos($key, '_') !== false) {
-                    $value = (string)$optionManager->get('paypal.' . str_replace('_', '.', $key), '');
-                }
-                return trim($value);
-            } catch (\RuntimeException $e) {
-                return '';
-            }
-        };
-
-        $clientId = $loadOption('paypal_client_id');
-        $clientSecret = $loadOption('paypal_client_secret');
+        $clientId     = $this->loadPaypalOption('paypal_client_id', $optionManager);
+        $clientSecret = $this->loadPaypalOption('paypal_client_secret', $optionManager);
         if ($clientId === '' || $clientSecret === '') {
             return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'PayPal API-Credentials nicht konfiguriert.']));
         }
@@ -3392,6 +3360,129 @@ class DrinksController extends AbstractActionController
         }
 
         return $lastInsertId;
+    }
+
+    // -------------------------------------------------------------------------
+    // PayPal helper methods shared across multiple actions
+    // -------------------------------------------------------------------------
+
+    /**
+     * Load a PayPal option from the OptionManager.
+     * Falls back to dot-notation key if the underscore-notation key returns empty.
+     *
+     * @param string $key            e.g. 'imap_host'
+     * @param object $optionManager  Base\Manager\OptionManager instance
+     * @return string
+     */
+    private function loadPaypalOption($key, $optionManager)
+    {
+        try {
+            $value = (string)$optionManager->get('paypal.' . $key, '');
+            if ($value === '' && strpos($key, '_') !== false) {
+                $value = (string)$optionManager->get('paypal.' . str_replace('_', '.', $key), '');
+            }
+            return trim($value);
+        } catch (\RuntimeException $e) {
+            return '';
+        }
+    }
+
+    /**
+     * Parse and validate 'from' and 'to' date query parameters.
+     *
+     * @return array{start: \DateTime, end: \DateTime}
+     * @throws \InvalidArgumentException on missing or malformed dates
+     */
+    private function parseDateRangeFromQuery()
+    {
+        $fromDateStr = (string)$this->params()->fromQuery('from', '');
+        $toDateStr   = (string)$this->params()->fromQuery('to', '');
+
+        if ($fromDateStr === '' || $toDateStr === '') {
+            throw new \InvalidArgumentException('from and to dates required');
+        }
+
+        try {
+            $startDate = new \DateTime($fromDateStr, new \DateTimeZone('UTC'));
+            $startDate->setTime(0, 0, 0);
+            $endDate = new \DateTime($toDateStr, new \DateTimeZone('UTC'));
+            $endDate->setTime(23, 59, 59);
+        } catch (\Exception $e) {
+            throw new \InvalidArgumentException('Invalid date format');
+        }
+
+        return ['start' => $startDate, 'end' => $endDate];
+    }
+
+    /**
+     * Thekenadmin: Scan all IMAP folders for PayPal Guthaben emails in the
+     * selected date range and fill payer_name in existing drinks_paypal rows
+     * where it is still empty.
+     *
+     * No new records, deposits, or user assignments are created.
+     * No PayPal API calls are made.
+     */
+    public function triggerEmailsImportAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $check = $this->checkThekenadminAccess();
+        if ($check !== true) {
+            return $check;
+        }
+
+        $serviceManager = @$this->getServiceLocator();
+
+        $request = $this->getRequest();
+        if (!$request->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required']));
+        }
+
+        try {
+            $dates = $this->parseDateRangeFromQuery();
+        } catch (\InvalidArgumentException $e) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => $e->getMessage()]));
+        }
+        $startDate = $dates['start'];
+        $endDate   = $dates['end'];
+
+        $optionManager = $serviceManager->get('Base\Manager\OptionManager');
+        $imapHost     = $this->loadPaypalOption('imap_host', $optionManager);
+        $imapPort     = $this->loadPaypalOption('imap_port', $optionManager);
+        $imapUser     = $this->loadPaypalOption('imap_user', $optionManager);
+        $imapPassword = $this->loadPaypalOption('imap_password', $optionManager);
+        $imapSsl      = $this->loadPaypalOption('imap_ssl', $optionManager);
+
+        if ($imapHost === '' || $imapPort === '' || $imapUser === '' || $imapPassword === '') {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'PayPal IMAP settings are incomplete.']));
+        }
+
+        try {
+            $paypalManager = $serviceManager->get('Drinks\\Manager\\PaypalTransactionManager');
+            $result = $paypalManager->fillPayerNamesFromImap(
+                $imapHost, $imapPort, $imapUser, $imapPassword, $imapSsl === '1',
+                $startDate, $endDate
+            );
+
+            $message = sprintf(
+                'E-Mail-Import abgeschlossen. %d Ordner durchsucht, %d Nachrichten gefunden, %d Treffer. %d Namen ergänzt, %d übersprungen.',
+                $result['folders'],
+                $result['messages'],
+                $result['matched'],
+                $result['updated'],
+                $result['skipped']
+            );
+            if (!empty($result['errors'])) {
+                $message .= ' Fehler: ' . implode(' | ', array_slice($result['errors'], 0, 3));
+            }
+
+            return $this->getResponse()->setContent(json_encode([
+                'success' => true,
+                'message' => $message,
+                'result'  => $result,
+            ]));
+        } catch (\Throwable $e) {
+            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => $e->getMessage()]));
+        }
     }
 
     /**

@@ -605,6 +605,16 @@ return array(
                             ),
                         ),
                     ),
+                    'emails-import' => array(
+                        'type' => 'Literal',
+                        'options' => array(
+                            'route' => '/emails-import',
+                            'defaults' => array(
+                                'controller' => 'Drinks\Controller\Drinks',
+                                'action' => 'triggerEmailsImport',
+                            ),
+                        ),
+                    ),
                     'create-deposit-from-paypal' => array(
                         'type' => 'Literal',
                         'options' => array(
