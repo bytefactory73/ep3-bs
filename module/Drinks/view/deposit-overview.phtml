@@ -34,6 +34,15 @@ $this->setup([
         vertical-align: top;
     }
 
+    .deposit-overview-table tbody td {
+        height: 20px;
+    }
+
+    .deposit-overview-table .paypal-badge {
+        vertical-align: top;
+        line-height: 1;
+    }
+
     .deposit-overview-table td:first-child {
         white-space: nowrap;
     }
@@ -381,19 +390,6 @@ $this->setup([
                         <?php endif; ?>
                         <?php $displayComment = preg_replace('/^paypal[\s\-]*/i', '', $deposit['comment']); ?>
                         <?= $displayComment !== '' ? $this->escapeHtml($displayComment) : '&ndash;' ?>
-                        <?php if (!empty($deposit['is_paypal_transaction']) && empty($deposit['linked_user_id']) && !empty($deposit['paypal_match_candidates'])): ?>
-                            <?php foreach ($deposit['paypal_match_candidates'] as $matchCandidate): ?>
-                                <button
-                                    type="button"
-                                    class="paypal-credit-badge"
-                                    data-paypal-id="<?= $this->escapeHtmlAttr($deposit['id']) ?>"
-                                    data-paypal-email="<?= $this->escapeHtmlAttr($deposit['payer_email'] ?? '') ?>"
-                                    data-user-id="<?= $this->escapeHtmlAttr($matchCandidate['uid']) ?>"
-                                    data-user-name="<?= $this->escapeHtmlAttr($matchCandidate['name']) ?>"
-                                    style="display:inline-block; margin:0 4px 3px 0; padding:3px 7px; border:1px solid #1976d2; border-radius:10px; background:#e8f2fb; color:#1769aa; font-weight:bold; cursor:pointer;"
-                                >💸 <?= $this->escapeHtml($matchCandidate['name']) ?></button>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
                         <?php if (!empty($deposit['is_paypal_transaction']) && !empty($deposit['user_id']) && (!isset($deposit['paypal_state']) || !in_array($deposit['paypal_state'], ['ignored', 'emailreceived'], true))): ?>
                             <button type="button" class="mini-button deposit-anlegen-btn" data-paypal-id="<?= $this->escapeHtmlAttr($deposit['id']) ?>" data-user-id="<?= $this->escapeHtmlAttr($deposit['user_id']) ?>" style="padding:4px 10px; font-size:0.85rem; margin-left:12px;"><?= $this->t('Deposit anlegen') ?></button>
                         <?php endif; ?>
@@ -566,12 +562,9 @@ $this->setup([
         currentPreferredIds = [];
     }
 
-    function creditPaypal(paypalId, userId, trigger) {
+    function createDepositFromPaypal(paypalId, userId, trigger) {
         if (!paypalId || !userId) return;
-        var userName = trigger.getAttribute('data-user-name') || trigger.textContent.trim();
-        var payerEmail = trigger.getAttribute('data-paypal-email') || '';
-        var question = 'Die Einzahlung von ' + payerEmail + ' für ' + userName + ' gutschreiben?';
-        if (!window.confirm(question)) return;
+        if (!window.confirm('Einzahlung aus dieser PayPal-Transaktion anlegen?')) return;
         trigger.disabled = true;
         trigger.style.opacity = '0.6';
         var xhr = new XMLHttpRequest();
@@ -600,12 +593,6 @@ $this->setup([
     document.getElementById('paypal-reassign-close-x').addEventListener('click', closeModal);
     document.getElementById('paypal-reassign-cancel').addEventListener('click', closeModal);
     modal.addEventListener('mousedown', function(e) { if (e.target === modal) closeModal(); });
-
-    document.addEventListener('click', function(e) {
-        var badge = e.target.closest ? e.target.closest('.paypal-credit-badge') : null;
-        if (!badge) return;
-        creditPaypal(badge.getAttribute('data-paypal-id'), badge.getAttribute('data-user-id'), badge);
-    });
 
     // Ignore PayPal button
     document.addEventListener('click', function(e) {
@@ -640,7 +627,7 @@ $this->setup([
     document.addEventListener('click', function(e) {
         var btn = e.target.closest ? e.target.closest('.deposit-anlegen-btn') : null;
         if (!btn) return;
-        creditPaypal(btn.getAttribute('data-paypal-id'), btn.getAttribute('data-user-id'), btn);
+        createDepositFromPaypal(btn.getAttribute('data-paypal-id'), btn.getAttribute('data-user-id'), btn);
     });
 })();
 </script>
