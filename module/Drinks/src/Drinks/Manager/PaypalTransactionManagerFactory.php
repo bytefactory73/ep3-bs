@@ -10,6 +10,8 @@ class PaypalTransactionManagerFactory implements FactoryInterface
     public function createService(ServiceLocatorInterface $serviceLocator)
     {
         $dbAdapter = $serviceLocator->get('Zend\Db\Adapter\Adapter');
-        return new PaypalTransactionManager($dbAdapter);
+        $userManager = $serviceLocator->get('User\Manager\UserManager');
+        $mailService = $serviceLocator->get('User\Service\MailService');
+        return new PaypalTransactionManager($dbAdapter, $userManager, $mailService);
     }
 }

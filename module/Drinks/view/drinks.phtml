@@ -91,6 +91,29 @@ if ($__partyModeEnabled) {
                 </div>
             <?php endif; ?>
         </div>
+        <?php if (!empty($this->pendingPaypalDeposits)): ?>
+            <div style="margin:0 16px 8px; padding:7px 10px; border:1px solid #f0c36d; border-radius:6px; background:#fff8e6; color:#72500b; font-size:0.9em; font-weight:normal;">
+                <?php foreach ($this->pendingPaypalDeposits as $pendingPaypal): ?>
+                    <div>
+                        <?= $this->escapeHtml(number_format((float)$pendingPaypal['amount'], 2, ',', '.') . ' €') ?>
+                        <?= $this->t('vorgemerkt') ?>
+                        <?php if (!empty($pendingPaypal['received_at']) || !empty($pendingPaypal['payer_name'])): ?>
+                            <span style="font-weight:normal;">(
+                                <?php if (!empty($pendingPaypal['received_at'])): ?>
+                                    <?= $this->escapeHtml(date('d.m.Y H:i', strtotime($pendingPaypal['received_at']))) ?> Uhr
+                                <?php endif; ?>
+                                <?php if (!empty($pendingPaypal['payer_name'])): ?>
+                                    <?= !empty($pendingPaypal['received_at']) ? ' ' : '' ?>PayPal: <?= $this->escapeHtml($pendingPaypal['payer_name']) ?>
+                                <?php endif; ?>
+                            )</span>
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+                <div style="font-size:0.9em; font-weight:normal; margin-top:2px;">
+                    <?= $this->t('Wird nach der Verbuchung durch PayPal gutgeschrieben (in der Regel innerhalb von 1-4 Stunden).') ?>
+                </div>
+            </div>
+        <?php endif; ?>
         <?php if (isset($drinks) && $drinksEnabled): ?>
             <div style="margin-left:16px; margin-right:16px; margin-bottom: 8px; width: 100%-32px; min-height: 24px; display: flex; align-items: center;">
                 <!-- Placeholder for line 2 (e.g., navigation, info, etc.) -->

@@ -1520,16 +1520,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     balanceBox.style.display = '';
                     balanceBox.textContent = '<?= $this->t('Aktueller Kontostand:') ?> ' + formatCurrency(data.balance);
                 }
+                function escapeHtml(value) {
+                    return String(value == null ? '' : value)
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
                 function renderHistory(history, showStorno) {
-                    function escapeHtml(value) {
-                        return String(value == null ? '' : value)
-                            .replace(/&/g, '&amp;')
-                            .replace(/</g, '&lt;')
-                            .replace(/>/g, '&gt;')
-                            .replace(/"/g, '&quot;')
-                            .replace(/'/g, '&#39;');
-                    }
-
                     function hashLabelColor(label) {
                         var s = String(label || '');
                         var hash = 2166136261;
@@ -1711,6 +1710,34 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     return html;
                 }
+                function renderPendingPaypalDeposits(pendingDeposits) {
+                    if (!Array.isArray(pendingDeposits) || pendingDeposits.length === 0) {
+                        return '';
+                    }
+                    var html = '<div style="margin:14px 0 18px; padding:10px 12px; border:1px solid #f0c36d; border-radius:6px; background:#fff8e6; color:#72500b;">';
+                    html += '<h3 style="margin:0 0 6px; color:#72500b;">Vorgemerkte PayPal-Einzahlungen</h3>';
+                    pendingDeposits.forEach(function(pendingDeposit) {
+                        var amount = parseFloat(pendingDeposit.amount);
+                        var receivedAt = pendingDeposit.received_at ? String(pendingDeposit.received_at) : '';
+                        var receivedAtLabel = receivedAt ? receivedAt.replace(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}:\d{2}).*$/, '$3.$2.$1 $4 Uhr') : '';
+                        html += '<div style="font-weight:bold;">' + formatCurrency(isNaN(amount) ? 0 : amount) + ' vorgemerkt';
+                        if (receivedAtLabel) {
+                            html += ' <span style="font-weight:normal;">(' + escapeHtml(receivedAtLabel);
+                        }
+                        if (pendingDeposit.payer_name) {
+                            html += (receivedAtLabel ? ' ' : ' <span style="font-weight:normal;">(') + 'PayPal: ' + escapeHtml(pendingDeposit.payer_name) + ')';
+                        } else if (receivedAtLabel) {
+                            html += ')';
+                        }
+                        if (receivedAtLabel || pendingDeposit.payer_name) {
+                            html += '</span>';
+                        }
+                        html += '</div>';
+                    });
+                    html += '<div style="margin-top:4px; font-size:0.9em;">Wird nach der Verbuchung durch PayPal gutgeschrieben (in der Regel innerhalb von 1-4 Stunden).</div>';
+                    html += '</div>';
+                    return html;
+                }
                 if (Array.isArray(data.history)) {
                     var history = data.history;
                     function attachStornoHandler() {
@@ -1726,7 +1753,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             });
                         }
                     }
-                    historySection.innerHTML = renderHistory(history, showStorno);
+                    historySection.innerHTML = renderPendingPaypalDeposits(data.pending_paypal_deposits) + renderHistory(history, showStorno);
                     attachStornoHandler();
                     attachEntryCancelHandlers();
                         attachHistoryTeamEventBadgeHandlers();

@@ -218,6 +218,15 @@ class DrinksController extends AbstractActionController
             // Leave default
         }
 
+        $pendingPaypalDeposits = [];
+        try {
+            $pendingPaypalDeposits = $serviceManager
+                ->get('Drinks\\Manager\\PaypalTransactionManager')
+                ->getPendingByUser($userId);
+        } catch (\Throwable $e) {
+            // Leave pending payments empty if PayPal data is unavailable.
+        }
+
         // Check keepLoggedIn setting
         $keepLoggedInActive = false;
         try {
@@ -255,6 +264,7 @@ class DrinksController extends AbstractActionController
             'currentSpieltag' => $currentSpieltag,
             'availableSpieltage' => $availableSpieltage,
             'currentBalance' => $currentBalance,
+            'pendingPaypalDeposits' => $pendingPaypalDeposits,
             'keepLoggedInActive' => $keepLoggedInActive,
             'partyModeEnabled' => $partyModeEnabled,
         ]);
@@ -1141,6 +1151,14 @@ class DrinksController extends AbstractActionController
         $showStorno = $this->params()->fromQuery('showStorno') === '1';
         $orders = iterator_to_array($drinkOrderManager->getByUser($uid, $showStorno));
         $deposits = iterator_to_array($drinkDepositManager->getByUser($uid, $showStorno));
+        $pendingPaypalDeposits = [];
+        try {
+            $pendingPaypalDeposits = $serviceManager
+                ->get('Drinks\\Manager\\PaypalTransactionManager')
+                ->getPendingByUser($uid);
+        } catch (\Throwable $e) {
+            // Keep the regular deposit history available if PayPal data is unavailable.
+        }
 
         // Resolve referenced team event labels for all users (team + individual users).
         // Individual users can have entries assigned to team events and should see the same badges.
@@ -1274,6 +1292,7 @@ class DrinksController extends AbstractActionController
         return $this->getResponse()->setContent(json_encode([
             'balance' => $userBalance,
             'history' => $userHistory,
+            'pending_paypal_deposits' => $pendingPaypalDeposits,
             'drinks_enabled' => $drinksEnabled,
             'drinks_alias' => $drinksAlias,
             'is_team' => $isTeam,

@@ -12,9 +12,17 @@ class PaypalTransactionManager
     /** @var bool */
     private $connectionUtf8mb4Initialized = false;
 
-    public function __construct(AdapterInterface $dbAdapter)
+    /** @var object|null */
+    private $userManager;
+
+    /** @var object|null */
+    private $mailService;
+
+    public function __construct(AdapterInterface $dbAdapter, $userManager = null, $mailService = null)
     {
         $this->dbAdapter = $dbAdapter;
+        $this->userManager = $userManager;
+        $this->mailService = $mailService;
         $this->ensureUtf8mb4Connection();
     }
 
@@ -68,6 +76,29 @@ class PaypalTransactionManager
         }
 
         return $rows;
+    }
+
+    /**
+     * Return PayPal payments assigned to a user but not yet credited as deposits.
+     *
+     * @param int $userId
+     * @return array
+     */
+    public function getPendingByUser($userId)
+    {
+        $userId = (int)$userId;
+        if ($userId <= 0) {
+            return [];
+        }
+
+        try {
+            return $this->dbAdapter->query(
+                'SELECT * FROM drinks_paypal WHERE linked_user_id = ? AND linked_deposit_id IS NULL AND state != ? ORDER BY received_at DESC',
+                [$userId, 'ignored']
+            )->toArray();
+        } catch (\Throwable $e) {
+            return [];
+        }
     }
 
     /**
@@ -479,6 +510,59 @@ class PaypalTransactionManager
         $mailService->sendFromTheke($recipient, $subject, $body, ['isHtml' => true]);
     }
 
+    private function resolveTemporaryUserForPayerName($payerName)
+    {
+        $payerName = strtolower(trim((string)$payerName));
+        if ($payerName === '') {
+            return null;
+        }
+
+        try {
+            $historicalRows = $this->dbAdapter->query(
+                'SELECT DISTINCT linked_user_id FROM drinks_paypal WHERE LOWER(TRIM(payer_name)) = ? AND linked_user_id IS NOT NULL',
+                [$payerName]
+            )->toArray();
+            $historicalUserIds = array_values(array_unique(array_map('intval', array_column($historicalRows, 'linked_user_id'))));
+            if (count($historicalUserIds) === 1) {
+                return $historicalUserIds[0];
+            }
+            if (count($historicalUserIds) > 1) {
+                return null;
+            }
+
+            $userRows = $this->dbAdapter->query(
+                'SELECT uid FROM bs_users WHERE LOWER(TRIM(alias)) = ? AND status IN ("enabled", "admin", "assist")',
+                [$payerName]
+            )->toArray();
+            $userIds = array_values(array_unique(array_map('intval', array_column($userRows, 'uid'))));
+            return count($userIds) === 1 ? $userIds[0] : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    private function sendPendingDepositNotification($userId, $amount)
+    {
+        if (!$this->userManager || !$this->mailService) {
+            return;
+        }
+
+        try {
+            $recipient = $this->userManager->get($userId, false);
+            if (!$recipient || trim((string)$recipient->get('email')) === '') {
+                return;
+            }
+            $subject = 'PayPal-Einzahlung vorgemerkt';
+            $formattedAmount = number_format((float)$amount, 2, ',', '.') . ' €';
+            $body = '<p>Gutschrift in Höhe von ' . htmlspecialchars($formattedAmount) . ' wurde vorgemerkt.</p>' .
+                '<p>Sobald PayPal sie verbucht hat, wird sie deinem Konto gutgeschrieben (in der Regel innerhalb von 1-4 Stunden).</p>' .
+                '<p>Viele Grüße<br>Dein Theken-Team</p>';
+            $this->mailService->sendFromTheke($recipient, $subject, $body, ['isHtml' => true]);
+        } catch (\Throwable $e) {
+            // A notification failure must not reject the imported PayPal transaction.
+        }
+    }
+
     /**
      * Resolve a unique user ID for a given payer email.
      * Returns the user ID if exactly one user can be determined, or null.
@@ -660,9 +744,10 @@ class PaypalTransactionManager
                         'body' => $plainBody,
                     ];
 
+                    $temporaryUserId = $this->resolveTemporaryUserForPayerName($payerName);
                     $sql = 'INSERT INTO drinks_paypal
-                        (paypal_transaction_id, state, account_id, payer_name, payer_email, amount, transaction_status, transaction_note, transaction_json, source_mail_id, received_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+                        (paypal_transaction_id, state, account_id, payer_name, payer_email, amount, transaction_status, transaction_note, transaction_json, source_mail_id, received_at, linked_user_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
                     $params = [
                         $transactionId,
                         'emailreceived',
@@ -675,9 +760,13 @@ class PaypalTransactionManager
                         json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                         $sourceMailId,
                         $receivedAt,
+                        $temporaryUserId,
                     ];
                     $statement = $this->dbAdapter->createStatement($sql, $params);
                     $statement->execute();
+                    if ($temporaryUserId !== null) {
+                        $this->sendPendingDepositNotification($temporaryUserId, $amount);
+                    }
                     @imap_setflag_full($inbox, $msgNo, '\\Seen');
                     $result['imported']++;
                 } catch (\Throwable $e) {
@@ -883,7 +972,7 @@ class PaypalTransactionManager
             }
         }
 
-        $sql = 'UPDATE drinks_paypal SET state = ?, account_id = ?, payer_name = ?, payer_email = ?, amount = ?, transaction_status = ?, transaction_note = ?, transaction_json = ?, processed_at = NOW()';
+        $sql = 'UPDATE drinks_paypal SET state = ?, account_id = ?, payer_name = ?, payer_email = ?, amount = ?, transaction_status = ?, transaction_note = ?, transaction_json = ?, linked_user_id = NULL, processed_at = NOW()';
         if ($receivedAt !== null) {
             $sql .= ', received_at = ?';
         }

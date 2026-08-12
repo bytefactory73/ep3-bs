@@ -322,6 +322,9 @@ $this->setup([
                             ]))) ?>"
                             style="display:inline-flex; align-items:center; gap:4px; margin-right:2px; padding:2px 6px; background:<?= $badgeStyle ?>; border-radius:6px; font-size:0.75rem; cursor:pointer; user-select:none;"
                         >PayPal</span>
+                        <?php if (!empty($deposit['is_paypal_transaction']) && !empty($deposit['linked_user_id']) && (!isset($deposit['paypal_state']) || $deposit['paypal_state'] !== 'ignored')): ?>
+                            <span style="display:inline-block; margin-right:6px; padding:2px 6px; background:#fff3cd; color:#856404; border:1px solid #ffe08a; border-radius:6px; font-size:0.75rem; font-weight:bold;">vorgemerkt</span>
+                        <?php endif; ?>
                         <?= $deposit['comment'] !== '' ? $this->escapeHtml($deposit['comment']) : '&ndash;' ?>
                         <?php if (!empty($deposit['is_paypal_transaction']) && empty($deposit['linked_user_id']) && !empty($deposit['paypal_match_candidates'])): ?>
                             <?php foreach ($deposit['paypal_match_candidates'] as $matchCandidate): ?>
@@ -336,7 +339,7 @@ $this->setup([
                                 >💸 <?= $this->escapeHtml($matchCandidate['name']) ?></button>
                             <?php endforeach; ?>
                         <?php endif; ?>
-                        <?php if (!empty($deposit['is_paypal_transaction']) && !empty($deposit['user_id']) && (!isset($deposit['paypal_state']) || $deposit['paypal_state'] !== 'ignored')): ?>
+                        <?php if (!empty($deposit['is_paypal_transaction']) && !empty($deposit['user_id']) && (!isset($deposit['paypal_state']) || !in_array($deposit['paypal_state'], ['ignored', 'emailreceived'], true))): ?>
                             <button type="button" class="mini-button deposit-anlegen-btn" data-paypal-id="<?= $this->escapeHtmlAttr($deposit['id']) ?>" data-user-id="<?= $this->escapeHtmlAttr($deposit['user_id']) ?>" style="padding:4px 10px; font-size:0.85rem; margin-left:12px;"><?= $this->t('Deposit anlegen') ?></button>
                         <?php endif; ?>
                         <?php if (!empty($deposit['is_paypal_transaction']) && isset($deposit['paypal_state']) && $deposit['paypal_state'] === 'apifoundsynced'): ?>
