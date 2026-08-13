@@ -2743,6 +2743,47 @@ class DrinksController extends AbstractActionController
         }
 
         $showTransfers = $this->params()->fromQuery('showTransfers', '0') === '1';
+        $quickRange = trim((string)$this->params()->fromQuery('quick', ''));
+        $fromFilterRaw = trim((string)$this->params()->fromQuery('from', ''));
+        $toFilterRaw = trim((string)$this->params()->fromQuery('to', ''));
+        $fromFilter = null;
+        $toFilter = null;
+
+        if ($quickRange === '' && $fromFilterRaw === '' && $toFilterRaw === '') {
+            $quickRange = 'l31d';
+            $toFilter = new \DateTime();
+            $fromFilter = clone $toFilter;
+            $fromFilter->modify('-30 days');
+            $fromFilterRaw = $fromFilter->format('Y-m-d');
+            $toFilterRaw = $toFilter->format('Y-m-d');
+        }
+
+        if ($fromFilter === null && $fromFilterRaw !== '') {
+            try {
+                $fromFilter = new \DateTime($fromFilterRaw);
+                if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $fromFilterRaw)) {
+                    $fromFilter->setTime(0, 0, 0);
+                }
+            } catch (\Throwable $e) {
+                $fromFilter = null;
+            }
+        }
+
+        if ($toFilter === null && $toFilterRaw !== '') {
+            try {
+                $toFilter = new \DateTime($toFilterRaw);
+                if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $toFilterRaw)) {
+                    $toFilter->setTime(23, 59, 59);
+                }
+            } catch (\Throwable $e) {
+                $toFilter = null;
+            }
+        }
+
+        $fromFilterSql = $fromFilter ? $fromFilter->format('Y-m-d H:i:s') : '';
+        $toFilterSql = $toFilter ? $toFilter->format('Y-m-d H:i:s') : '';
+        $fromFilterTs = $fromFilter ? $fromFilter->getTimestamp() : null;
+        $toFilterTs = $toFilter ? $toFilter->getTimestamp() : null;
         $paypalLastSyncAt = '';
         try {
             $optionManager = $serviceManager->get('Base\\Manager\\OptionManager');
@@ -2773,6 +2814,14 @@ class DrinksController extends AbstractActionController
         $depositParams = [];
         if (!$showTransfers && $hasTransferReference) {
             $depositSql .= ' AND (transfer_reference IS NULL OR transfer_reference = "")';
+        }
+        if ($fromFilterSql !== '') {
+            $depositSql .= ' AND deposit_time >= ?';
+            $depositParams[] = $fromFilterSql;
+        }
+        if ($toFilterSql !== '') {
+            $depositSql .= ' AND deposit_time <= ?';
+            $depositParams[] = $toFilterSql;
         }
         $depositSql .= ' ORDER BY deposit_time ASC';
 
@@ -2931,6 +2980,15 @@ class DrinksController extends AbstractActionController
                     $name = 'PayPal (unlinked)';
                 }
                 $date = isset($p['received_at']) && $p['received_at'] ? $p['received_at'] : (isset($p['created_at']) ? $p['created_at'] : date('Y-m-d H:i:s'));
+                $paypalTs = strtotime($date);
+                if ($paypalTs !== false) {
+                    if ($fromFilterTs !== null && $paypalTs < $fromFilterTs) {
+                        continue;
+                    }
+                    if ($toFilterTs !== null && $paypalTs > $toFilterTs) {
+                        continue;
+                    }
+                }
                 $payerName = isset($p['payer_name']) ? trim((string)$p['payer_name']) : '';
                 $transactionNote = trim((string)($p['transaction_note'] ?? ''));
                 $commentParts = [];
@@ -2973,6 +3031,9 @@ class DrinksController extends AbstractActionController
         $viewModel = new ViewModel([
             'deposits' => $depositEntries,
             'showTransfers' => $showTransfers,
+            'quickRange' => $quickRange,
+            'fromFilterValue' => $fromFilter ? $fromFilter->format('Y-m-d') : '',
+            'toFilterValue' => $toFilter ? $toFilter->format('Y-m-d') : '',
             'allUsers' => $userMap,
             'paypalLastSyncLabel' => $paypalLastSyncLabel,
         ]);

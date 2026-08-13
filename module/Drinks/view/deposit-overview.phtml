@@ -1,5 +1,6 @@
 <?php
 // Admin-only: Einzahlungsübersicht
+$showAdminActions = array_key_exists('admin', $_GET);
 $this->setup([
     'title' => 'Einzahlungsübersicht',
     'panel' => 'centered-panel',
@@ -10,9 +11,15 @@ $this->setup([
 ]);
 ?>
 
-<h1><?= $this->t('Einzahlungsübersicht') ?></h1>
+<h1>
+    <?= $this->t('Einzahlungsübersicht') ?>
+    <span style="font-size:11px; color:#666; font-weight:normal;">
+        <?= $this->t('Letzter Sync:') ?>
+        <?= !empty($this->paypalLastSyncLabel) ? $this->escapeHtml($this->paypalLastSyncLabel) : $this->t('noch nie') ?>
+    </span>
+</h1>
 <div class="separator-small"></div>
-<p><?= $this->t('Hier sehen Sie alle Einzahlungen der Mitglieder, sortiert nach Datum absteigend.') ?></p>
+<p><?= $this->t('Hier sehen Sie alle Einzahlungen der Mitglieder, sortiert nach Datum absteigend. (?admin, um erweiterte Funktionen zu erlauben)') ?></p>
 
 <style>
     .deposit-overview-table-scroll {
@@ -113,23 +120,47 @@ $this->setup([
 </style>
 
 <div style="margin-bottom:18px; display:flex; flex-direction:column; gap:10px;">
-    <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center;">
-        <button id="paypal-fetch-button" type="button" class="default-button" style="padding:8px 14px; font-weight:bold;">
-            <?= $this->t('PayPal abrufen') ?>
-        </button>
-        <button id="paypal-history-button" type="button" class="default-button" style="padding:8px 14px;">
-            <?= $this->t('PayPal Historie importieren') ?>
-        </button>
-        <button id="emails-import-button" type="button" class="default-button" style="padding:8px 14px;">
-            <?= $this->t('Emails importieren') ?>
-        </button>
-        <span id="paypal-fetch-status" style="font-size:0.95em; color:#444;"></span>
-    </div>
-    <div style="font-size:0.9em; color:#666;">
-        <?= $this->t('Letzter Sync:') ?>
-        <?= !empty($this->paypalLastSyncLabel) ? $this->escapeHtml($this->paypalLastSyncLabel) : $this->t('noch nie') ?>
-    </div>
-    <form method="get" style="display:flex; flex-wrap:wrap; gap:16px; align-items:center;">
+    <?php if ($showAdminActions): ?>
+        <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center;">
+            <button id="paypal-fetch-button" type="button" class="default-button" style="padding:8px 14px; font-weight:bold;">
+                <?= $this->t('PayPal abrufen') ?>
+            </button>
+            <button id="paypal-history-button" type="button" class="default-button" style="padding:8px 14px;">
+                <?= $this->t('PayPal Historie importieren') ?>
+            </button>
+            <button id="emails-import-button" type="button" class="default-button" style="padding:8px 14px;">
+                <?= $this->t('Emails importieren') ?>
+            </button>
+            <span id="paypal-fetch-status" style="font-size:0.95em; color:#444;"></span>
+        </div>
+    <?php endif; ?>
+    <form id="deposit-overview-filter-form" method="get" style="display:flex; flex-wrap:wrap; gap:16px; align-items:center;">
+        <?php if ($showAdminActions): ?>
+            <input type="hidden" name="admin" value="1">
+        <?php endif; ?>
+        <label style="font-weight:normal; display:inline-flex; align-items:center; gap:8px;">
+            <span style="font-weight:bold;"><?= $this->t('Zeitraum:') ?></span>
+            <select id="deposit-quick-range" name="quick" style="padding:3px 6px;">
+                <option value=""><?= $this->t('Auswählen') ?></option>
+                <option value="l14d"<?= ($this->quickRange === 'l14d' ? ' selected' : '') ?>><?= $this->t('Last 14 days') ?></option>
+                <option value="l31d"<?= ($this->quickRange === 'l31d' ? ' selected' : '') ?>><?= $this->t('Last 31 days') ?></option>
+                <option value="cw"<?= ($this->quickRange === 'cw' ? ' selected' : '') ?>><?= $this->t('Aktuelle Woche') ?></option>
+                <option value="lw"<?= ($this->quickRange === 'lw' ? ' selected' : '') ?>><?= $this->t('Letzte Woche') ?></option>
+                <option value="cm"<?= ($this->quickRange === 'cm' ? ' selected' : '') ?>><?= $this->t('Aktueller Monat') ?></option>
+                <option value="lm"<?= ($this->quickRange === 'lm' ? ' selected' : '') ?>><?= $this->t('Letzter Monat') ?></option>
+                <option value="cy"<?= ($this->quickRange === 'cy' ? ' selected' : '') ?>><?= $this->t('Dieses Jahr') ?></option>
+                <option value="ly"<?= ($this->quickRange === 'ly' ? ' selected' : '') ?>><?= $this->t('Letztes Jahr') ?></option>
+            </select>
+            <button id="deposit-range-back" type="button" class="default-button" style="padding:3px 10px; line-height:1;">&lt;&lt;</button>
+            <button id="deposit-range-forward" type="button" class="default-button" style="padding:3px 10px; line-height:1;">&gt;&gt;</button>
+        </label>
+        <label style="font-weight:normal; display:inline-flex; align-items:center; gap:8px;">
+            <input id="deposit-from-date" type="hidden" name="from" value="<?= $this->escapeHtmlAttr($this->fromFilterValue ?? '') ?>">
+            <input id="deposit-to-date" type="hidden" name="to" value="<?= $this->escapeHtmlAttr($this->toFilterValue ?? '') ?>">
+            <button id="deposit-range-modal-open" type="button" style="padding:4px 10px; border:1px solid #b9d7f0; border-radius:999px; background:#eef7ff; color:#1769aa; cursor:pointer; font:inherit; line-height:1.2;">
+                <span id="deposit-range-summary" style="font-size:0.95em; color:inherit;"></span>
+            </button>
+        </label>
         <label style="font-weight:normal; display:inline-flex; align-items:center; gap:8px;">
             <input id="show-transfers-checkbox" type="checkbox" name="showTransfers" value="1" <?= $this->showTransfers ? 'checked' : '' ?> onchange="this.form.submit()">
             <?= $this->t('Transfers von anderem Account anzeigen') ?>
@@ -139,6 +170,24 @@ $this->setup([
             <?= $this->t('Nur nicht zugewiesene PayPal') ?>
         </label>
     </form>
+</div>
+
+<div id="deposit-range-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); z-index:9999; justify-content:center; align-items:center;">
+    <div style="background:white; border-radius:8px; padding:24px; max-width:380px; box-shadow:0 4px 12px rgba(0,0,0,0.2);">
+        <h3 style="margin:0 0 16px 0; font-size:1.2em;"><?= $this->t('Zeitraum auswählen') ?></h3>
+        <div style="margin-bottom:12px;">
+            <label style="display:block; font-weight:bold; margin-bottom:4px;">Von:</label>
+            <input id="deposit-modal-date-from" type="date" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
+        </div>
+        <div style="margin-bottom:16px;">
+            <label style="display:block; font-weight:bold; margin-bottom:4px;">Bis:</label>
+            <input id="deposit-modal-date-to" type="date" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
+        </div>
+        <div style="display:flex; gap:8px;">
+            <button id="deposit-range-submit" type="button" class="default-button" style="flex:1; padding:10px; font-weight:bold;"><?= $this->t('Übernehmen') ?></button>
+            <button id="deposit-range-cancel" type="button" class="default-button" style="flex:1; padding:10px;"><?= $this->t('Abbrechen') ?></button>
+        </div>
+    </div>
 </div>
 
 <!-- Modal für PayPal Historie Datumswahl -->
@@ -185,9 +234,158 @@ $this->setup([
     var historyButton = document.getElementById('paypal-history-button');
     var emailsImportButton = document.getElementById('emails-import-button');
     var status = document.getElementById('paypal-fetch-status');
+    var filterForm = document.getElementById('deposit-overview-filter-form');
+    var quickRangeInput = document.getElementById('deposit-quick-range');
+    var fromFilterInput = document.getElementById('deposit-from-date');
+    var toFilterInput = document.getElementById('deposit-to-date');
+    var rangeModalOpenButton = document.getElementById('deposit-range-modal-open');
+    var rangeSummary = document.getElementById('deposit-range-summary');
+    var rangeModal = document.getElementById('deposit-range-modal');
+    var rangeModalFromInput = document.getElementById('deposit-modal-date-from');
+    var rangeModalToInput = document.getElementById('deposit-modal-date-to');
+    var rangeModalSubmitButton = document.getElementById('deposit-range-submit');
+    var rangeModalCancelButton = document.getElementById('deposit-range-cancel');
+    var rangeBackButton = document.getElementById('deposit-range-back');
+    var rangeForwardButton = document.getElementById('deposit-range-forward');
+
+    function formatDateValue(dateObj) {
+        return dateObj.getFullYear() + '-'
+            + String(dateObj.getMonth() + 1).padStart(2, '0') + '-'
+            + String(dateObj.getDate()).padStart(2, '0');
+    }
+
+    function formatDateLabel(value) {
+        if (!value) return '';
+        var datePart = value.slice(0, 10);
+        var parts = datePart.split('-');
+        if (parts.length !== 3) return value;
+        return parts[2] + '.' + parts[1] + '.' + parts[0];
+    }
+
+    function parseDateInputValue(value) {
+        if (!value) return null;
+        var parsed = new Date(value + 'T00:00:00');
+        return isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    function updateRangeSummary() {
+        if (!rangeSummary) return;
+        if (!fromFilterInput.value && !toFilterInput.value) {
+            rangeSummary.textContent = '<?= $this->t('kein Zeitraum gewählt') ?>';
+            return;
+        }
+        rangeSummary.textContent = formatDateLabel(fromFilterInput.value) + ' - ' + formatDateLabel(toFilterInput.value);
+    }
+
+    function openRangeModal() {
+        if (!rangeModal || !rangeModalFromInput || !rangeModalToInput) return;
+        rangeModalFromInput.value = fromFilterInput.value ? fromFilterInput.value.slice(0, 10) : '';
+        rangeModalToInput.value = toFilterInput.value ? toFilterInput.value.slice(0, 10) : '';
+        rangeModal.style.display = 'flex';
+    }
+
+    function closeRangeModal() {
+        if (rangeModal) {
+            rangeModal.style.display = 'none';
+        }
+    }
+
+    function adjustDepositRange(value) {
+        if (!fromFilterInput || !toFilterInput) return;
+        var now = new Date();
+        var year = now.getFullYear();
+        var month = now.getMonth();
+        var fromValue = '';
+        var toValue = '';
+
+        if (value === 'l14d') {
+            var startDate14 = new Date(now);
+            startDate14.setDate(startDate14.getDate() - 13);
+            fromValue = formatDateValue(startDate14);
+            toValue = formatDateValue(now);
+        } else if (value === 'l31d') {
+            var startDate = new Date(now);
+            startDate.setDate(startDate.getDate() - 30);
+            fromValue = formatDateValue(startDate);
+            toValue = formatDateValue(now);
+        } else if (value === 'cw' || value === 'lw') {
+            var monday = (function(d) {
+                var copy = new Date(d);
+                var day = copy.getDay();
+                var diff = copy.getDate() - day + (day === 0 ? -6 : 1);
+                copy.setDate(diff);
+                return copy;
+            })(now);
+            if (value === 'lw') {
+                monday.setDate(monday.getDate() - 7);
+            }
+            var sunday = new Date(monday);
+            sunday.setDate(monday.getDate() + 6);
+            fromValue = formatDateValue(monday);
+            toValue = formatDateValue(sunday);
+        } else if (value === 'cm' || value === 'lm') {
+            var targetMonth = (value === 'cm') ? month : (month === 0 ? 11 : month - 1);
+            var targetYear = (value === 'cm') ? year : (month === 0 ? year - 1 : year);
+            var firstDay = new Date(targetYear, targetMonth, 1, 0, 0, 0);
+            var lastDay = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59);
+            fromValue = formatDateValue(firstDay);
+            toValue = formatDateValue(lastDay);
+        } else if (value === 'cy' || value === 'ly') {
+            var targetYearOnly = value === 'cy' ? year : year - 1;
+            var firstYearDay = new Date(targetYearOnly, 0, 1, 0, 0, 0);
+            var lastYearDay = new Date(targetYearOnly, 11, 31, 23, 59, 59);
+            fromValue = formatDateValue(firstYearDay);
+            toValue = formatDateValue(lastYearDay);
+        }
+
+        fromFilterInput.value = fromValue;
+        toFilterInput.value = toValue;
+        updateRangeSummary();
+    }
+
+    function shiftRange(direction) {
+        if (!filterForm || !fromFilterInput || !toFilterInput) return;
+        var fromDate = parseDateInputValue(fromFilterInput.value);
+        var toDate = parseDateInputValue(toFilterInput.value);
+        if (!fromDate || !toDate) return;
+
+        var quickValue = quickRangeInput ? quickRangeInput.value : '';
+        var newFrom = new Date(fromDate);
+        var newTo = new Date(toDate);
+
+        if (quickValue === 'cw' || quickValue === 'lw') {
+            newFrom.setDate(newFrom.getDate() + (7 * direction));
+            newTo.setDate(newTo.getDate() + (7 * direction));
+        } else if (quickValue === 'cm' || quickValue === 'lm') {
+            newFrom = new Date(newFrom.getFullYear(), newFrom.getMonth() + direction, 1, 0, 0, 0);
+            newTo = new Date(newFrom.getFullYear(), newFrom.getMonth() + 1, 0, 23, 59, 0);
+        } else if (quickValue === 'cy' || quickValue === 'ly') {
+            newFrom = new Date(newFrom.getFullYear() + direction, 0, 1, 0, 0, 0);
+            newTo = new Date(newFrom.getFullYear(), 11, 31, 23, 59, 0);
+        } else if (quickValue === 'l14d') {
+            newFrom.setDate(newFrom.getDate() + (14 * direction));
+            newTo.setDate(newTo.getDate() + (14 * direction));
+        } else if (quickValue === 'l31d') {
+            newFrom.setDate(newFrom.getDate() + (31 * direction));
+            newTo.setDate(newTo.getDate() + (31 * direction));
+        } else {
+            var dayMs = 24 * 60 * 60 * 1000;
+            var fromDay = new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate());
+            var toDay = new Date(toDate.getFullYear(), toDate.getMonth(), toDate.getDate());
+            var spanDays = Math.round((toDay.getTime() - fromDay.getTime()) / dayMs) + 1;
+            newFrom.setDate(newFrom.getDate() + (spanDays * direction));
+            newTo.setDate(newTo.getDate() + (spanDays * direction));
+        }
+
+        fromFilterInput.value = formatDateValue(newFrom);
+        toFilterInput.value = formatDateValue(newTo);
+        updateRangeSummary();
+        filterForm.submit();
+    }
 
     // Restore status message after page reload
     (function() {
+        if (!status) return;
         var savedMsg = sessionStorage.getItem('paypalStatusMessage');
         if (savedMsg) {
             status.style.color = sessionStorage.getItem('paypalStatusColor') || '#155724';
@@ -199,8 +397,10 @@ $this->setup([
 
     function doPaypalPost(url, loadingText) {
         [button, historyButton, emailsImportButton].forEach(function(b) { if (b) b.disabled = true; });
-        status.style.color = '#444';
-        status.textContent = loadingText;
+        if (status) {
+            status.style.color = '#444';
+            status.textContent = loadingText;
+        }
         var xhr = new XMLHttpRequest();
         xhr.open('POST', url, true);
         xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
@@ -210,18 +410,24 @@ $this->setup([
             try {
                 var data = JSON.parse(xhr.responseText);
                 if (xhr.status === 200 && data.success) {
-                    status.style.color = '#155724';
-                    status.textContent = data.message || '<?= $this->t('Erfolgreich.') ?>';
+                    if (status) {
+                        status.style.color = '#155724';
+                        status.textContent = data.message || '<?= $this->t('Erfolgreich.') ?>';
+                    }
                     sessionStorage.setItem('paypalStatusMessage', data.message || '<?= $this->t('Erfolgreich.') ?>');
                     sessionStorage.setItem('paypalStatusColor', '#155724');
                     setTimeout(function() { location.reload(); }, 1200);
                 } else {
-                    status.style.color = '#721c24';
-                    status.textContent = data.error || '<?= $this->t('Fehler.') ?>';
+                    if (status) {
+                        status.style.color = '#721c24';
+                        status.textContent = data.error || '<?= $this->t('Fehler.') ?>';
+                    }
                 }
             } catch (e) {
-                status.style.color = '#721c24';
-                status.textContent = '<?= $this->t('Unerwartete Antwort vom Server.') ?>';
+                if (status) {
+                    status.style.color = '#721c24';
+                    status.textContent = '<?= $this->t('Unerwartete Antwort vom Server.') ?>';
+                }
             }
         };
         xhr.send('');
@@ -314,6 +520,66 @@ $this->setup([
         }
         unassignedCb.addEventListener('change', applyPaypalFilter);
     }
+
+    if (quickRangeInput && filterForm) {
+        quickRangeInput.addEventListener('change', function() {
+            adjustDepositRange(quickRangeInput.value);
+            filterForm.submit();
+        });
+    }
+
+    if (rangeModalOpenButton) {
+        rangeModalOpenButton.addEventListener('click', openRangeModal);
+    }
+
+    if (rangeModalCancelButton) {
+        rangeModalCancelButton.addEventListener('click', closeRangeModal);
+    }
+
+    if (rangeModalSubmitButton && rangeModalFromInput && rangeModalToInput) {
+        rangeModalSubmitButton.addEventListener('click', function() {
+            var fromValue = rangeModalFromInput.value;
+            var toValue = rangeModalToInput.value;
+            if (!fromValue || !toValue) {
+                alert('<?= $this->t('Bitte Datum eingeben') ?>');
+                return;
+            }
+            if (fromValue > toValue) {
+                alert('<?= $this->t('Von-Datum muss vor Bis-Datum liegen') ?>');
+                return;
+            }
+            fromFilterInput.value = fromValue;
+            toFilterInput.value = toValue;
+            updateRangeSummary();
+            if (quickRangeInput && quickRangeInput.value !== '') {
+                quickRangeInput.value = '';
+            }
+            closeRangeModal();
+            filterForm.submit();
+        });
+    }
+
+    if (rangeModal) {
+        rangeModal.addEventListener('click', function(e) {
+            if (e.target === rangeModal) {
+                closeRangeModal();
+            }
+        });
+    }
+
+    if (rangeBackButton) {
+        rangeBackButton.addEventListener('click', function() {
+            shiftRange(-1);
+        });
+    }
+
+    if (rangeForwardButton) {
+        rangeForwardButton.addEventListener('click', function() {
+            shiftRange(1);
+        });
+    }
+
+    updateRangeSummary();
 })();
 </script>
 
