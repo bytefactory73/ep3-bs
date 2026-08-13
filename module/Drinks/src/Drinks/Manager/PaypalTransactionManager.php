@@ -1453,15 +1453,6 @@ class PaypalTransactionManager
             }
         }
 
-        if ($subject !== '') {
-            return trim($subject);
-        }
-
-        $plainBody = $this->trimEmailNoteText($plainBody);
-        if ($plainBody !== '') {
-            return mb_substr($plainBody, 0, 255);
-        }
-
         return '';
     }
 
