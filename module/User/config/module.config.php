@@ -543,6 +543,16 @@ return array(
                                     ),
                                 ),
                             ),
+                            'spieltage-overview' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/spieltage-overview',
+                                    'defaults' => array(
+                                        'controller' => 'Drinks\Controller\Drinks',
+                                        'action' => 'spieltageOverview',
+                                    ),
+                                ),
+                            ),
                         ),
                     ),
                     'deposits' => array(

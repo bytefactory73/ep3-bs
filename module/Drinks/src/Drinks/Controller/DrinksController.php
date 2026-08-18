@@ -3042,6 +3042,91 @@ class DrinksController extends AbstractActionController
     }
 
     /**
+     * Admin: Spieltage overview - lists all team events across all team accounts, newest first
+     */
+    public function spieltageOverviewAction()
+    {
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $user = $userSessionManager->getSessionUser();
+        if (!$user || $user->get('status') !== 'admin') {
+            return $this->redirect()->toRoute('user/settings');
+        }
+
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+
+        // Fetch all team accounts
+        $teamAccountRows = $dbAdapter->query(
+            'SELECT da.user_id, da.alias FROM drink_aliases da WHERE da.is_team = 1 ORDER BY da.alias ASC',
+            []
+        )->toArray();
+
+        $teamAliasMap = [];
+        foreach ($teamAccountRows as $row) {
+            $uid = (int)$row['user_id'];
+            $teamAliasMap[$uid] = isset($row['alias']) ? trim((string)$row['alias']) : ('Team ' . $uid);
+        }
+
+        // Fetch all team events ordered newest-first using the actual created_at timestamp
+        $teamUserIds = array_map(function($r) { return (int)$r['user_id']; }, $teamAccountRows);
+        $allEvents = [];
+        if (!empty($teamUserIds)) {
+            $placeholders = implode(',', array_fill(0, count($teamUserIds), '?'));
+            $hasClosedColumn = $this->canUseTeamEventClosedColumn();
+            $selectCols = $hasClosedColumn ? 'id, comment, team_admin_user_id, closed, created_at' : 'id, comment, team_admin_user_id, created_at';
+            try {
+                $eventRows = $dbAdapter->query(
+                    'SELECT ' . $selectCols . ' FROM drinks_teamevents WHERE team_admin_user_id IN (' . $placeholders . ') ORDER BY created_at DESC, id DESC',
+                    $teamUserIds
+                )->toArray();
+            } catch (\Exception $e) {
+                // Fallback without created_at if column is missing
+                $selectColsFallback = $hasClosedColumn ? 'id, comment, team_admin_user_id, closed' : 'id, comment, team_admin_user_id';
+                try {
+                    $eventRows = $dbAdapter->query(
+                        'SELECT ' . $selectColsFallback . ' FROM drinks_teamevents WHERE team_admin_user_id IN (' . $placeholders . ') ORDER BY id DESC',
+                        $teamUserIds
+                    )->toArray();
+                } catch (\Exception $inner) {
+                    $eventRows = [];
+                }
+            }
+
+            foreach ($eventRows as $row) {
+                $teamEventId    = (int)$row['id'];
+                $teamEventLabel = isset($row['comment']) ? trim((string)$row['comment']) : '';
+                $teamUserId     = (int)$row['team_admin_user_id'];
+                if ($teamEventId <= 0 || $teamEventLabel === '' || $teamUserId <= 0) {
+                    continue;
+                }
+                $closed = ($hasClosedColumn && isset($row['closed'])) ? (int)$row['closed'] : 0;
+
+                $balance = 0.0;
+                try {
+                    $balance = $this->calculateTeamEventBalance($teamUserId, $teamEventId, $teamEventLabel, true);
+                } catch (\Exception $e) {
+                    $balance = 0.0;
+                }
+
+                $allEvents[] = [
+                    'id'           => $teamEventId,
+                    'label'        => $teamEventLabel,
+                    'balance'      => $balance,
+                    'closed'       => $closed,
+                    'team_user_id' => $teamUserId,
+                    'team_alias'   => $teamAliasMap[$teamUserId] ?? ('Team ' . $teamUserId),
+                ];
+            }
+        }
+
+        $viewModel = new ViewModel([
+            'events' => $allEvents,
+        ]);
+        $viewModel->setTemplate('spieltage-overview.phtml');
+        return $viewModel;
+    }
+
+    /**
      * Toggle deleted status of deposit or order entries
      */
     public function toggleDepositOrderDeletedAction()

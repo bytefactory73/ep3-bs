@@ -1,0 +1,273 @@
+<?php
+// Admin-only: Spieltage-Übersicht
+$this->setup([
+    'title' => 'Spieltage-Übersicht',
+    'panel' => 'centered-panel',
+    'back' => $this->url('user/drinks-admin'),
+    'links' => [
+        'Drinks Verwaltung' => $this->url('user/drinks-admin'),
+    ],
+]);
+?>
+
+<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260608-13') ?>"></script>
+
+<h1><?= $this->t('Spieltage-Übersicht') ?></h1>
+<div class="separator-small"></div>
+<p><?= $this->t('Hier sehen Sie alle Spieltage aller Mannschaften, sortiert nach Erstelldatum absteigend.') ?></p>
+
+<style>
+    .spieltage-overview-list {
+        display: grid;
+        gap: 4px;
+        margin-top: 16px;
+    }
+
+    .spieltage-overview-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        text-align: left;
+        padding: 7px 12px;
+        border-radius: 8px;
+        border: 1px solid transparent;
+        cursor: pointer;
+        width: 100%;
+        font-size: 1em;
+        font-family: inherit;
+    }
+
+    .spieltage-overview-item[data-closed="0"] {
+        background: #fff4f4;
+        border-color: #f5c6c6;
+    }
+
+    .spieltage-overview-item[data-closed="1"] {
+        background: #f2faf3;
+        border-color: #b7dfbc;
+    }
+
+    .spieltage-overview-item[data-closed="0"]:hover {
+        background: #ffe8e8;
+        border-color: #e88;
+    }
+
+    .spieltage-overview-item[data-closed="1"]:hover {
+        background: #e2f5e4;
+        border-color: #7cb87e;
+    }
+
+    .spieltage-overview-item .event-team {
+        color: #607d8b;
+        font-size: 0.92em;
+        margin-right: 6px;
+    }
+
+    .spieltage-overview-item .event-status {
+        font-size: 0.88em;
+        color: #607d8b;
+        font-weight: normal;
+    }
+
+    .spieltage-overview-item .event-balance {
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .spieltage-overview-empty {
+        border: 1px solid #d9e7f7;
+        border-radius: 8px;
+        background: #fff;
+        padding: 8px 12px;
+        color: #445;
+    }
+</style>
+
+<?php if (empty($this->events)): ?>
+    <div class="spieltage-overview-empty">
+        <?= $this->t('Keine Spieltage vorhanden.') ?>
+    </div>
+<?php else: ?>
+    <label style="display:inline-flex; align-items:center; gap:6px; margin-top:14px; cursor:pointer; font-size:0.95em; color:#445;">
+        <input type="checkbox" id="spieltage-only-open" style="cursor:pointer;">
+        <?= $this->t('Nur offene Spieltage anzeigen') ?>
+    </label>
+    <div class="spieltage-overview-list" id="spieltage-overview-list">
+        <?php foreach ($this->events as $event): ?>
+            <?php
+            $eventId    = (int)($event['id'] ?? 0);
+            $label      = $this->escapeHtml($event['label'] ?? '');
+            $teamAlias  = $this->escapeHtml($event['team_alias'] ?? '');
+            $teamUid    = (int)($event['team_user_id'] ?? 0);
+            $closed     = !empty($event['closed']);
+            $balance    = (float)($event['balance'] ?? 0);
+            $statusLabel = $closed ? 'abgeschlossen' : 'offen';
+            $balanceColor = $balance >= 0 ? '#2e7d32' : '#c62828';
+            $balanceFormatted = number_format($balance, 2, ',', '.') . ' €';
+            ?>
+            <button
+                type="button"
+                class="spieltage-overview-item"
+                data-event-id="<?= $eventId ?>"
+                data-team-uid="<?= $teamUid ?>"
+                data-team-alias="<?= $teamAlias ?>"
+                data-closed="<?= $closed ? '1' : '0' ?>"
+            >
+                <span>
+                    <span class="event-team"><?= $teamAlias ?> &middot;</span>
+                    <strong><?= $label ?></strong>
+                    <span class="event-status">(<?= $statusLabel ?>)</span>
+                </span>
+                <span class="event-balance" style="color: <?= $balanceColor ?>;"><?= $balanceFormatted ?></span>
+            </button>
+        <?php endforeach; ?>
+        <div class="spieltage-overview-empty">
+            <?= $this->t('Klicken Sie auf einen Spieltag, um die Auswertung im Popup zu öffnen.') ?>
+        </div>
+    </div>
+<?php endif; ?>
+
+<!-- Team stats modal -->
+<div id="spieltageTeamEventStatsModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:100010; align-items:center; justify-content:center;">
+    <div style="position:relative; width:min(980px,96vw); height:90vh; max-height:90vh; background:#fff; border-radius:10px; box-shadow:0 10px 28px rgba(0,0,0,0.25); overflow:auto; padding:18px 16px 16px 16px;">
+        <button type="button" onclick="closeSpieltageModal()" style="position:absolute;top:10px;right:12px;z-index:10;background:#eee;border:none;border-radius:50%;width:34px;height:34px;font-size:20px;cursor:pointer;">&times;</button>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin:2px 42px 12px 4px; flex-wrap:wrap;">
+            <h2 id="spieltage-team-event-stats-title" style="margin:0; color:#1769aa;">Kostenübersicht</h2>
+            <div id="spieltage-team-event-stats-balance-header" style="font-weight:bold; text-align:right; color:#333;">Gesamtsaldo Mannschaftskonto: -</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; margin:0 4px 12px 4px; flex-wrap:wrap;">
+            <label for="spieltage-team-event-stats-select" style="color:#1769aa; font-weight:bold;">Spieltag:</label>
+            <select id="spieltage-team-event-stats-select" style="font-size:1em; max-width:100%; min-width:220px; padding:4px 6px; border:1px solid #2196f3; border-radius:6px; color:#1769aa;"></select>
+        </div>
+        <div id="spieltageTeamEventStatsContent" style="padding:2px 4px 8px 4px;"></div>
+    </div>
+</div>
+
+<script>
+(function() {
+    function closeSpieltageModal() {
+        var modal = document.getElementById('spieltageTeamEventStatsModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+    window.closeSpieltageModal = closeSpieltageModal;
+
+    var statsModalController = null;
+
+    if (typeof createTeamStatsModal === 'function') {
+        statsModalController = createTeamStatsModal({
+            modalId: 'spieltageTeamEventStatsModal',
+            contentId: 'spieltageTeamEventStatsContent',
+            balanceHeaderId: 'spieltage-team-event-stats-balance-header',
+            selectId: 'spieltage-team-event-stats-select',
+            titleId: 'spieltage-team-event-stats-title',
+            getTitle: function(teamAlias) {
+                var alias = String(teamAlias || '').trim();
+                return alias ? ('Kostenübersicht - ' + alias) : 'Kostenübersicht';
+            },
+            onOpen: function(args, state) {
+                var uid = parseInt(args[0] || 0, 10);
+                var teamEventId = String(args[1] || '');
+                if (uid > 0) {
+                    state.teamUid = uid;
+                }
+                state.preferredTeamEventId = teamEventId;
+                state.teamAlias = String(args[2] || '');
+            },
+            getInitialSpieltag: function(args, state) {
+                return String(state.preferredTeamEventId || '');
+            },
+            buildStatsUrl: function(spieltag, state) {
+                var uid = parseInt(state.teamUid || 0, 10);
+                if (!uid) {
+                    throw new Error('Ungültiger Team-Account.');
+                }
+                var url = '<?= $this->url('user/get-user-team-event-stats-data') ?>?uid=' + encodeURIComponent(String(uid));
+                var teamEventId = String(spieltag || state.preferredTeamEventId || '').trim();
+                if (teamEventId !== '') {
+                    url += '&team_event_id=' + encodeURIComponent(teamEventId);
+                }
+                return url;
+            },
+            buildMemberUpdateRequest: function(operation, memberUserId, state) {
+                return {
+                    url: '<?= $this->url('user/teamlead-team-members') ?>',
+                    body: new URLSearchParams({
+                        operation: String(operation || ''),
+                        team_event_id: String(state.currentEventId || 0),
+                        member_user_id: String(memberUserId || 0)
+                    })
+                };
+            },
+            buildCloseEventRequest: function(state, settlement) {
+                var body = new URLSearchParams({
+                    team_event_id: String(state.currentEventId || 0)
+                });
+                if (settlement && Array.isArray(settlement.refunds) && settlement.refunds.length > 0) {
+                    body.set('settlement_refunds', JSON.stringify(settlement.refunds));
+                }
+                return {
+                    url: '<?= $this->url('user/teamlead-close-team-event') ?>',
+                    body: body
+                };
+            },
+            afterLoadData: function(data, state, refs) {
+                state.preferredTeamEventId = String(data.team_event_id || '');
+                if (!refs.select) return;
+
+                while (refs.select.firstChild) {
+                    refs.select.removeChild(refs.select.firstChild);
+                }
+
+                var teamEvents = Array.isArray(data.team_events) ? data.team_events : [];
+                for (var i = 0; i < teamEvents.length; i++) {
+                    var eventRow = teamEvents[i] || {};
+                    var eventId = String(eventRow.id || '').trim();
+                    var label = String(eventRow.label || '').trim();
+                    if (!eventId || !label) continue;
+                    var option = document.createElement('option');
+                    option.value = eventId;
+                    option.textContent = label + (eventRow.closed ? ' (abgeschlossen)' : ' (offen)');
+                    refs.select.appendChild(option);
+                }
+
+                if (state.preferredTeamEventId) {
+                    refs.select.value = state.preferredTeamEventId;
+                }
+            }
+        });
+    }
+
+    var list = document.getElementById('spieltage-overview-list');
+    var onlyOpenCheckbox = document.getElementById('spieltage-only-open');
+
+    function applyFilter() {
+        if (!list) return;
+        var onlyOpen = onlyOpenCheckbox && onlyOpenCheckbox.checked;
+        list.querySelectorAll('.spieltage-overview-item').forEach(function(btn) {
+            var closed = btn.getAttribute('data-closed') === '1';
+            btn.style.display = (onlyOpen && closed) ? 'none' : '';
+        });
+    }
+
+    if (onlyOpenCheckbox) {
+        onlyOpenCheckbox.addEventListener('change', applyFilter);
+    }
+
+    if (list) {
+        list.addEventListener('click', function(e) {
+            var btn = e.target.closest('.spieltage-overview-item');
+            if (!btn) return;
+            var teamUid = String(btn.getAttribute('data-team-uid') || '').trim();
+            var eventId = String(btn.getAttribute('data-event-id') || '').trim();
+            var teamAlias = String(btn.getAttribute('data-team-alias') || '').trim();
+            if (!teamUid || !eventId) return;
+            if (statsModalController && typeof statsModalController.open === 'function') {
+                statsModalController.open(teamUid, eventId, teamAlias);
+            }
+        });
+    }
+})();
+</script>
