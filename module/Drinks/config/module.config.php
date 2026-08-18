@@ -15,4 +15,13 @@ return [
             'Drinks\Controller\SimpleLogin' => 'Drinks\Controller\SimpleLoginController',
         ],
     ],
+    'form_elements' => [
+        'factories' => [
+            'Drinks\Form\EditDrinksAliasForm' => function($formElementManager) {
+                $form = new \Drinks\Form\EditDrinksAliasForm();
+                $form->init();
+                return $form;
+            },
+        ],
+    ],
 ];

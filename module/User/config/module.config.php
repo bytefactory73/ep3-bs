@@ -734,11 +734,6 @@ return array(
         'factories' => array(
             'User\Form\EditEmailForm' => 'User\Form\EditEmailFormFactory',
             'User\Form\RegistrationForm' => 'User\Form\RegistrationFormFactory',
-            'User\Form\EditDrinksAliasForm' => function($formElementManager) {
-                $form = new \User\Form\EditDrinksAliasForm();
-                $form->init();
-                return $form;
-            },
         ),
     ),
 

@@ -6,9 +6,11 @@ use DateTime;
 use RuntimeException;
 use Zend\Crypt\Password\Bcrypt;
 use Zend\Mvc\Controller\AbstractActionController;
+use Drinks\Controller\Traits\EditDrinksAliasTrait;
 
 class AccountController extends AbstractActionController
 {
+    use EditDrinksAliasTrait;
 
     public function passwordAction()
     {
@@ -593,6 +595,9 @@ class AccountController extends AbstractActionController
             }
         }
 
+        /* Prepare drinks alias form (handled by Drinks module) */
+        $editDrinksAliasForm = $this->prepareDrinksAliasForm($user, $serviceManager, $editParam);
+
         return array(
             'user' => $user,
             'editPhoneForm' => $editPhoneForm,
@@ -601,6 +606,7 @@ class AccountController extends AbstractActionController
             'editPasswordForm' => $editPasswordForm,
             'deleteAccountForm' => $deleteAccountForm,
             'deleteAccountMessage' => $deleteAccountMessage,
+            'editDrinksAliasForm' => $editDrinksAliasForm,
         );
     }
 
