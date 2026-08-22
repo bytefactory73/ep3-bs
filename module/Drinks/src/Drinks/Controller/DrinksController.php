@@ -3119,6 +3119,53 @@ class DrinksController extends AbstractActionController
             }
         }
 
+        // Fetch per-event counts for badge items (by drink ID)
+        $badgeItems = [
+            2  => ['emoji' => '🏆', 'name' => 'Medenspiel-Pauschale'],
+            21 => ['emoji' => '🎾', 'name' => 'HTV Bälle'],
+        ];
+        if (!empty($allEvents)) {
+            $eventIds = array_column($allEvents, 'id');
+            $placeholders = implode(',', array_fill(0, count($eventIds), '?'));
+            $drinkIds = array_keys($badgeItems);
+            $idPlaceholders = implode(',', array_fill(0, count($drinkIds), '?'));
+            try {
+                $badgeRows = $dbAdapter->query(
+                    'SELECT teamevent_id, drink_id, SUM(quantity) AS total_qty
+                     FROM drink_orders
+                     WHERE teamevent_id IN (' . $placeholders . ')
+                       AND drink_id IN (' . $idPlaceholders . ')
+                       AND (deleted IS NULL OR deleted = 0)
+                     GROUP BY teamevent_id, drink_id',
+                    array_merge($eventIds, $drinkIds)
+                )->toArray();
+                foreach ($badgeRows as $badgeRow) {
+                    $eid = (int)$badgeRow['teamevent_id'];
+                    $did = (int)$badgeRow['drink_id'];
+                    $qty = (int)$badgeRow['total_qty'];
+                    if (isset($badgeItems[$did])) {
+                        $badgeItems[$did]['count'][$eid] = $qty;
+                    }
+                }
+            } catch (\Exception $e) {
+                // Leave badge counts empty if query fails
+            }
+        }
+
+        // Attach badge counts to each event
+        foreach ($allEvents as &$event) {
+            $eid = (int)$event['id'];
+            $badges = [];
+            foreach ($badgeItems as $did => $cfg) {
+                $qty = isset($cfg['count'][$eid]) ? (int)$cfg['count'][$eid] : 0;
+                if ($qty > 0) {
+                    $badges[] = ['qty' => $qty, 'emoji' => $cfg['emoji'], 'name' => $cfg['name']];
+                }
+            }
+            $event['badges'] = $badges;
+        }
+        unset($event);
+
         $viewModel = new ViewModel([
             'events' => $allEvents,
         ]);

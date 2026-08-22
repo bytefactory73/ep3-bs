@@ -102,6 +102,7 @@ $this->setup([
             $teamUid    = (int)($event['team_user_id'] ?? 0);
             $closed     = !empty($event['closed']);
             $balance    = (float)($event['balance'] ?? 0);
+            $badges     = $event['badges'] ?? [];
             $statusLabel = $closed ? 'abgeschlossen' : 'offen';
             $balanceColor = $balance >= 0 ? '#2e7d32' : '#c62828';
             $balanceFormatted = number_format($balance, 2, ',', '.') . ' €';
@@ -119,7 +120,12 @@ $this->setup([
                     <strong><?= $label ?></strong>
                     <span class="event-status">(<?= $statusLabel ?>)</span>
                 </span>
-                <span class="event-balance" style="color: <?= $balanceColor ?>;"><?= $balanceFormatted ?></span>
+                <span style="display:flex; align-items:center; gap:10px; white-space:nowrap;">
+                    <?php foreach ($badges as $badge): ?>
+                        <span style="font-size:0.9em; color:#555;"><?= (int)$badge['qty'] ?>x<?= $badge['emoji'] ?></span>
+                    <?php endforeach; ?>
+                    <span class="event-balance" style="color: <?= $balanceColor ?>;"><?= $balanceFormatted ?></span>
+                </span>
             </button>
         <?php endforeach; ?>
         <div class="spieltage-overview-empty">
