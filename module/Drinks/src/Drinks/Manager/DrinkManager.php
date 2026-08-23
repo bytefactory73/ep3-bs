@@ -401,4 +401,34 @@ class DrinkManager
         $this->sendFromTheke($mailService, $this->dbAdapter, $user, $subject, $text, ['isHtml' => true]);
         return true;
     }
+
+    public function sendBalanceReminder($userId, $serviceManager, $tCallback)
+    {
+        $userManager = $serviceManager->get('User\\Manager\\UserManager');
+        $user = $userManager->get($userId);
+        if (!$user || $this->isTeamAccount($userId) || trim((string)$user->get('email')) === '') {
+            return false;
+        }
+
+        $balance = round($this->calculateUserDrinkBalance($userId, $serviceManager), 2);
+        try {
+            $optionManager = $serviceManager->get('Base\\Manager\\OptionManager');
+            $threshold = str_replace(',', '.', trim((string)$optionManager->get('drinks.account_balance_reminder_threshold', '0')));
+            $threshold = round((float)$threshold, 2);
+        } catch (\Exception $e) {
+            $threshold = 0.0;
+        }
+        if ($balance >= $threshold) {
+            return false;
+        }
+
+        $subject = $tCallback('Erinnerung: Bitte Guthaben aufladen');
+        $text = $tCallback('Dein Kneipen-Konto ist ins negative gerutscht.') . "\n\n"
+            . $tCallback('Bitte lade dein Guthaben auf.') . "\n\n"
+            . $tCallback('Liebe Grüße') . "\n"
+            . $tCallback('Dein Theken-Team');
+        $mailService = $serviceManager->get('User\\Service\\MailService');
+        $this->sendFromTheke($mailService, $this->dbAdapter, $user, $subject, $text, ['isHtml' => false]);
+        return true;
+    }
 }

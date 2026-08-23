@@ -59,6 +59,10 @@ $this->setup([
         <label for="minimum-account-balance" style="font-weight:bold; display:block; margin-bottom:6px;">Minimum-Kontostand für Buchung</label>
         <input id="minimum-account-balance" name="minimum_account_balance" type="text" inputmode="decimal" value="<?= $this->escapeHtmlAttr($this->paypalSettings['minimum_account_balance']) ?>" style="width:100%; padding:8px; box-sizing:border-box;">
     </div>
+    <div style="margin-bottom:16px;">
+        <label for="account-balance-reminder-threshold" style="font-weight:bold; display:block; margin-bottom:6px;">Erinnerungsschwelle Kontostand</label>
+        <input id="account-balance-reminder-threshold" name="account_balance_reminder_threshold" type="text" inputmode="decimal" value="<?= $this->escapeHtmlAttr($this->paypalSettings['account_balance_reminder_threshold']) ?>" style="width:100%; padding:8px; box-sizing:border-box;">
+    </div>
     <div style="margin-bottom:16px; color:#555; font-size:0.95rem;">
         <?= $this->t('Hinweis: Passwörter und Secrets werden nicht im Klartext angezeigt. Leere Felder werden beim Speichern ignoriert und behalten ihren aktuellen Wert.') ?>
     </div>

@@ -601,6 +601,7 @@ class DrinksController extends AbstractActionController
             'paypal_client_secret' => '',
         ];
         $paypalSettings['minimum_account_balance'] = '0.00';
+        $paypalSettings['account_balance_reminder_threshold'] = '0.00';
 
         $getPaypalOption = function($optionKey) use ($optionManager) {
             try {
@@ -613,6 +614,10 @@ class DrinksController extends AbstractActionController
         foreach ($paypalSettings as $key => $value) {
             if ($key === 'minimum_account_balance') {
                 $paypalSettings[$key] = $getPaypalOption('drinks.minimum_account_balance') ?: '0.00';
+                continue;
+            }
+            if ($key === 'account_balance_reminder_threshold') {
+                $paypalSettings[$key] = $getPaypalOption('drinks.account_balance_reminder_threshold') ?: '0.00';
                 continue;
             }
             $optionKey = 'paypal.' . $key;
@@ -691,6 +696,14 @@ class DrinksController extends AbstractActionController
             $minimumBalance = number_format((float)$minimumBalance, 2, '.', '');
         }
         $optionManager->set('drinks.minimum_account_balance', $minimumBalance);
+
+        $reminderThreshold = str_replace(',', '.', trim((string)$this->params()->fromPost('account_balance_reminder_threshold', '0')));
+        if ($reminderThreshold === '' || !is_numeric($reminderThreshold)) {
+            $reminderThreshold = '0.00';
+        } else {
+            $reminderThreshold = number_format((float)$reminderThreshold, 2, '.', '');
+        }
+        $optionManager->set('drinks.account_balance_reminder_threshold', $reminderThreshold);
 
         return $this->redirect()->toRoute('user/drinks-admin/paypal-settings', [], ['query' => ['saved' => 1]], true);
     }
