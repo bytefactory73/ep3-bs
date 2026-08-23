@@ -264,6 +264,7 @@ class DrinksController extends AbstractActionController
             'currentSpieltag' => $currentSpieltag,
             'availableSpieltage' => $availableSpieltage,
             'currentBalance' => $currentBalance,
+            'minimumAccountBalance' => $drinkManager->getMinimumAccountBalance($serviceManager),
             'pendingPaypalDeposits' => $pendingPaypalDeposits,
             'keepLoggedInActive' => $keepLoggedInActive,
             'partyModeEnabled' => $partyModeEnabled,
@@ -598,6 +599,7 @@ class DrinksController extends AbstractActionController
             'paypal_client_id' => '',
             'paypal_client_secret' => '',
         ];
+        $paypalSettings['minimum_account_balance'] = '0.00';
 
         $getPaypalOption = function($optionKey) use ($optionManager) {
             try {
@@ -608,6 +610,10 @@ class DrinksController extends AbstractActionController
         };
 
         foreach ($paypalSettings as $key => $value) {
+            if ($key === 'minimum_account_balance') {
+                $paypalSettings[$key] = $getPaypalOption('drinks.minimum_account_balance') ?: '0.00';
+                continue;
+            }
             $optionKey = 'paypal.' . $key;
             $storedValue = $getPaypalOption($optionKey);
             if ($storedValue === '' && strpos($key, '_') !== false) {
@@ -676,6 +682,14 @@ class DrinksController extends AbstractActionController
             
             $optionManager->set('paypal.' . $field, $value);
         }
+
+        $minimumBalance = str_replace(',', '.', trim((string)$this->params()->fromPost('minimum_account_balance', '0')));
+        if ($minimumBalance === '' || !is_numeric($minimumBalance)) {
+            $minimumBalance = '0.00';
+        } else {
+            $minimumBalance = number_format((float)$minimumBalance, 2, '.', '');
+        }
+        $optionManager->set('drinks.minimum_account_balance', $minimumBalance);
 
         return $this->redirect()->toRoute('user/drinks-admin/paypal-settings', [], ['query' => ['saved' => 1]], true);
     }

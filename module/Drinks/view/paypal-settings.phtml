@@ -55,6 +55,10 @@ $this->setup([
         <label for="paypal-client-secret" style="font-weight:bold; display:block; margin-bottom:6px;">PayPal Client Secret</label>
         <input id="paypal-client-secret" name="paypal_client_secret" type="text" placeholder="●●●●●●●●" value="<?= !empty($this->paypalSettings['paypal_client_secret']) ? '●●●●●●●●' : '' ?>" style="width:100%; padding:8px; box-sizing:border-box;" onfocus="this.type='password'; this.value='';" onblur="if(!this.value) { this.type='text'; this.value='●●●●●●●●'; }">
     </div>
+    <div style="margin-bottom:16px;">
+        <label for="minimum-account-balance" style="font-weight:bold; display:block; margin-bottom:6px;">Minimum-Kontostand für Buchung</label>
+        <input id="minimum-account-balance" name="minimum_account_balance" type="text" inputmode="decimal" value="<?= $this->escapeHtmlAttr($this->paypalSettings['minimum_account_balance']) ?>" style="width:100%; padding:8px; box-sizing:border-box;">
+    </div>
     <div style="margin-bottom:16px; color:#555; font-size:0.95rem;">
         <?= $this->t('Hinweis: Passwörter und Secrets werden nicht im Klartext angezeigt. Leere Felder werden beim Speichern ignoriert und behalten ihren aktuellen Wert.') ?>
     </div>

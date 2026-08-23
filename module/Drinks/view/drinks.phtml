@@ -76,7 +76,8 @@ if ($__partyModeEnabled) {
                 </span>
             <?php endif; ?>
             <?php if (!$simpleOrderMode || $showFullBalanceInSimple): ?>
-                <div id="current-balance-display" class="<?= $currentBalance < 0 ? 'negative-balance' : '' ?>" style="color: #2196f3; display: inline-flex; align-items: center;">
+                <?php $isBelowMinimumInitially = $minimumAccountBalance != 0.0 ? ($currentBalance < $minimumAccountBalance) : ($currentBalance < 0); ?>
+                <div id="current-balance-display" class="<?= $isBelowMinimumInitially ? 'negative-balance' : '' ?>" style="color: #2196f3; display: inline-flex; align-items: center;">
                     <?= $this->t('Guthaben:') ?>
                     <span id="current-balance-value" style="margin-left: 8px"></span>
                 </div>
@@ -117,14 +118,14 @@ if ($__partyModeEnabled) {
         <?php if (isset($drinks) && $drinksEnabled): ?>
             <div style="margin-left:16px; margin-right:16px; margin-bottom: 8px; width: 100%-32px; min-height: 24px; display: flex; align-items: center;">
                 <!-- Placeholder for line 2 (e.g., navigation, info, etc.) -->
-                <?php if ($simpleOrderMode && !$isTeamAccount): ?>
+                <?php if (!$isTeamAccount): ?>
                     <!-- Guthaben aufladen ribbon overlay (cleaned up, CSS classes only) -->
                     <div id="balance-recharge-btn-container" class="balance-recharge-ribbon-container">
                         <div class="balance-recharge-ribbon">
-                            <span class="balance-recharge-ribbon-label">
+                            <span id="balance-recharge-ribbon-label" class="balance-recharge-ribbon-label">
                                 Guthaben aufladen
                             </span>
-                            <span class="balance-recharge-ribbon-subtext">
+                            <span id="balance-recharge-ribbon-subtext" class="balance-recharge-ribbon-subtext">
                                 Du kannst die Bestellung trotzdem abschließen
                             </span>
                         </div>
@@ -1165,9 +1166,11 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
     position: fixed;
     top: 60%;
     left: 50%;
-    width: 420px;
+    width: auto;
+    min-width: 420px;
     max-width: 90vw;
-    height: 80px;
+    height: auto;
+    min-height: 80px;
     z-index: 3001;
     transform: translate(-50%, -50%) rotate(-24deg);
     pointer-events: none;
@@ -1183,6 +1186,8 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
     align-items: center;
     justify-content: center;
     border: 2.5px solid #fff;
+    padding: 16px 0;
+    box-sizing: border-box;
 }
 .balance-recharge-ribbon-label {
     display: inline-block;
@@ -1197,6 +1202,8 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
     user-select: none;
     padding: 0 32px;
     text-transform: uppercase;
+    text-align: center;
+    line-height: 1.15;
 }
 .balance-recharge-ribbon-subtext {
     display: block;
@@ -1757,6 +1764,8 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
             }
         var initialBalance = parseFloat("<?= $currentBalance ?>");
         var newBalance = initialBalance - total;
+        var minimumAccountBalance = parseFloat("<?= $minimumAccountBalance ?>") || 0;
+        var belowMinimum = minimumAccountBalance !== 0 ? (newBalance < minimumAccountBalance) : (newBalance < 0);
         var formattedBalance = "";
         var showFullBalanceInSimple = <?= $showFullBalanceInSimple ? 'true' : 'false' ?>;
         if (window.SIMPLE_ORDER_MODE && !showFullBalanceInSimple) {
@@ -1767,10 +1776,10 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
             var balanceBox = document.getElementById('current-balance-display');
             if (balanceElem) {
                 balanceElem.textContent = formattedBalance;
-                balanceElem.style.color = (newBalance < 0) ? '#d32f2f' : '#2196f3';
+                balanceElem.style.color = belowMinimum ? '#d32f2f' : '#2196f3';
             }
             if (balanceBox) {
-                if (newBalance < 0) {
+                if (belowMinimum) {
                     balanceBox.classList.add('negative-balance');
                 } else {
                     balanceBox.classList.remove('negative-balance');
@@ -1785,6 +1794,17 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
             } else {
                 rechargeBtnContainer.style.display = 'none';
             }
+            var rechargeLabel = document.getElementById('balance-recharge-ribbon-label');
+            var rechargeSubtext = document.getElementById('balance-recharge-ribbon-subtext');
+            if (rechargeLabel) {
+                rechargeLabel.textContent = belowMinimum ? 'Keine Buchung möglich' : 'Guthaben aufladen';
+            }
+            if (rechargeSubtext) {
+                rechargeSubtext.textContent = belowMinimum ? 'Bitte zuerst Guthaben aufladen' : 'Du kannst die Bestellung trotzdem abschließen';
+            }
+        }
+        if (bookBtn && minimumAccountBalance !== 0) {
+            bookBtn.disabled = !anySelected || belowMinimum;
         }
     }
     // --- Shared clear selection and logout logic (global scope) ---

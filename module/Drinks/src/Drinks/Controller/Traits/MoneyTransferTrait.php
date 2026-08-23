@@ -115,6 +115,12 @@ trait MoneyTransferTrait
         $drinkOrderManager = $serviceManager->get('Drinks\\Manager\\DrinkOrderManager');
         $drinkManager = $serviceManager->get('Drinks\\Manager\\DrinkManager');
         $dbAdapter = $serviceManager->get('Zend\\Db\\Adapter\\Adapter');
+        if (!$allowClosedReceiverTeamEvent && !$drinkManager->isOrderAllowed($senderUserId, $amount, $serviceManager)) {
+            return [
+                'statusCode' => 400,
+                'payload' => ['success' => false, 'error' => 'Kein Geld senden möglich bis Guthaben aufgeladen ist'],
+            ];
+        }
         $receiverAliasRow = $dbAdapter->query('SELECT is_team FROM drink_aliases WHERE user_id = ?', [$receiverUserId])->current();
         $receiverIsTeam = ($receiverAliasRow && !empty($receiverAliasRow['is_team'])) ? true : false;
         $transferTeamEventId = ($receiverTeamEventId > 0) ? $receiverTeamEventId : null;

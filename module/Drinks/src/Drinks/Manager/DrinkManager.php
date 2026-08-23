@@ -42,6 +42,45 @@ class DrinkManager
         return $depositSum - $orderSum;
     }
 
+    public function getMinimumAccountBalance($serviceManager)
+    {
+        try {
+            $optionManager = $serviceManager->get('Base\\Manager\\OptionManager');
+            $value = str_replace(',', '.', trim((string)$optionManager->get('drinks.minimum_account_balance', '0')));
+            return round((float)$value, 2);
+        } catch (\Exception $e) {
+            return 0.0;
+        }
+    }
+
+    public function isTeamAccount($userId)
+    {
+        try {
+            $row = $this->dbAdapter->query(
+                'SELECT is_team FROM drink_aliases WHERE user_id = ?',
+                [(int)$userId]
+            )->current();
+            return $row && !empty($row['is_team']);
+        } catch (\Exception $e) {
+            return false;
+        }
+    }
+
+    public function isOrderAllowed($userId, $orderTotal, $serviceManager, $allowBelowMinimum = false)
+    {
+        if ($allowBelowMinimum || $this->isTeamAccount($userId)) {
+            return true;
+        }
+
+        $minimumBalance = $this->getMinimumAccountBalance($serviceManager);
+        if ($minimumBalance == 0.0) {
+            return true;
+        }
+
+        $newBalance = round($this->calculateUserDrinkBalance($userId, $serviceManager) - (float)$orderTotal, 2);
+        return $newBalance >= $minimumBalance;
+    }
+
     public function getAll($userId = null)
     {
         if ($userId) {
@@ -71,7 +110,6 @@ class DrinkManager
 
     /**
      * Fetches and returns order details for a given order and user, drops the order, recalculates balance, and sends cancellation email.
-     * Returns true on success, false on failure.
      */
     public function dropOrderAndNotify($orderId, $user, $tCallback, $serviceManager)
     {
@@ -157,28 +195,46 @@ class DrinkManager
      * Adds drink orders for a user, sends confirmation email, and returns the new balance.
      * Returns array: ['success' => bool, 'balance' => float, 'error' => string|null]
      */
-    public function addOrdersAndNotify($user, $drinkCounts, $tCallback, $serviceManager, $isAutoOrder = 0, $comment = null, $teamEventId = null)
+    public function addOrdersAndNotify($user, $drinkCounts, $tCallback, $serviceManager, $isAutoOrder = 0, $comment = null, $teamEventId = null, $allowBelowMinimum = false)
     {
         $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
         $anyOrdered = false;
         $orderedDrinks = [];
+        $orderTotal = 0.0;
+        $orderItems = [];
         foreach ($drinkCounts as $drinkId => $quantity) {
             $drinkId = (int)$drinkId;
             $quantity = (int)$quantity;
             if ($drinkId > 0 && $quantity > 0) {
-                $drinkOrderManager->addOrder($user->need('uid'), $drinkId, $quantity, null, $isAutoOrder, $comment, null, $teamEventId);
-                $anyOrdered = true;
                 $drink = $this->get($drinkId);
                 if ($drink) {
-                    $orderedDrinks[] = [
-                        'id' => $drinkId,
-                        'name' => $drink['name'],
-                        'quantity' => $quantity,
-                        'price' => $drink['price'],
-                        'total' => $quantity * $drink['price'],
-                        'comment' => $comment,
-                    ];
+                    $orderTotal += $quantity * (float)$drink['price'];
+                    $orderItems[] = [$drinkId, $quantity];
                 }
+            }
+        }
+        if (!$this->isOrderAllowed($user->need('uid'), $orderTotal, $serviceManager, $allowBelowMinimum)) {
+            return [
+                'success' => false,
+                'balance' => $this->calculateUserDrinkBalance($user->need('uid'), $serviceManager),
+                'error' => call_user_func($tCallback, 'Keine Buchung möglich bis Guthaben aufgeladen ist'),
+            ];
+        }
+        foreach ($orderItems as $orderItem) {
+            $drinkId = $orderItem[0];
+            $quantity = $orderItem[1];
+            $drinkOrderManager->addOrder($user->need('uid'), $drinkId, $quantity, null, $isAutoOrder, $comment, null, $teamEventId);
+            $anyOrdered = true;
+            $drink = $this->get($drinkId);
+            if ($drink) {
+                $orderedDrinks[] = [
+                    'id' => $drinkId,
+                    'name' => $drink['name'],
+                    'quantity' => $quantity,
+                    'price' => $drink['price'],
+                    'total' => $quantity * $drink['price'],
+                    'comment' => $comment,
+                ];
             }
         }
         if ($anyOrdered) {
