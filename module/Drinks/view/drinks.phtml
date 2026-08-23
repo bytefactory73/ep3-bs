@@ -76,7 +76,8 @@ if ($__partyModeEnabled) {
                 </span>
             <?php endif; ?>
             <?php if (!$simpleOrderMode || $showFullBalanceInSimple): ?>
-                <?php $isBelowMinimumInitially = $minimumAccountBalance != 0.0 ? ($currentBalance < $minimumAccountBalance) : ($currentBalance < 0); ?>
+                <?php $availableBalanceInitially = $currentBalance + (float)$pendingPaypalAmount; ?>
+                <?php $isBelowMinimumInitially = $minimumAccountBalance != 0.0 ? ($availableBalanceInitially < $minimumAccountBalance) : ($availableBalanceInitially < 0); ?>
                 <div id="current-balance-display" class="<?= $isBelowMinimumInitially ? 'negative-balance' : '' ?>" style="color: #2196f3; display: inline-flex; align-items: center;">
                     <?= $this->t('Guthaben:') ?>
                     <span id="current-balance-value" style="margin-left: 8px"></span>
@@ -1763,9 +1764,11 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
                 }
             }
         var initialBalance = parseFloat("<?= $currentBalance ?>");
+        var pendingPaypalAmount = parseFloat("<?= $pendingPaypalAmount ?>") || 0;
         var newBalance = initialBalance - total;
+        var availableBalance = newBalance + pendingPaypalAmount;
         var minimumAccountBalance = parseFloat("<?= $minimumAccountBalance ?>") || 0;
-        var belowMinimum = minimumAccountBalance !== 0 ? (newBalance < minimumAccountBalance) : (newBalance < 0);
+        var belowMinimum = minimumAccountBalance !== 0 ? (availableBalance < minimumAccountBalance) : (availableBalance < 0);
         var formattedBalance = "";
         var showFullBalanceInSimple = <?= $showFullBalanceInSimple ? 'true' : 'false' ?>;
         if (window.SIMPLE_ORDER_MODE && !showFullBalanceInSimple) {

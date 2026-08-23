@@ -289,6 +289,7 @@ class SimpleLoginController extends AbstractActionController
             'drinkHistory' => $drinkHistory,
             'userName' => $userName,
             'currentBalance' => $currentBalance,
+            'pendingPaypalAmount' => $drinkManager->getPendingPaypalAmount($userId),
             'minimumAccountBalance' => $drinkManager->getMinimumAccountBalance($this->getServiceLocator()),
             'error' => null,
             'success' => false,

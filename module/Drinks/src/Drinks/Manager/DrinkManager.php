@@ -53,6 +53,19 @@ class DrinkManager
         }
     }
 
+    public function getPendingPaypalAmount($userId)
+    {
+        try {
+            $row = $this->dbAdapter->query(
+                'SELECT COALESCE(SUM(amount), 0) AS total FROM drinks_paypal WHERE linked_user_id = ? AND linked_deposit_id IS NULL AND state != ?',
+                [(int)$userId, 'ignored']
+            )->current();
+            return round($row && isset($row['total']) ? (float)$row['total'] : 0.0, 2);
+        } catch (\Exception $e) {
+            return 0.0;
+        }
+    }
+
     public function isTeamAccount($userId)
     {
         try {
@@ -77,7 +90,12 @@ class DrinkManager
             return true;
         }
 
-        $newBalance = round($this->calculateUserDrinkBalance($userId, $serviceManager) - (float)$orderTotal, 2);
+        $newBalance = round(
+            $this->calculateUserDrinkBalance($userId, $serviceManager)
+            + $this->getPendingPaypalAmount($userId)
+            - (float)$orderTotal,
+            2
+        );
         return $newBalance >= $minimumBalance;
     }
 

@@ -264,6 +264,7 @@ class DrinksController extends AbstractActionController
             'currentSpieltag' => $currentSpieltag,
             'availableSpieltage' => $availableSpieltage,
             'currentBalance' => $currentBalance,
+            'pendingPaypalAmount' => $drinkManager->getPendingPaypalAmount($userId),
             'minimumAccountBalance' => $drinkManager->getMinimumAccountBalance($serviceManager),
             'pendingPaypalDeposits' => $pendingPaypalDeposits,
             'keepLoggedInActive' => $keepLoggedInActive,
