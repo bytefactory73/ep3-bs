@@ -1085,6 +1085,46 @@ class DrinksController extends AbstractActionController
         return $viewModel;
     }
 
+    public function createTeamEventAction()
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $admin = $userSessionManager->getSessionUser();
+        if (!$admin || $admin->get('status') !== 'admin') {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'No permission']));
+        }
+        if (!$this->getRequest()->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required.']));
+        }
+
+        $teamAdminUserId = (int)$this->params()->fromPost('uid', 0);
+        $label = $this->normalizeTeamEventLabel($this->params()->fromPost('label', ''));
+        if ($teamAdminUserId <= 0 || $label === '') {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Spieltagname fehlt.']));
+        }
+
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
+        $aliasRow = $dbAdapter->query('SELECT is_team FROM drink_aliases WHERE user_id = ?', [$teamAdminUserId])->current();
+        if (!$aliasRow || empty($aliasRow['is_team'])) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Benutzer ist kein Mannschafts-Account.']));
+        }
+
+        $event = $this->getOrCreateTeamEventByLabel($teamAdminUserId, $label);
+        if (!$event || empty($event['id'])) {
+            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Spieltag konnte nicht angelegt werden.']));
+        }
+        if ($this->isTeamEventClosedRow($event)) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Dieser Spieltag ist bereits abgeschlossen.']));
+        }
+
+        return $this->getResponse()->setContent(json_encode([
+            'success' => true,
+            'team_event_id' => (int)$event['id'],
+            'label' => isset($event['comment']) ? trim((string)$event['comment']) : $label,
+        ]));
+    }
+
     /**
      * AJAX: Get user deposits data
      */
@@ -1598,12 +1638,6 @@ class DrinksController extends AbstractActionController
                 return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'Einzahlung nicht gefunden.']));
             }
             $currentTeamEventId = isset($entryRow['teamevent_id']) ? (int)$entryRow['teamevent_id'] : 0;
-            if ($currentTeamEventId > 0) {
-                $currentTeamEvent = $this->getTeamEventById($uid, $currentTeamEventId);
-                if ($currentTeamEvent && $this->isTeamEventClosedRow($currentTeamEvent)) {
-                    return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Einträge abgeschlossener Spieltage können nicht bearbeitet werden.']));
-                }
-            }
             $dbAdapter->query('UPDATE drink_deposits SET teamevent_id = ? WHERE id = ? AND user_id = ?', [$teamEventId, $entryId, $uid]);
         } else {
             $entryRow = $dbAdapter->query('SELECT id, teamevent_id FROM drink_orders WHERE id = ? AND user_id = ? LIMIT 1', [$entryId, $uid])->current();
@@ -1611,12 +1645,6 @@ class DrinksController extends AbstractActionController
                 return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'Buchung nicht gefunden.']));
             }
             $currentTeamEventId = isset($entryRow['teamevent_id']) ? (int)$entryRow['teamevent_id'] : 0;
-            if ($currentTeamEventId > 0) {
-                $currentTeamEvent = $this->getTeamEventById($uid, $currentTeamEventId);
-                if ($currentTeamEvent && $this->isTeamEventClosedRow($currentTeamEvent)) {
-                    return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Einträge abgeschlossener Spieltage können nicht bearbeitet werden.']));
-                }
-            }
             $dbAdapter->query('UPDATE drink_orders SET teamevent_id = ? WHERE id = ? AND user_id = ?', [$teamEventId, $entryId, $uid]);
         }
 

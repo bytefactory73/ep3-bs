@@ -1559,8 +1559,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         var entryId = entry && typeof entry.id !== 'undefined' ? String(entry.id) : '';
                         var entryType = entry && entry.type === 'Einzahlung' ? 'deposit' : 'order';
                         var teamEventId = entry && entry.teamevent_id ? String(entry.teamevent_id) : '';
-                        var isClosed = !!(entry && entry.spieltag_closed);
-                        if (!entryId || !teamEventId || isClosed) {
+                        if (!entryId || !teamEventId) {
                             return ' <span style="display:inline-block; margin-left:6px; padding:1px 6px; border:1px solid ' + border + '; border-radius:5px; background:' + bg + '; color:' + text + '; font-size:11px; font-weight:600; line-height:1.2; text-decoration:none; vertical-align:middle;">' + escapeHtml(label) + '</span>';
                         }
                         return ' <button type="button" class="history-team-event-badge" data-entry-id="' + escapeHtml(entryId) + '" data-entry-type="' + escapeHtml(entryType) + '" data-team-event-id="' + escapeHtml(teamEventId) + '" data-team-event-label="' + escapeHtml(label) + '" style="display:inline-block; margin-left:6px; padding:1px 6px; border:1px solid ' + border + '; border-radius:5px; background:' + bg + '; color:' + text + '; font-size:11px; font-weight:600; line-height:1.2; text-decoration:none; vertical-align:middle; cursor:pointer;">' + escapeHtml(label) + '</button>';
@@ -1933,6 +1932,10 @@ document.addEventListener('DOMContentLoaded', function() {
             option.textContent = label + ' (offen)';
             historyTeamEventEditSelect.appendChild(option);
         });
+        var newOption = document.createElement('option');
+        newOption.value = '__new__';
+        newOption.textContent = '<?= $this->t('Neuen Spieltag anlegen') ?>';
+        historyTeamEventEditSelect.appendChild(newOption);
 
         if (historyTeamEventEditState.currentTeamEventId) {
             historyTeamEventEditSelect.value = historyTeamEventEditState.currentTeamEventId;
@@ -1956,12 +1959,78 @@ document.addEventListener('DOMContentLoaded', function() {
         historyTeamEventEditModal.style.display = 'flex';
     }
 
+    async function createHistoryTeamSpieltag(label) {
+        var uid = String(userIdInput && userIdInput.value ? userIdInput.value : '').trim();
+        if (!uid || !label) return null;
+
+        var resp = await fetch('<?= $this->url('user/create-team-event') ?>', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: new URLSearchParams({ uid: uid, label: label })
+        });
+        var data = await resp.json();
+        if (!resp.ok || !data || !data.success) {
+            throw new Error((data && data.error) ? data.error : 'Spieltag konnte nicht angelegt werden.');
+        }
+
+        var eventId = String(data.team_event_id || '');
+        var eventLabel = String(data.label || label).trim();
+        if (!eventId || !eventLabel) {
+            throw new Error('Spieltag konnte nicht angelegt werden.');
+        }
+
+        var eventExists = currentTeamEventsForPanel.some(function(evt) {
+            return String(evt && evt.id || '') === eventId;
+        });
+        if (!eventExists) {
+            currentTeamEventsForPanel.push({ id: eventId, label: eventLabel, balance: 0, closed: 0 });
+            renderTeamEventsPanelList(currentTeamEventsForPanel, currentSelectedTeamEventIdForPanel);
+        }
+        return eventId;
+    }
+
+    if (historyTeamEventEditSelect) {
+        historyTeamEventEditSelect.addEventListener('change', async function() {
+            if (historyTeamEventEditSelect.value !== '__new__') return;
+            var newName = window.prompt('<?= $this->t('Neuen Spieltag eingeben:') ?>', getDefaultSpieltagName());
+            if (!newName || !newName.trim()) {
+                historyTeamEventEditSelect.selectedIndex = 0;
+                return;
+            }
+            try {
+                var createdId = await createHistoryTeamSpieltag(newName.trim());
+                if (createdId) {
+                    var option = document.createElement('option');
+                    option.value = createdId;
+                    option.textContent = newName.trim() + ' (offen)';
+                    historyTeamEventEditSelect.insertBefore(option, historyTeamEventEditSelect.lastElementChild);
+                    historyTeamEventEditSelect.value = createdId;
+                }
+            } catch (e) {
+                alert((e && e.message) ? e.message : 'Spieltag konnte nicht angelegt werden.');
+                historyTeamEventEditSelect.selectedIndex = 0;
+            }
+        });
+    }
+
     async function saveHistoryTeamEventAssignment() {
         var uid = String(userIdInput && userIdInput.value ? userIdInput.value : '').trim();
         var entryId = historyTeamEventEditState.entryId;
         var entryType = historyTeamEventEditState.entryType;
         var teamEventId = String(historyTeamEventEditSelect && historyTeamEventEditSelect.value ? historyTeamEventEditSelect.value : '').trim();
         if (!uid || !entryId || !entryType || !teamEventId) return;
+
+        var currentTeamEvent = currentTeamEventsForPanel.find(function(evt) {
+            return String(evt && evt.id || '') === String(historyTeamEventEditState.currentTeamEventId || '');
+        });
+        if (currentTeamEvent && currentTeamEvent.closed && teamEventId !== historyTeamEventEditState.currentTeamEventId) {
+            var confirmed = window.confirm('Der aktuelle Spieltag ist abgeschlossen. Möchten Sie den Eintrag wirklich einem anderen Spieltag zuordnen?');
+            if (!confirmed) return;
+        }
 
         historyTeamEventEditSaveBtn.disabled = true;
         if (historyTeamEventEditMessage) {
