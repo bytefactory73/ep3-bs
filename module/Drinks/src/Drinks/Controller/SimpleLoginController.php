@@ -111,6 +111,8 @@ class SimpleLoginController extends AbstractActionController
 
     public function orderAction()
     {
+        $this->getResponse()->getHeaders()->addHeaderLine('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        $this->getResponse()->getHeaders()->addHeaderLine('Pragma', 'no-cache');
         $viewModel = new ViewModel();
         $viewModel->setTerminal(true);
         $viewModel->setTemplate('simple-login/order');
@@ -1207,6 +1209,8 @@ class SimpleLoginController extends AbstractActionController
 
     public function spieltagAction()
     {
+        $this->getResponse()->getHeaders()->addHeaderLine('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        $this->getResponse()->getHeaders()->addHeaderLine('Pragma', 'no-cache');
         $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
         $sessionManager = $this->getServiceLocator()->get('Zend\Session\SessionManager');
         $sessionManager->start();
@@ -1274,6 +1278,7 @@ class SimpleLoginController extends AbstractActionController
             'success' => true,
             'current_spieltag' => $currentTeamEventLabel,
             'spieltage' => $availableTeamEventLabels,
+            'open_spieltage' => $availableTeamEventLabels,
         ]));
     }
 
@@ -1402,9 +1407,21 @@ class SimpleLoginController extends AbstractActionController
             if ($selectedTeamEventLabel !== '') {
                 $event = $this->getTeamEventByLabel($teamAdminUserId, $selectedTeamEventLabel);
                 if ($event) {
+                    if ($this->isTeamEventClosedRow($event)) {
+                        return $this->getResponse()->setStatusCode(400)->setContent(json_encode([
+                            'success' => false,
+                            'error' => 'Der ausgewählte Spieltag ist bereits abgeschlossen. Bitte wählen Sie einen offenen Spieltag aus.',
+                        ]));
+                    }
                     $teamEventId = (int)$event['id'];
                     $session->current_teamevent_id = $teamEventId;
                 }
+            }
+            if ($teamEventId === null) {
+                return $this->getResponse()->setStatusCode(400)->setContent(json_encode([
+                    'success' => false,
+                    'error' => 'Kein gültiger offener Spieltag ausgewählt.',
+                ]));
             }
             // Spieltag is stored via teamevent_id only; keep comment for actual free-text comments.
             $comment = null;

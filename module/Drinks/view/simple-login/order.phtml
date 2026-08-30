@@ -126,7 +126,7 @@ window.teamSpieltagUpdateFromApi = function(data) {
     var select = document.getElementById('spieltag-select');
     if (!select || !data || !data.success) return;
     var selected = data.current_spieltag || '';
-    var options = Array.isArray(data.spieltage) ? data.spieltage : [];
+    var options = Array.isArray(data.open_spieltage) ? data.open_spieltage : [];
 
     while (select.firstChild) {
         select.removeChild(select.firstChild);

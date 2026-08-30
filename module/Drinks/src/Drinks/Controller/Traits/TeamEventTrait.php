@@ -1226,17 +1226,14 @@ trait TeamEventTrait
         $availableTeamEventLabels = $this->getAvailableTeamEventLabels($teamAdminUserId);
         if ($selectedTeamEventLabel !== '') {
             $teamEvent = $this->getTeamEventByLabel($teamAdminUserId, $selectedTeamEventLabel);
-            if ($teamEvent) {
+            if ($teamEvent && !$this->isTeamEventClosedRow($teamEvent)) {
                 $session->current_teamevent_id = (int)$teamEvent['id'];
             } else {
-                // Event does not exist – clear stale session value
+                // Clear a stale or closed session selection before choosing an open event.
                 $selectedTeamEventLabel = '';
                 $session->current_spieltag = '';
                 $session->current_teamevent_id = 0;
             }
-        }
-        if ($selectedTeamEventLabel !== '' && !in_array($selectedTeamEventLabel, $availableTeamEventLabels, true)) {
-            array_unshift($availableTeamEventLabels, $selectedTeamEventLabel);
         }
         if ($selectedTeamEventLabel === '' && !empty($availableTeamEventLabels)) {
             $selectedTeamEventLabel = $availableTeamEventLabels[0];

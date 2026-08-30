@@ -1386,6 +1386,9 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
                             }
                         } else {
                             var msg = res && res.error ? res.error : '<?= $this->t('Bestellung fehlgeschlagen.') ?>';
+                            if (window.SIMPLE_ORDER_MODE) {
+                                alert(msg);
+                            }
                             showOrderFeedback(msg, true);
                             submitBtn.disabled = false;
                             submitBtn.className = submitBtn.className.replace(/\bloading\b/, '');
