@@ -167,7 +167,7 @@ if (!empty($this->quickLoginUsers) && is_array($this->quickLoginUsers) && count(
         <form method="post" autocomplete="off">
             <input type="hidden" name="alias" value="<?= $this->escapeHtml($user['theken_id']) ?>">
             <input type="hidden" name="keep_logged_in" value="1">
-            <button type="submit" style="
+            <button type="submit" class="quick-login-button" style="
                 width: 100px;
                 height: 100px;
                 background: <?= $bgColor ?>;
@@ -196,6 +196,26 @@ if (!empty($this->quickLoginUsers) && is_array($this->quickLoginUsers) && count(
     </div>
 </div>
 <?php endif; ?>
+
+<script>
+(function() {
+    var maskInput = document.getElementById('alias-mask');
+    var quickLoginButtons = document.querySelectorAll('.quick-login-button');
+    if (!maskInput || quickLoginButtons.length === 0) return;
+
+    function updateQuickLoginButtons() {
+        var disabled = maskInput.value.length > 0;
+        quickLoginButtons.forEach(function(button) {
+            button.disabled = disabled;
+            button.style.cursor = disabled ? 'not-allowed' : 'pointer';
+            button.style.opacity = disabled ? '0.5' : '1';
+        });
+    }
+
+    maskInput.addEventListener('input', updateQuickLoginButtons);
+    updateQuickLoginButtons();
+})();
+</script>
 
 <div class="simple-login-info" style="">
     Logge dich mit deiner <b>"Theken-ID"</b> ein. Diese kannst du in deinem Benutzer Profil des Buchungssystem selbst wählen.
