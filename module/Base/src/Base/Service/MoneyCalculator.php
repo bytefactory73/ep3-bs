@@ -4,8 +4,14 @@ namespace Base\Service;
 
 final class MoneyCalculator
 {
+    private static $serializationConfigured = false;
+
     public static function roundMoney($amount, $precision = 2)
     {
+        if (!self::$serializationConfigured) {
+            ini_set('serialize_precision', '-1');
+            self::$serializationConfigured = true;
+        }
         return round((float)$amount, (int)$precision);
     }
 

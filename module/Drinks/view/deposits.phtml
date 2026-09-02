@@ -1546,6 +1546,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     function renderSpieltagBadge(entry) {
                         var label = entry && entry.spieltag_label ? String(entry.spieltag_label).trim() : '';
+                        var entryId = entry && typeof entry.id !== 'undefined' ? String(entry.id) : '';
+                        var entryType = entry && entry.type === 'Einzahlung' ? 'deposit' : 'order';
+                        var teamEventId = entry && entry.teamevent_id ? String(entry.teamevent_id) : '';
+                        var isTeamAccount = !!(isTeamCheckbox && isTeamCheckbox.checked);
+                        if (!label && isTeamAccount && entryId) {
+                            return ' <button type="button" class="history-team-event-badge" data-entry-id="' + escapeHtml(entryId) + '" data-entry-type="' + escapeHtml(entryType) + '" data-team-event-id="" data-team-event-label="" title="Spieltag zuweisen" aria-label="Spieltag zuweisen" style="display:inline-block; width:18px; height:16px; margin-left:6px; padding:0; border:1px solid #90a4ae; border-radius:5px; background:#fff; color:#607d8b; font-size:11px; line-height:1.2; text-decoration:none; vertical-align:middle; cursor:pointer;"></button>';
+                        }
                         if (!label) return '';
                         var hash = hashLabelColor(label);
                         var hue = (hash % 360 + ((hash >>> 11) % 37)) % 360;
@@ -1556,10 +1563,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         var bg = 'hsl(' + hue + ', ' + saturation + '%, ' + backgroundLightness + '%)';
                         var border = 'hsl(' + hue + ', ' + Math.max(36, saturation - 18) + '%, ' + borderLightness + '%)';
                         var text = 'hsl(' + hue + ', ' + Math.max(34, saturation - 14) + '%, ' + textLightness + '%)';
-                        var entryId = entry && typeof entry.id !== 'undefined' ? String(entry.id) : '';
-                        var entryType = entry && entry.type === 'Einzahlung' ? 'deposit' : 'order';
-                        var teamEventId = entry && entry.teamevent_id ? String(entry.teamevent_id) : '';
-                        var isTeamAccount = !!(isTeamCheckbox && isTeamCheckbox.checked);
                         if (!isTeamAccount || !entryId || !teamEventId) {
                             return ' <span style="display:inline-block; margin-left:6px; padding:1px 6px; border:1px solid ' + border + '; border-radius:5px; background:' + bg + '; color:' + text + '; font-size:11px; font-weight:600; line-height:1.2; text-decoration:none; vertical-align:middle;">' + escapeHtml(label) + '</span>';
                         }
@@ -2078,7 +2081,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 var entryType = btn.getAttribute('data-entry-type') || '';
                 var teamEventId = btn.getAttribute('data-team-event-id') || '';
                 var label = btn.getAttribute('data-team-event-label') || '';
-                if (!entryId || !entryType || !teamEventId) return;
+                if (!entryId || !entryType) return;
                 openHistoryTeamEventEditModal(entryId, entryType, teamEventId, label);
             });
         });
