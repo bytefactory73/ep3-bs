@@ -63,7 +63,59 @@ trait MoneyTransferTrait
         return 0;
     }
 
-    protected function executeMoneyTransfer($senderUserId, $receiverUserId, $amount, $receiverTeamEventId = 0, $allowClosedReceiverTeamEvent = false)
+    /**
+     * $transferKey: optional client-generated UUID (one per submit). It is stored as
+     * transfer_reference; a retry with the same key returns success without moving money again.
+     */
+    protected function executeMoneyTransfer($senderUserId, $receiverUserId, $amount, $receiverTeamEventId = 0, $allowClosedReceiverTeamEvent = false, $transferKey = null)
+    {
+        $transferKey = is_string($transferKey) ? strtolower(trim($transferKey)) : '';
+        if (!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $transferKey)) {
+            $transferKey = '';
+        }
+        $dbAdapter = $this->getServiceLocator()->get('Zend\\Db\\Adapter\\Adapter');
+        if ($transferKey === '' || !$this->canUseTransferReferenceColumns($dbAdapter)) {
+            return $this->runMoneyTransfer($senderUserId, $receiverUserId, $amount, $receiverTeamEventId, $allowClosedReceiverTeamEvent, null);
+        }
+
+        $lockName = 'drinks_transfer_' . $transferKey;
+        $lockRow = $dbAdapter->query('SELECT GET_LOCK(?, 10) AS got_lock', [$lockName])->current();
+        if (!$lockRow || (int)$lockRow['got_lock'] !== 1) {
+            return [
+                'statusCode' => 409,
+                'payload' => ['success' => false, 'error' => 'Überweisung wird bereits verarbeitet.'],
+            ];
+        }
+        try {
+            $existing = $dbAdapter->query('SELECT id, user_id FROM drink_orders WHERE transfer_reference = ? LIMIT 1', [$transferKey])->current();
+            if ($existing) {
+                if ((int)$existing['user_id'] !== (int)$senderUserId) {
+                    return [
+                        'statusCode' => 409,
+                        'payload' => ['success' => false, 'error' => 'Ungültige Überweisungs-ID.'],
+                    ];
+                }
+                $drinkManager = $this->getServiceLocator()->get('Drinks\\Manager\\DrinkManager');
+                return [
+                    'statusCode' => 200,
+                    'payload' => [
+                        'success' => true,
+                        'already_processed' => true,
+                        'balance' => (float)$drinkManager->calculateUserDrinkBalance((int)$senderUserId, $this->getServiceLocator()),
+                    ],
+                ];
+            }
+            return $this->runMoneyTransfer($senderUserId, $receiverUserId, $amount, $receiverTeamEventId, $allowClosedReceiverTeamEvent, $transferKey);
+        } finally {
+            try {
+                $dbAdapter->query('SELECT RELEASE_LOCK(?)', [$lockName]);
+            } catch (\Exception $e) {
+                // released with the connection anyway
+            }
+        }
+    }
+
+    private function runMoneyTransfer($senderUserId, $receiverUserId, $amount, $receiverTeamEventId, $allowClosedReceiverTeamEvent, $transferKey)
     {
         $senderUserId = (int)$senderUserId;
         $receiverUserId = (int)$receiverUserId;
@@ -153,9 +205,12 @@ trait MoneyTransferTrait
             }
             $transferTeamEventId = (int)$receiverTeamEvent['id'];
         }
-        $transferReference = $this->createMoneyTransferReference();
+        $transferReference = $transferKey !== null ? $transferKey : $this->createMoneyTransferReference();
         $canUseTransferReference = $this->canUseTransferReferenceColumns($dbAdapter);
 
+        // Order (sender) and deposit (receiver) are written atomically: either both or neither.
+        $connection = $dbAdapter->getDriver()->getConnection();
+        $connection->beginTransaction();
         try {
             // Sender side: transfer out as an expense order (positive price).
             $orderInsertResult = $drinkOrderManager->addOrder(
@@ -172,7 +227,10 @@ trait MoneyTransferTrait
             if ($transferTeamEventId !== null && $transferTeamEventId > 0 && $orderId > 0) {
                 $dbAdapter->query('UPDATE drink_orders SET teamevent_id = ? WHERE id = ? AND (teamevent_id IS NULL OR teamevent_id = 0)', [$transferTeamEventId, $orderId]);
             }
-            if ($canUseTransferReference && $orderId > 0) {
+            if ($orderId <= 0) {
+                throw new \RuntimeException('Transfer order insert failed');
+            }
+            if ($canUseTransferReference) {
                 $dbAdapter->query('UPDATE drink_orders SET transfer_reference = ? WHERE id = ?', [$transferReference, $orderId]);
             }
 
@@ -189,10 +247,29 @@ trait MoneyTransferTrait
             if ($transferTeamEventId !== null && $transferTeamEventId > 0 && $depositId > 0) {
                 $dbAdapter->query('UPDATE drink_deposits SET teamevent_id = ? WHERE id = ? AND (teamevent_id IS NULL OR teamevent_id = 0)', [$transferTeamEventId, $depositId]);
             }
-            if ($canUseTransferReference && $depositId > 0) {
+            if ($depositId <= 0) {
+                throw new \RuntimeException('Transfer deposit insert failed');
+            }
+            if ($canUseTransferReference) {
                 $dbAdapter->query('UPDATE drink_deposits SET transfer_reference = ? WHERE id = ?', [$transferReference, $depositId]);
             }
 
+            $connection->commit();
+        } catch (\Exception $e) {
+            try {
+                $connection->rollback();
+            } catch (\Exception $rollbackException) {
+                error_log('Money transfer rollback failed: ' . $rollbackException->getMessage());
+            }
+            error_log('Money transfer failed: ' . $e->getMessage());
+            return [
+                'statusCode' => 500,
+                'payload' => ['success' => false, 'error' => 'Senden fehlgeschlagen.'],
+            ];
+        }
+
+        // Notifications after commit: a mail failure must not report a completed transfer as failed.
+        try {
             $userMailService = $serviceManager->get('User\\Service\\MailService');
 
             $senderSubject = $this->t('Geld versendet');
@@ -202,7 +279,11 @@ trait MoneyTransferTrait
                 $receiverName
             );
             $this->sendFromTheke($userMailService, $dbAdapter, $senderUser, $senderSubject, $senderText, ['isHtml' => false]);
-
+        } catch (\Exception $e) {
+            error_log('Money transfer notification (sender) failed: ' . $e->getMessage());
+        }
+        try {
+            $userMailService = $serviceManager->get('User\\Service\\MailService');
             $receiverSubject = $this->t('Geld erhalten');
             $receiverText = sprintf(
                 $this->t('Du hast %.2f EUR von %s erhalten.'),
@@ -211,10 +292,7 @@ trait MoneyTransferTrait
             );
             $this->sendFromTheke($userMailService, $dbAdapter, $receiverUser, $receiverSubject, $receiverText, ['isHtml' => false]);
         } catch (\Exception $e) {
-            return [
-                'statusCode' => 500,
-                'payload' => ['success' => false, 'error' => 'Senden fehlgeschlagen.'],
-            ];
+            error_log('Money transfer notification (receiver) failed: ' . $e->getMessage());
         }
 
         $newBalance = (float)$drinkManager->calculateUserDrinkBalance($senderUserId, $serviceManager);

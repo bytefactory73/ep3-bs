@@ -523,6 +523,22 @@ if ($__partyModeEnabled) {
                     loadMoneyRecipientTeamEvents(selectedRecipientId);
                 }
 
+                function createMoneySendTransferKey() {
+                    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+                        return window.crypto.randomUUID();
+                    }
+                    var b = new Uint8Array(16);
+                    if (window.crypto && window.crypto.getRandomValues) {
+                        window.crypto.getRandomValues(b);
+                    } else {
+                        for (var i = 0; i < 16; i++) { b[i] = Math.floor(Math.random() * 256); }
+                    }
+                    b[6] = (b[6] & 0x0f) | 0x40;
+                    b[8] = (b[8] & 0x3f) | 0x80;
+                    var h = Array.prototype.map.call(b, function(x) { return ('0' + x.toString(16)).slice(-2); }).join('');
+                    return h.substr(0, 8) + '-' + h.substr(8, 4) + '-' + h.substr(12, 4) + '-' + h.substr(16, 4) + '-' + h.substr(20, 12);
+                }
+
                 function closeMoneySendModal() {
                     if (!moneySendModal) return;
                     moneySendModal.style.display = 'none';
@@ -703,6 +719,14 @@ if ($__partyModeEnabled) {
                             return;
                         }
 
+                        // One idempotency key per distinct transfer: a retry after an error reuses it
+                        // (the server then reports "already done" instead of sending twice); changed
+                        // input gets a new key.
+                        var moneySendSignature = [receiverUserId, amountRaw, selectedRecipientTeamEventId || ''].join('|');
+                        if (!window._moneySendTransfer || window._moneySendTransfer.signature !== moneySendSignature) {
+                            window._moneySendTransfer = { signature: moneySendSignature, key: createMoneySendTransferKey() };
+                        }
+
                         moneySendConfirm.disabled = true;
                         if (moneySendError) moneySendError.textContent = '';
                         fetch('<?= $simpleOrderMode ? $this->url('user/simple-order/send-money') : $this->url('user/send-money') ?>', {
@@ -715,6 +739,7 @@ if ($__partyModeEnabled) {
                             body: 'receiver_user_id=' + encodeURIComponent(receiverUserId)
                                 + '&amount=' + encodeURIComponent(amountRaw)
                                 + '&team_event_id=' + encodeURIComponent(selectedRecipientTeamEventId || '')
+                                + '&transfer_key=' + encodeURIComponent(window._moneySendTransfer.key)
                                 + (isSimpleOrderMode ? ('&password=' + encodeURIComponent(passwordRaw)) : '')
                         })
                         .then(function(resp) {
@@ -731,6 +756,7 @@ if ($__partyModeEnabled) {
                                 if (moneySendError) moneySendError.textContent = msg;
                                 return;
                             }
+                            window._moneySendTransfer = null;
                             closeMoneySendModal();
                             window.location.reload();
                         })
