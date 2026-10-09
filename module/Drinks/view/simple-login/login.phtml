@@ -165,8 +165,7 @@ if (!empty($this->quickLoginUsers) && is_array($this->quickLoginUsers) && count(
             $hoverColor = $isTeam ? '#0d47a1' : '#45a049';
         ?>
         <form method="post" autocomplete="off">
-            <input type="hidden" name="alias" value="<?= $this->escapeHtml($user['theken_id']) ?>">
-            <input type="hidden" name="keep_logged_in" value="1">
+            <input type="hidden" name="quick_login_token" value="<?= $this->escapeHtml($user['token']) ?>">
             <button type="submit" class="quick-login-button" style="
                 width: 100px;
                 height: 100px;
@@ -189,7 +188,7 @@ if (!empty($this->quickLoginUsers) && is_array($this->quickLoginUsers) && count(
             "
             onmouseover="this.style.background='<?= $hoverColor ?>'"
             onmouseout="this.style.background='<?= $bgColor ?>'">
-                <?= $this->escapeHtml(!empty($user['display_name']) ? $user['display_name'] : $user['theken_id']) ?>
+                <?= $this->escapeHtml($user['label']) ?>
             </button>
         </form>
         <?php endforeach; ?>

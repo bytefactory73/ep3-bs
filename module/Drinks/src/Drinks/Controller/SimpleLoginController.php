@@ -51,22 +51,31 @@ class SimpleLoginController extends AbstractActionController
             $partyModeEnabled = $partyModeEnabledBase && $activeWithin;
         } catch (\Exception $e) {}
         
-        // Load users with active "keep logged in" sessions
-        $quickLoginUsers = [];
-        try {
-            $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
-            $now = new \DateTime();
-            $quickLoginUsers = $db->query(
-                'SELECT da.user_id, da.alias AS theken_id, u.alias AS display_name, da.is_team
-                 FROM drink_aliases da
-                 LEFT JOIN bs_users u ON da.user_id = u.uid
-                 WHERE da.keep_logged_in = 1 AND da.keep_logged_in_expires > ?
-                 ORDER BY da.is_team DESC, u.alias ASC',
-                [$now->format('Y-m-d H:i:s')]
-            )->toArray();
-        } catch (\Exception $e) {}
-        
-        if ($request->isPost()) {
+        $quickLoginSession = new \Zend\Session\Container('SimpleLoginQuick');
+
+        if ($request->isPost() && trim((string)$request->getPost('quick_login_token', '')) !== '') {
+            // Quick login: the token maps to a user only within this browser session and is single-use.
+            // It never re-arms "keep logged in"; the user must still have an active, unexpired flag.
+            $token = trim((string)$request->getPost('quick_login_token'));
+            $tokens = is_array($quickLoginSession->tokens) ? $quickLoginSession->tokens : [];
+            $quickUserId = isset($tokens[$token]) ? (int)$tokens[$token] : 0;
+            unset($tokens[$token]);
+            $quickLoginSession->tokens = $tokens;
+            if ($quickUserId > 0) {
+                $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
+                $row = $db->query(
+                    'SELECT user_id FROM drink_aliases WHERE user_id = ? AND enabled = 1 AND keep_logged_in = 1 AND keep_logged_in_expires > ?',
+                    [$quickUserId, (new \DateTime())->format('Y-m-d H:i:s')]
+                )->current();
+                if ($row && $row['user_id']) {
+                    $quickLoginSession->tokens = [];
+                    $session = new \Zend\Session\Container('SimpleLogin');
+                    $session->user_id = $row['user_id'];
+                    return $this->redirect()->toRoute('user/simple-order');
+                }
+            }
+            $error = 'Schnell-Login ist abgelaufen. Bitte mit Theken-ID einloggen.';
+        } elseif ($request->isPost()) {
             $alias = trim($request->getPost('alias'));
             $keepLoggedIn = (bool)$request->getPost('keep_logged_in', false);
             if ($alias) {
@@ -96,6 +105,35 @@ class SimpleLoginController extends AbstractActionController
                 $error = 'Bitte geben Sie eine Theken-ID ein.';
             }
         }
+
+        // Load users with active "keep logged in" sessions. The page only gets opaque per-session
+        // tokens, never the Theken-ID (which is the login credential).
+        $quickLoginUsers = [];
+        $quickLoginTokens = [];
+        try {
+            $db = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
+            $now = new \DateTime();
+            $quickLoginRows = $db->query(
+                'SELECT da.user_id, u.alias AS display_name, da.is_team
+                 FROM drink_aliases da
+                 LEFT JOIN bs_users u ON da.user_id = u.uid
+                 WHERE da.keep_logged_in = 1 AND da.keep_logged_in_expires > ? AND da.enabled = 1
+                 ORDER BY da.is_team DESC, u.alias ASC',
+                [$now->format('Y-m-d H:i:s')]
+            )->toArray();
+            foreach ($quickLoginRows as $quickLoginRow) {
+                $token = bin2hex(random_bytes(16));
+                $quickLoginTokens[$token] = (int)$quickLoginRow['user_id'];
+                $displayName = trim((string)$quickLoginRow['display_name']);
+                $quickLoginUsers[] = [
+                    'token' => $token,
+                    'label' => $displayName !== '' ? $displayName : (!empty($quickLoginRow['is_team']) ? 'Mannschaft' : 'Benutzer'),
+                    'is_team' => !empty($quickLoginRow['is_team']),
+                ];
+            }
+        } catch (\Exception $e) {}
+        $quickLoginSession->tokens = $quickLoginTokens;
+
         $viewModel = new ViewModel([
             'error' => $error,
             'recentOrders' => $recentOrders,
