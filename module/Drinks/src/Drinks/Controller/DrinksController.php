@@ -1971,8 +1971,8 @@ class DrinksController extends AbstractActionController
         }
 
         // Build a cache of user_id -> alias for team lookups
-        $teamAliasCache = [];
-        $teamAliasCache[$teamUid] = $aliasRow['alias'];
+        // Team display names (never the Theken-ID, which is the team account's login credential)
+        $teamAliasCache = $this->getTeamDisplayNames(array_merge([$teamUid], array_values($eventAdminMap)));
 
         // Build events array with correct team_alias and can_manage_members for the frontend dropdown
         $events = [];
@@ -1980,14 +1980,7 @@ class DrinksController extends AbstractActionController
             $eventId = (int)$event['id'];
             $adminUserId = isset($eventAdminMap[$eventId]) ? $eventAdminMap[$eventId] : 0;
             $teamAlias = '';
-            if ($adminUserId > 0) {
-                if (!isset($teamAliasCache[$adminUserId])) {
-                    $aliasLookupRow = $dbAdapter->query(
-                        'SELECT alias FROM drink_aliases WHERE user_id = ? LIMIT 1',
-                        [$adminUserId]
-                    )->current();
-                    $teamAliasCache[$adminUserId] = $aliasLookupRow && isset($aliasLookupRow['alias']) ? (string)$aliasLookupRow['alias'] : '';
-                }
+            if ($adminUserId > 0 && isset($teamAliasCache[$adminUserId])) {
                 $teamAlias = $teamAliasCache[$adminUserId];
             }
             // can_manage_members: true only if the requesting user is the teamlead for this event
@@ -2051,7 +2044,7 @@ class DrinksController extends AbstractActionController
             'spieltage' => $spieltage,
             'open_spieltage' => $openSpieltage,
             'events' => $events,
-            'team_alias' => $aliasRow['alias'],
+            'team_alias' => isset($teamAliasCache[$teamUid]) ? $teamAliasCache[$teamUid] : '',
             'is_team_lead_for_team' => 1,
             'is_team_member' => $isTeamMember,
             'is_editable' => $isEditable,

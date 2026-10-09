@@ -502,7 +502,6 @@ class SimpleLoginController extends AbstractActionController
         $accountBalance = (float)$drinkManager->calculateUserDrinkBalance($teamAdminUserId, $serviceManager);
         
         // Get team alias from the team admin
-        $teamAliasRow = $db->query('SELECT alias FROM drink_aliases WHERE user_id = ?', [$teamAdminUserId])->current();
         
         $requestedSpieltagRaw = trim((string)$this->params()->fromQuery('spieltag', isset($session->current_spieltag) ? $session->current_spieltag : ''));
         $requestedTeamEventId = ctype_digit($requestedSpieltagRaw) ? (int)$requestedSpieltagRaw : 0;
@@ -512,17 +511,8 @@ class SimpleLoginController extends AbstractActionController
         $eventsData = $this->getTeamEventsForUser($userId, $isTeamAccount);
         
         // Build team alias map for all team admins
-        $teamAliasMap = [];
-        if (!empty($eventsData['teamAdminUserIds'])) {
-            $placeholders = implode(', ', array_fill(0, count($eventsData['teamAdminUserIds']), '?'));
-            $aliasRows = $db->query(
-                'SELECT user_id, alias FROM drink_aliases WHERE user_id IN (' . $placeholders . ')',
-                $eventsData['teamAdminUserIds']
-            )->toArray();
-            foreach ($aliasRows as $ar) {
-                $teamAliasMap[(int)$ar['user_id']] = isset($ar['alias']) ? $ar['alias'] : '';
-            }
-        }
+        // Team display names for all events (own and member-assigned), never the Theken-ID
+        $teamAliasMap = $this->getTeamDisplayNames(array_column($eventsData['events'], 'team_admin_user_id'));
         
         // Build team events array with proper team aliases
         // Sort events so that team alias appears in front of the event label (e.g., "MF - Team - Teamevent")

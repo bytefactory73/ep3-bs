@@ -1913,14 +1913,8 @@ trait TeamEventTrait
             }
 
             // Get team alias
-            $teamAlias = '';
-            $aliasRow = $this->getServiceLocator()->get('Zend\Db\Adapter\Adapter')->query(
-                'SELECT alias FROM drink_aliases WHERE user_id = ?',
-                [$teamAdminUserId]
-            )->current();
-            if ($aliasRow && isset($aliasRow['alias'])) {
-                $teamAlias = $aliasRow['alias'];
-            }
+            $teamDisplayNames = $this->getTeamDisplayNames([$teamAdminUserId]);
+            $teamAlias = isset($teamDisplayNames[(int)$teamAdminUserId]) ? $teamDisplayNames[(int)$teamAdminUserId] : '';
 
             // Get order data
             $orderData = $this->getTeamEventOrderRowsAndTotal($teamAdminUserId, $eventLabel, null, $teamEventId);
@@ -2005,6 +1999,38 @@ trait TeamEventTrait
      *   - 'isTeamLead': whether the user is a team lead for any event
      *   - 'isTeamMember': whether the user is a member of any event (but doesn't own)
      */
+    /**
+     * Display names (bs_users.alias) of team accounts, keyed by user id. Never expose
+     * drink_aliases.alias for a team: that is its Theken-ID, the account's login credential.
+     */
+    protected function getTeamDisplayNames(array $teamUserIds)
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $teamUserIds), function ($id) {
+            return $id > 0;
+        })));
+        $names = [];
+        if (empty($ids)) {
+            return $names;
+        }
+        $placeholders = implode(', ', array_fill(0, count($ids), '?'));
+        $rows = $this->getTeamEventDbAdapter()->query(
+            'SELECT uid, alias FROM bs_users WHERE uid IN (' . $placeholders . ')',
+            $ids
+        )->toArray();
+        foreach ($rows as $row) {
+            $name = isset($row['alias']) ? trim((string)$row['alias']) : '';
+            if ($name !== '') {
+                $names[(int)$row['uid']] = $name;
+            }
+        }
+        foreach ($ids as $id) {
+            if (!isset($names[$id])) {
+                $names[$id] = 'Mannschaft #' . $id;
+            }
+        }
+        return $names;
+    }
+
     protected function getTeamEventsForUser($userId, $isTeamAccount = false)
     {
         $userId = (int)$userId;
@@ -2049,17 +2075,7 @@ trait TeamEventTrait
             $memberTeamAdminUserIds
         )));
 
-        $teamAliasMap = [];
-        if (!empty($allTeamAdminUserIds)) {
-            $placeholders = implode(', ', array_fill(0, count($allTeamAdminUserIds), '?'));
-            $aliasRows = $dbAdapter->query(
-                'SELECT user_id, alias FROM drink_aliases WHERE user_id IN (' . $placeholders . ')',
-                $allTeamAdminUserIds
-            )->toArray();
-            foreach ($aliasRows as $ar) {
-                $teamAliasMap[(int)$ar['user_id']] = isset($ar['alias']) ? $ar['alias'] : '';
-            }
-        }
+        $teamAliasMap = $this->getTeamDisplayNames($allTeamAdminUserIds);
 
         // Build combined events array
         $events = [];

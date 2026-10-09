@@ -31,8 +31,9 @@ class IndexController extends AbstractActionController
 
                     // Get ALL teams where the user is teamlead
                     $teamLeadRows = $dbAdapter->query(
-                        'SELECT da.user_id, da.alias
+                        'SELECT da.user_id, u.alias
                          FROM drink_aliases da
+                         LEFT JOIN bs_users u ON u.uid = da.user_id
                          WHERE da.is_team = 1
                              AND FIND_IN_SET(LOWER(TRIM(?)), REPLACE(REPLACE(LOWER(COALESCE(da.teamlead_email, "")), " ", ""), ";", ",")) > 0
                          ORDER BY da.user_id ASC',
