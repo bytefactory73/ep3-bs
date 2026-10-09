@@ -1395,6 +1395,10 @@ class DrinksController extends AbstractActionController
             if ($error === 'already_linked') {
                 return $this->getResponse()->setStatusCode(409)->setContent(json_encode(['success' => false, 'error' => 'PayPal transaction already credited', 'deposit_id' => $creditResult['deposit_id']]));
             }
+            if ($error === 'not_completed') {
+                $status = isset($creditResult['status']) ? (string)$creditResult['status'] : '';
+                return $this->getResponse()->setStatusCode(409)->setContent(json_encode(['success' => false, 'error' => 'PayPal-Zahlung ist nicht abgeschlossen (Status: ' . ($status !== '' ? $status : 'unbekannt') . ')']));
+            }
             if ($error === 'invalid_amount') {
                 return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Invalid PayPal amount']));
             }
@@ -2938,7 +2942,7 @@ class DrinksController extends AbstractActionController
             $placeholders = implode(',', array_fill(0, count($depositIds), '?'));
             try {
                 $paypalLinkedRows = iterator_to_array($dbAdapter->query(
-                    'SELECT id, linked_deposit_id, payer_email, linked_user_id, state, paypal_transaction_id, transaction_note FROM drinks_paypal WHERE linked_deposit_id IN (' . $placeholders . ')',
+                    'SELECT id, linked_deposit_id, payer_email, linked_user_id, state, transaction_status, paypal_transaction_id, transaction_note FROM drinks_paypal WHERE linked_deposit_id IN (' . $placeholders . ')',
                     $depositIds
                 ));
                 foreach ($paypalLinkedRows as $paypalLinkedRow) {
@@ -2956,6 +2960,7 @@ class DrinksController extends AbstractActionController
                             'payer_email' => $payerEmail,
                             'paypal_match_user_ids' => $matchUserIds,
                             'paypal_state' => isset($paypalLinkedRow['state']) ? trim((string)$paypalLinkedRow['state']) : null,
+                            'paypal_status' => isset($paypalLinkedRow['transaction_status']) ? trim((string)$paypalLinkedRow['transaction_status']) : '',
                             'paypal_transaction_id' => isset($paypalLinkedRow['paypal_transaction_id']) ? trim((string)$paypalLinkedRow['paypal_transaction_id']) : null,
                             'transaction_note' => trim((string)($paypalLinkedRow['transaction_note'] ?? '')),
                         ];
@@ -3011,6 +3016,7 @@ class DrinksController extends AbstractActionController
                 'is_paypal_transaction' => 0,
                 'drinks_paypal_id' => $paypalInfo !== null ? $paypalInfo['drinks_paypal_id'] : null,
                 'paypal_state' => $paypalInfo !== null ? $paypalInfo['paypal_state'] : null,
+                'paypal_status' => $paypalInfo !== null ? $paypalInfo['paypal_status'] : '',
                 'payer_email' => $paypalInfo !== null ? $paypalInfo['payer_email'] : null,
                 'paypal_match_user_ids' => $paypalInfo !== null ? ($paypalInfo['paypal_match_user_ids'] ?? []) : [],
                 'paypal_transaction_id' => $paypalInfo !== null ? $paypalInfo['paypal_transaction_id'] : null,
@@ -3097,6 +3103,7 @@ class DrinksController extends AbstractActionController
                     'is_paypal_deposit' => 0,
                     'is_paypal_transaction' => 1,
                     'paypal_state' => isset($p['state']) ? $p['state'] : null,
+                    'paypal_status' => isset($p['transaction_status']) ? trim((string)$p['transaction_status']) : '',
                     'payer_email' => $payerEmail,
                     'paypal_note' => $transactionNote,
                 ];

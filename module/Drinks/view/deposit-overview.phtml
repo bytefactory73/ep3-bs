@@ -632,6 +632,21 @@ $this->setup([
                             } elseif (isset($deposit['paypal_state']) && $deposit['paypal_state'] === 'ignored') {
                                 $badgeStyle = '#c3e6cb; color: #155724;';
                             }
+                            // PayPal payment status: anything but "completed" gets a chip; such
+                            // payments cannot be credited (see PaypalTransactionManager).
+                            $paypalStatusRaw = isset($deposit['paypal_status']) ? (string)$deposit['paypal_status'] : '';
+                            $paypalStatusClass = \Drinks\Manager\PaypalTransactionManager::classifyTransactionStatus($paypalStatusRaw);
+                            $paypalStatusChips = [
+                                'pending'  => ['ausstehend', '#fff3cd', '#856404', '#ffe08a'],
+                                'failed'   => ['abgelehnt', '#e2e3e5', '#383d41', '#c6c8ca'],
+                                'reversed' => ['erstattet', '#f8d7da', '#721c24', '#f1aeb5'],
+                                'unknown'  => ['Status unbekannt', '#e2e3e5', '#383d41', '#c6c8ca'],
+                            ];
+                            $paypalStatusChip = isset($paypalStatusChips[$paypalStatusClass]) ? $paypalStatusChips[$paypalStatusClass] : null;
+                            if ($paypalStatusClass === 'unknown' && empty($deposit['is_paypal_transaction'])) {
+                                $paypalStatusChip = null; // already credited: "unknown" is noise there
+                            }
+                            $paypalCreditBlocked = in_array($paypalStatusClass, ['pending', 'failed', 'reversed'], true);
                         ?>
                         <span
                             class="paypal-badge"
@@ -648,15 +663,19 @@ $this->setup([
                                 $deposit['payer_email'] ?? '',
                                 !empty($deposit['paypal_note']) ? $deposit['paypal_note'] : '',
                                 !empty($deposit['paypal_state']) ? $deposit['paypal_state'] : '',
+                                $paypalStatusRaw !== '' ? 'PayPal-Status: ' . $paypalStatusRaw : '',
                             ]))) ?>"
                             style="display:inline-flex; align-items:center; gap:4px; margin-right:2px; padding:2px 6px; background:<?= $badgeStyle ?>; border-radius:6px; font-size:0.75rem; cursor:pointer; user-select:none;"
                         >PayPal</span>
+                        <?php if ($paypalStatusChip !== null): ?>
+                            <span title="<?= $this->escapeHtmlAttr('PayPal-Status: ' . ($paypalStatusRaw !== '' ? $paypalStatusRaw : '–')) ?>" style="display:inline-block; margin-right:6px; padding:2px 6px; background:<?= $paypalStatusChip[1] ?>; color:<?= $paypalStatusChip[2] ?>; border:1px solid <?= $paypalStatusChip[3] ?>; border-radius:6px; font-size:0.75rem; font-weight:bold;"><?= $this->escapeHtml($paypalStatusChip[0]) ?></span>
+                        <?php endif; ?>
                         <?php if (!empty($deposit['is_paypal_transaction']) && !empty($deposit['linked_user_id']) && (!isset($deposit['paypal_state']) || $deposit['paypal_state'] !== 'ignored')): ?>
                             <span style="display:inline-block; margin-right:6px; padding:2px 6px; background:#fff3cd; color:#856404; border:1px solid #ffe08a; border-radius:6px; font-size:0.75rem; font-weight:bold;">vorgemerkt</span>
                         <?php endif; ?>
                         <?php $displayComment = preg_replace('/^paypal[\s\-]*/i', '', $deposit['comment']); ?>
                         <?= $displayComment !== '' ? $this->escapeHtml($displayComment) : '&ndash;' ?>
-                        <?php if (!empty($deposit['is_paypal_transaction']) && !empty($deposit['user_id']) && (!isset($deposit['paypal_state']) || !in_array($deposit['paypal_state'], ['ignored', 'emailreceived'], true))): ?>
+                        <?php if (!$paypalCreditBlocked && !empty($deposit['is_paypal_transaction']) && !empty($deposit['user_id']) && (!isset($deposit['paypal_state']) || !in_array($deposit['paypal_state'], ['ignored', 'emailreceived'], true))): ?>
                             <button type="button" class="mini-button deposit-anlegen-btn" data-paypal-id="<?= $this->escapeHtmlAttr($deposit['id']) ?>" data-user-id="<?= $this->escapeHtmlAttr($deposit['user_id']) ?>" style="padding:4px 10px; font-size:0.85rem; margin-left:12px;"><?= $this->t('Deposit anlegen') ?></button>
                         <?php endif; ?>
                         <?php if (!empty($deposit['is_paypal_transaction']) && isset($deposit['paypal_state']) && $deposit['paypal_state'] === 'apifoundsynced'): ?>

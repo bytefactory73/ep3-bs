@@ -171,7 +171,48 @@ class PaypalTransactionManager
      * Returns ['success' => bool, 'deposit_id', 'amount', 'comment', 'deposit_time', 'error'];
      * error 'already_linked' means the transaction was credited before (no new deposit).
      */
-    public function createDepositForTransaction($paypalId, $userId, $depositManager, $createdByUserId = null)
+    /**
+     * Map a PayPal status (Reporting API S/P/V/D/F, Orders/Captures API, German email text)
+     * to 'completed', 'pending', 'failed', 'reversed' or 'unknown'.
+     */
+    public static function classifyTransactionStatus($status)
+    {
+        $status = strtolower(trim((string)$status));
+        if ($status === '') {
+            return 'unknown';
+        }
+        $map = [
+            's' => 'completed', 'completed' => 'completed',
+            'p' => 'pending', 'pending' => 'pending', 'created' => 'pending', 'saved' => 'pending',
+            'approved' => 'pending', 'payer_action_required' => 'pending',
+            'd' => 'failed', 'denied' => 'failed', 'declined' => 'failed', 'failed' => 'failed', 'voided' => 'failed',
+            'v' => 'reversed', 'f' => 'reversed', 'refunded' => 'reversed', 'partially_refunded' => 'reversed',
+            'reversed' => 'reversed',
+        ];
+        if (isset($map[$status])) {
+            return $map[$status];
+        }
+        // Email text, e.g. "Abgeschlossen", "Ausstehend", "Rückerstattet" (may carry trailing words)
+        $prefixes = [
+            'abgeschlossen' => 'completed', 'erfolgreich' => 'completed',
+            'ausstehend' => 'pending', 'in bearbeitung' => 'pending',
+            'abgelehnt' => 'failed', 'fehlgeschlagen' => 'failed',
+            'rückerstattet' => 'reversed', 'erstattet' => 'reversed', 'storniert' => 'reversed', 'zurückgebucht' => 'reversed',
+        ];
+        foreach ($prefixes as $prefix => $class) {
+            if (strpos($status, $prefix) === 0) {
+                return $class;
+            }
+        }
+        return 'unknown';
+    }
+
+    /**
+     * $requireCompleted: auto-assign passes true (only confirmed completed payments);
+     * a manual admin credit passes false and is only blocked for known pending/failed/reversed
+     * statuses, so email-only rows with an unrecognised status can still be credited by hand.
+     */
+    public function createDepositForTransaction($paypalId, $userId, $depositManager, $createdByUserId = null, $requireCompleted = false)
     {
         $paypalId = (int)$paypalId;
         $userId = (int)$userId;
@@ -192,6 +233,11 @@ class PaypalTransactionManager
             }
             if (!empty($row['linked_deposit_id'])) {
                 return ['success' => false, 'error' => 'already_linked', 'deposit_id' => (int)$row['linked_deposit_id']];
+            }
+            $transactionStatus = isset($row['transaction_status']) ? (string)$row['transaction_status'] : '';
+            $statusClass = self::classifyTransactionStatus($transactionStatus);
+            if ($statusClass !== 'completed' && ($requireCompleted || $statusClass !== 'unknown')) {
+                return ['success' => false, 'error' => 'not_completed', 'status' => $transactionStatus];
             }
             $amount = isset($row['amount']) ? (float)$row['amount'] : 0.0;
             if ($amount <= 0) {
@@ -248,6 +294,38 @@ class PaypalTransactionManager
             } catch (\Throwable $e) {
                 // Lock is released with the connection anyway
             }
+        }
+    }
+
+    /**
+     * Mark an imported transaction as reversed (refund / chargeback) so it is never credited.
+     * If it was already credited, the deposit is NOT removed automatically; it is reported in
+     * $result['errors'] and $result['reversed_after_credit'] for an admin to correct.
+     */
+    private function markTransactionReversed($originalTxId, $reversalTxId, array &$result)
+    {
+        $row = $this->dbAdapter->query(
+            'SELECT id, linked_deposit_id, linked_user_id, amount FROM drinks_paypal WHERE paypal_transaction_id = ? LIMIT 1',
+            [$originalTxId]
+        )->current();
+        if (!$row) {
+            return;
+        }
+        $this->dbAdapter->query(
+            'UPDATE drinks_paypal SET transaction_status = ?, processed_at = NOW() WHERE id = ?',
+            ['V', (int)$row['id']]
+        );
+        if (!empty($row['linked_deposit_id'])) {
+            $result['reversed_after_credit'][] = (int)$row['id'];
+            $result['errors'][] = sprintf(
+                'PayPal #%d (%s) was reversed by %s after being credited as deposit %d (user %d, %s EUR) - please correct manually.',
+                (int)$row['id'],
+                $originalTxId,
+                $reversalTxId,
+                (int)$row['linked_deposit_id'],
+                (int)$row['linked_user_id'],
+                number_format((float)$row['amount'], 2, ',', '.')
+            );
         }
     }
 
@@ -336,9 +414,19 @@ class PaypalTransactionManager
                     $txId = isset($info['transaction_id']) ? trim($info['transaction_id']) : '';
                     if ($txId === '') continue;
 
-                    // Only import money received (positive amount)
                     $amountRaw = isset($info['transaction_amount']['value']) ? (float)$info['transaction_amount']['value'] : 0.0;
-                    if ($amountRaw <= 0) {
+                    $reportedStatus = isset($info['transaction_status']) ? (string)$info['transaction_status'] : '';
+
+                    // Negative amounts (refunds, chargebacks) reverse the original transaction they reference.
+                    if ($amountRaw < 0) {
+                        $referenceId = isset($info['paypal_reference_id']) ? trim((string)$info['paypal_reference_id']) : '';
+                        if ($referenceId !== '') {
+                            $this->markTransactionReversed($referenceId, $txId, $result);
+                        }
+                        $result['skipped']++;
+                        continue;
+                    }
+                    if ($amountRaw == 0) {
                         $result['skipped']++;
                         continue;
                     }
@@ -347,9 +435,17 @@ class PaypalTransactionManager
                     $feeRaw = isset($info['fee_amount']['value']) ? (float)$info['fee_amount']['value'] : 0.0;
                     $amount = round($amountRaw + $feeRaw, 2);
 
-                    // Skip if already exists
-                    $existing = $this->dbAdapter->query('SELECT id FROM drinks_paypal WHERE paypal_transaction_id = ? LIMIT 1', [$txId])->current();
+                    // Already imported: only refresh the status (pending -> completed, or reversed)
+                    $existing = $this->dbAdapter->query('SELECT id, transaction_status FROM drinks_paypal WHERE paypal_transaction_id = ? LIMIT 1', [$txId])->current();
                     if ($existing) {
+                        if (self::classifyTransactionStatus($reportedStatus) === 'reversed') {
+                            $this->markTransactionReversed($txId, $txId, $result);
+                        } elseif ($reportedStatus !== '' && $reportedStatus !== (string)$existing['transaction_status']) {
+                            $this->dbAdapter->query(
+                                'UPDATE drinks_paypal SET transaction_status = ?, processed_at = NOW() WHERE id = ? AND linked_deposit_id IS NULL',
+                                [$reportedStatus, (int)$existing['id']]
+                            );
+                        }
                         $result['skipped']++;
                         continue;
                     }
@@ -476,6 +572,13 @@ class PaypalTransactionManager
                     }
                 }
 
+                // Only confirmed completed payments are linked or credited; pending ones are retried
+                // on the next sync once PayPal reports them as completed.
+                if (self::classifyTransactionStatus(isset($row['transaction_status']) ? $row['transaction_status'] : '') !== 'completed') {
+                    $result['skipped']++;
+                    continue;
+                }
+
                 // Pass 1: ±7 days; Pass 2: ±14 days
                 $existingDeposit = $this->findMatchingDeposit($matchedUserId, $amount, $row['received_at']);
 
@@ -490,10 +593,10 @@ class PaypalTransactionManager
                     continue;
                 }
 
-                $creditResult = $this->createDepositForTransaction($paypalId, $matchedUserId, $depositManager, $createdByUserId);
+                $creditResult = $this->createDepositForTransaction($paypalId, $matchedUserId, $depositManager, $createdByUserId, true);
                 if (empty($creditResult['success'])) {
                     $error = isset($creditResult['error']) ? $creditResult['error'] : 'unknown';
-                    if ($error !== 'already_linked') {
+                    if ($error !== 'already_linked' && $error !== 'not_completed') {
                         $result['errors'][] = sprintf('PayPal #%d: deposit not created (%s)', $paypalId, $error);
                     }
                     $result['skipped']++;
