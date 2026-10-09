@@ -977,12 +977,18 @@ class DrinksController extends AbstractActionController
      */
     public function savePartyModeAction()
     {
+        $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $user = $userSessionManager->getSessionUser();
+        if (!$user || $user->get('status') !== 'admin') {
+            return $this->getResponse()->setStatusCode(403)->setContent('No permission');
+        }
+
         $request = $this->getRequest();
         if (!$request->isPost()) {
             return $this->redirect()->toRoute('user/drinks-admin');
         }
 
-        $serviceManager = @$this->getServiceLocator();
         $optionManager = $serviceManager->get('Base\Manager\OptionManager');
 
         $enabled = $this->params()->fromPost('party_mode_enabled') ? '1' : '0';
