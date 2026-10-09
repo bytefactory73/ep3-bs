@@ -480,12 +480,7 @@ class PaypalTransactionManager
                         : (isset($payer['name']['full_name']) ? trim($payer['name']['full_name']) : null);
                     $transactionNote = isset($info['transaction_note']) ? trim($info['transaction_note']) : (isset($info['transaction_subject']) ? trim($info['transaction_subject']) : null);
                     $transactionNote = $this->normalizeTransactionNoteForStorage($transactionNote);
-                    if ($feeRaw != 0.0) {
-                        $feeDisplay = number_format(abs($feeRaw), 2, ',', '.') . ' € Gebühren';
-                        $transactionNote = $transactionNote !== null && $transactionNote !== ''
-                            ? $transactionNote . ' | ' . $feeDisplay
-                            : $feeDisplay;
-                    }
+                    $transactionNote = $this->appendFeeNote($transactionNote, $feeRaw);
                     $transactionStatus = isset($info['transaction_status']) ? $info['transaction_status'] : null;
                     $accountId = isset($info['paypal_reference_id']) ? $info['paypal_reference_id']
                         : (isset($info['paypal_account_id']) ? $info['paypal_account_id'] : null);
@@ -1142,6 +1137,7 @@ class PaypalTransactionManager
             $transactionNote = isset($row['transaction_note']) ? $row['transaction_note'] : '';
         }
         $transactionNote = $this->normalizeTransactionNoteForStorage($transactionNote);
+        $transactionNote = $this->appendFeeNote($transactionNote, isset($parsed['fee']) ? $parsed['fee'] : 0.0);
 
         $sql = 'UPDATE drinks_paypal SET state = ?, account_id = ?, payer_name = ?, payer_email = ?, amount = ?, transaction_status = ?, transaction_note = ?, transaction_json = ?, processed_at = NOW() WHERE id = ?';
         $params = [
@@ -1211,8 +1207,31 @@ class PaypalTransactionManager
         return $date->format('Y-m-d H:i:s');
     }
 
+    /**
+     * Append "x,xx € Gebühren" to a transaction note when PayPal charged a fee.
+     */
+    private function appendFeeNote($transactionNote, $fee)
+    {
+        $fee = (float)$fee;
+        if ($fee == 0.0) {
+            return $transactionNote;
+        }
+        $feeDisplay = number_format(abs($fee), 2, ',', '.') . ' € Gebühren';
+        if (strpos((string)$transactionNote, $feeDisplay) !== false) {
+            return $transactionNote;
+        }
+        return $transactionNote !== null && $transactionNote !== ''
+            ? $transactionNote . ' | ' . $feeDisplay
+            : $feeDisplay;
+    }
+
+    /**
+     * Credited amounts are always NET (what the club receives: payment minus PayPal fee),
+     * the same policy as importFromReportingApi; the fee is noted in transaction_note.
+     */
     private function parsePaypalApiResponse(array $apiResult, array $row)
     {
+        $fee = 0.0;
         $parsed = [
             'account_id' => null,
             'payer_name' => null,
@@ -1251,8 +1270,9 @@ class PaypalTransactionManager
                 $parsed['transaction_status'] = isset($info['transaction_status']) ? $info['transaction_status'] : null;
                 $parsed['account_id'] = isset($info['paypal_reference_id']) ? $info['paypal_reference_id'] : (isset($info['paypal_account_id']) ? $info['paypal_account_id'] : null);
                 $parsed['amount'] = isset($info['transaction_amount']['value']) ? (float)$info['transaction_amount']['value'] : null;
-                if ($parsed['amount'] === null && isset($info['transaction_amount']['value'])) {
-                    $parsed['amount'] = (float)$info['transaction_amount']['value'];
+                if ($parsed['amount'] !== null && isset($info['fee_amount']['value'])) {
+                    $fee = (float)$info['fee_amount']['value'];
+                    $parsed['amount'] = round($parsed['amount'] + $fee, 2);
                 }
                 $parsed['payer_email'] = isset($payer['email_address']) ? strtolower(trim($payer['email_address'])) : null;
                 if ($parsed['payer_email'] === null && isset($apiResult['capture_payee_email']) && trim($apiResult['capture_payee_email']) !== '') {
@@ -1273,18 +1293,34 @@ class PaypalTransactionManager
             if ($parsed['transaction_note'] === null && isset($data['supplementary_data']['related_ids']['order_id'])) {
                 $parsed['transaction_note'] = trim($data['supplementary_data']['related_ids']['order_id']);
             }
-            if (isset($data['seller_receivable_breakdown']['gross_amount']['value'])) {
-                $parsed['amount'] = (float)$data['seller_receivable_breakdown']['gross_amount']['value'];
+            $breakdown = isset($data['seller_receivable_breakdown']) ? $data['seller_receivable_breakdown'] : [];
+            if (isset($breakdown['gross_amount']['value'])) {
+                $parsed['amount'] = (float)$breakdown['gross_amount']['value'];
+            }
+            if (isset($breakdown['paypal_fee']['value'])) {
+                $fee = -abs((float)$breakdown['paypal_fee']['value']);
+            }
+            if (isset($breakdown['net_amount']['value'])) {
+                $parsed['amount'] = (float)$breakdown['net_amount']['value'];
+            } elseif ($parsed['amount'] !== null) {
+                $parsed['amount'] = round($parsed['amount'] + $fee, 2);
             }
             $parsed['payer_name'] = isset($data['payer']['name']['full_name']) ? trim($data['payer']['name']['full_name']) : null;
             $parsed['payer_email'] = isset($data['payer']['email_address']) ? strtolower(trim($data['payer']['email_address'])) : null;
-            if (isset($data['seller_receivable_breakdown']['paypal_fee']['value'])) {
-                // keep gross amount only
-            }
         } elseif ($type === 'order') {
             $parsed['transaction_status'] = isset($data['status']) ? $data['status'] : null;
             if (isset($data['purchase_units'][0]['amount']['value'])) {
                 $parsed['amount'] = (float)$data['purchase_units'][0]['amount']['value'];
+            }
+            $orderBreakdown = isset($data['purchase_units'][0]['payments']['captures'][0]['seller_receivable_breakdown'])
+                ? $data['purchase_units'][0]['payments']['captures'][0]['seller_receivable_breakdown'] : [];
+            if (isset($orderBreakdown['paypal_fee']['value'])) {
+                $fee = -abs((float)$orderBreakdown['paypal_fee']['value']);
+            }
+            if (isset($orderBreakdown['net_amount']['value'])) {
+                $parsed['amount'] = (float)$orderBreakdown['net_amount']['value'];
+            } elseif ($parsed['amount'] !== null && $fee != 0.0) {
+                $parsed['amount'] = round($parsed['amount'] + $fee, 2);
             }
             $parsed['payer_name'] = isset($data['payer']['name']['full_name']) ? trim($data['payer']['name']['full_name']) : null;
             $parsed['payer_email'] = isset($data['payer']['email_address']) ? strtolower(trim($data['payer']['email_address'])) : null;
@@ -1301,6 +1337,7 @@ class PaypalTransactionManager
         if ($parsed['transaction_note'] === null) {
             $parsed['transaction_note'] = '';
         }
+        $parsed['fee'] = $fee;
         if ($parsed['transaction_status'] === null) {
             $parsed['transaction_status'] = 'unknown';
         }
