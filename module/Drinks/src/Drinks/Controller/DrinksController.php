@@ -1687,23 +1687,8 @@ class DrinksController extends AbstractActionController
 
         // Authorize: thekenadmins may view any team; everyone else only the teams they lead
         // (teamlead_email match, same rule as the frontend panel) or their own member view.
-        $sessionAliasRow = $dbAdapter->query('SELECT thekenadmin FROM drink_aliases WHERE user_id = ?', [$sessionUid])->current();
-        $isThekenadmin = ($sessionAliasRow && isset($sessionAliasRow['thekenadmin']) && (int)$sessionAliasRow['thekenadmin'] === 1);
-        if (!$isThekenadmin) {
-            $ledTeamUids = [];
-            $sessionEmail = trim((string)$sessionUser->get('email'));
-            if ($sessionEmail !== '') {
-                $ledTeamRows = $dbAdapter->query(
-                    'SELECT da.user_id
-                     FROM drink_aliases da
-                     WHERE da.is_team = 1
-                         AND FIND_IN_SET(LOWER(TRIM(?)), REPLACE(REPLACE(LOWER(COALESCE(da.teamlead_email, "")), " ", ""), ";", ",")) > 0',
-                    [$sessionEmail]
-                )->toArray();
-                foreach ($ledTeamRows as $ledTeamRow) {
-                    $ledTeamUids[] = (int)$ledTeamRow['user_id'];
-                }
-            }
+        if (!$this->isThekenadminUser($sessionUid)) {
+            $ledTeamUids = $this->getLedTeamUids($sessionUser);
 
             $requestedTeamUids = [];
             $teamUidsParam = $this->params()->fromQuery('team_uids', null);
@@ -2121,6 +2106,9 @@ class DrinksController extends AbstractActionController
         if ($teamAdminUserId <= 0) {
             return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültiger Team-Account.']));
         }
+        if (!$this->canManageTeam($user, $teamAdminUserId)) {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'No permission']));
+        }
 
         $teamEventScoped = $this->getTeamEventById($teamAdminUserId, $teamEventId);
         if (!$teamEventScoped) {
@@ -2193,6 +2181,9 @@ class DrinksController extends AbstractActionController
         if ($teamAdminUserId <= 0) {
             return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültiger Team-Account.']));
         }
+        if (!$this->canManageTeam($user, $teamAdminUserId)) {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'No permission']));
+        }
 
         $teamEventScoped = $this->getTeamEventById($teamAdminUserId, $teamEventId);
         if (!$teamEventScoped) {
@@ -2243,6 +2234,9 @@ class DrinksController extends AbstractActionController
         $teamAdminUserId = (int)$teamEvent['team_admin_user_id'];
         if ($teamAdminUserId <= 0) {
             return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültiger Team-Account.']));
+        }
+        if (!$this->canManageTeam($user, $teamAdminUserId)) {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'No permission']));
         }
 
         $closeResult = $this->closeTeamEventWithStatus($teamAdminUserId, $teamEventId);
@@ -3783,6 +3777,58 @@ class DrinksController extends AbstractActionController
         } catch (\Throwable $e) {
             return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => $e->getMessage()]));
         }
+    }
+
+    /**
+     * Helper: true if the user has the thekenadmin flag.
+     */
+    private function isThekenadminUser($userId)
+    {
+        $dbAdapter = @$this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
+        $row = $dbAdapter->query('SELECT thekenadmin FROM drink_aliases WHERE user_id = ?', [(int)$userId])->current();
+        return ($row && isset($row['thekenadmin']) && (int)$row['thekenadmin'] === 1);
+    }
+
+    /**
+     * Helper: team account uids the user leads (email listed in teamlead_email,
+     * same rule as Frontend\Controller\IndexController).
+     */
+    private function getLedTeamUids($user)
+    {
+        $email = trim((string)$user->get('email'));
+        if ($email === '') {
+            return [];
+        }
+        $dbAdapter = @$this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
+        $rows = $dbAdapter->query(
+            'SELECT da.user_id
+             FROM drink_aliases da
+             WHERE da.is_team = 1
+                 AND FIND_IN_SET(LOWER(TRIM(?)), REPLACE(REPLACE(LOWER(COALESCE(da.teamlead_email, "")), " ", ""), ";", ",")) > 0',
+            [$email]
+        )->toArray();
+        $uids = [];
+        foreach ($rows as $row) {
+            $uids[] = (int)$row['user_id'];
+        }
+        return $uids;
+    }
+
+    /**
+     * Helper: may the user change data of the given team account?
+     * Thekenadmins, the team account itself and its teamleads may.
+     */
+    private function canManageTeam($user, $teamAdminUserId)
+    {
+        $teamAdminUserId = (int)$teamAdminUserId;
+        $userId = (int)$user->need('uid');
+        if ($teamAdminUserId <= 0) {
+            return false;
+        }
+        if ($userId === $teamAdminUserId || $this->isThekenadminUser($userId)) {
+            return true;
+        }
+        return in_array($teamAdminUserId, $this->getLedTeamUids($user), true);
     }
 
     /**
