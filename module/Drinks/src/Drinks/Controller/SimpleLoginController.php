@@ -591,11 +591,11 @@ class SimpleLoginController extends AbstractActionController
         try {
             $payload = $this->buildTeamStatsPayload($selectedTeamAdminUserId, $resolvedTeamEventLabel, ['team_event_id' => $selectedEventId]);
         } catch (\Exception $e) {
+            // Details only in the server log; the Theke page is public-facing
+            error_log(sprintf('simple-order team-stats: %s in %s:%d', $e->getMessage(), $e->getFile(), $e->getLine()));
             return $this->getResponse()->setStatusCode(500)->setContent(json_encode([
                 'success' => false,
-                'error' => 'Team-Statistiken konnten nicht geladen werden: ' . $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
+                'error' => 'Team-Statistiken konnten nicht geladen werden.',
             ]));
         }
         
