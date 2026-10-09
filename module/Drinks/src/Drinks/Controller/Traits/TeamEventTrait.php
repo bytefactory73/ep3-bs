@@ -2044,10 +2044,10 @@ trait TeamEventTrait
         $allEventIds = array_unique(array_merge($adminEventIds, $memberEventIds));
 
         // Get team aliases for all unique team_admin_user_ids
-        $allTeamAdminUserIds = array_unique(array_merge(
+        $allTeamAdminUserIds = array_values(array_unique(array_merge(
             array_column($adminEventRows, 'team_admin_user_id'),
             $memberTeamAdminUserIds
-        ));
+        )));
 
         $teamAliasMap = [];
         if (!empty($allTeamAdminUserIds)) {
@@ -2098,7 +2098,7 @@ trait TeamEventTrait
 
         return [
             'events' => $events,
-            'teamAdminUserIds' => array_unique(array_column($adminEventRows, 'team_admin_user_id')),
+            'teamAdminUserIds' => array_values(array_unique(array_column($adminEventRows, 'team_admin_user_id'))),
             'adminEventIds' => $adminEventIds,
             'memberEventIds' => $memberEventIds,
             'isTeamLead' => $isTeamLead,

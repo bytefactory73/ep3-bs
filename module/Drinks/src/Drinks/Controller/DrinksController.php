@@ -1717,7 +1717,7 @@ class DrinksController extends AbstractActionController
                 if (is_array($decoded) && !empty($decoded)) {
                     $multiTeamUids = array_map('intval', $decoded);
                     $multiTeamUids = array_filter($multiTeamUids, function($v) { return $v > 0; });
-                    $multiTeamUids = array_unique($multiTeamUids);
+                    $multiTeamUids = array_values(array_unique($multiTeamUids));
                 }
             }
 
