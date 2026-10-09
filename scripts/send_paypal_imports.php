@@ -21,6 +21,24 @@ if (in_array($mailMode, array('test', 'live', 'auto'), true)) {
     $_ENV['EP3_BS_MAIL_MODE'] = $mailMode;
 }
 
+// STDERR only exists in the CLI SAPI; hosting cron may run this script via CGI.
+$fail = function ($message) {
+    error_log('send_paypal_imports: ' . $message);
+    if (PHP_SAPI === 'cli' && defined('STDERR')) {
+        fwrite(STDERR, $message . "\n");
+    } else {
+        if (!headers_sent()) {
+            http_response_code(500);
+        }
+        echo $message . "\n";
+    }
+    exit(1);
+};
+
+if (PHP_SAPI !== 'cli' && !headers_sent()) {
+    header('Content-Type: text/plain; charset=utf-8');
+}
+
 $loadOption = function ($key) use ($optionManager) {
     try {
         $value = (string)$optionManager->get('paypal.' . $key, '');
@@ -42,13 +60,11 @@ $clientId = $loadOption('paypal_client_id');
 $clientSecret = $loadOption('paypal_client_secret');
 
 if ($imapHost === '' || $imapPort === '' || $imapUser === '' || $imapPassword === '') {
-    fwrite(STDERR, "PayPal IMAP settings are incomplete.\n");
-    exit(1);
+    $fail('PayPal IMAP settings are incomplete.');
 }
 
 if ($clientId === '' || $clientSecret === '') {
-    fwrite(STDERR, "PayPal API credentials are missing.\n");
-    exit(1);
+    $fail('PayPal API credentials are missing.');
 }
 
 $hadErrors = false;
@@ -58,6 +74,9 @@ $report = function ($label, array $result, array $fields) use (&$hadErrors) {
         if (isset($result[$field])) {
             $parts[] = $field . '=' . $result[$field];
         }
+    }
+    if (!empty($result['needs_review'])) {
+        $parts[] = 'needs_review=#' . implode(', #', $result['needs_review']);
     }
     if (!empty($result['errors'])) {
         $hadErrors = true;
