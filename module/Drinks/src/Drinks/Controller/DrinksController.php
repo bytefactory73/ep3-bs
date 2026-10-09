@@ -770,6 +770,9 @@ class DrinksController extends AbstractActionController
                     $message .= ' Fehler: ' . implode(' | ', $autoResult['errors']);
                 }
             }
+            if (!empty($autoResult['needs_review'])) {
+                $message .= sprintf(' %d PayPal-Zahlung(en) zur Prüfung offen gelassen (gleicher Betrag wie eine Einzahlung ohne PayPal-Vermerk): #%s.', count($autoResult['needs_review']), implode(', #', $autoResult['needs_review']));
+            }
 
             $response = [
                 'success' => true,
@@ -861,6 +864,9 @@ class DrinksController extends AbstractActionController
             }
             $message .= sprintf(' API-Crosscheck: %d synchronisiert, %d übersprungen.', $syncResult['synced'], $syncResult['skipped']);
             $message .= sprintf(' Auto-Zuweisung: %d Buchungen verknüpft, %d übersprungen.', $autoResult['assigned'], $autoResult['skipped']);
+            if (!empty($autoResult['needs_review'])) {
+                $message .= sprintf(' %d PayPal-Zahlung(en) zur Prüfung offen gelassen (gleicher Betrag wie eine Einzahlung ohne PayPal-Vermerk): #%s.', count($autoResult['needs_review']), implode(', #', $autoResult['needs_review']));
+            }
             if (!empty($autoResult['errors'])) {
                 $message .= ' Fehler: ' . implode(' | ', array_slice($autoResult['errors'], 0, 3));
             }

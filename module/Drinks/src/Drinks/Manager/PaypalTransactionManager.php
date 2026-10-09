@@ -330,8 +330,10 @@ class PaypalTransactionManager
     }
 
     /**
-     * Find an existing deposit for a user matching the given amount and date within ±14 days.
-     * Excludes deposits already claimed by another PayPal entry.
+     * Find a deposit that staff already entered by hand for this PayPal payment: same user and
+     * amount, within ±14 days (nearest first), not claimed by another PayPal entry, and with
+     * "PayPal" in the comment. Cash deposits and money transfers ("Geld empfangen von …") of the
+     * same amount are never linked, so their money is not swallowed by the PayPal payment.
      * Returns the deposit row or null.
      */
     private function findMatchingDeposit($userId, $amount, $receivedAt)
@@ -340,11 +342,33 @@ class PaypalTransactionManager
             'SELECT d.id FROM drink_deposits d
              WHERE d.user_id = ? AND d.amount = ? AND (d.deleted IS NULL OR d.deleted = 0)
              AND d.deposit_time BETWEEN DATE_SUB(?, INTERVAL 14 DAY) AND DATE_ADD(?, INTERVAL 14 DAY)
+             AND LOWER(COALESCE(d.comment, "")) LIKE "%paypal%"
+             AND NOT EXISTS (SELECT 1 FROM drinks_paypal p WHERE p.linked_deposit_id = d.id)
+             ORDER BY ABS(TIMESTAMPDIFF(SECOND, d.deposit_time, ?)) ASC
+             LIMIT 1',
+            [(int)$userId, $amount, $receivedAt, $receivedAt, $receivedAt]
+        )->current();
+        return ($row && !empty($row['id'])) ? $row : null;
+    }
+
+    /**
+     * True if the user has an unclaimed deposit of the same amount within ±14 days that does NOT
+     * mention PayPal (e.g. cash, or a PayPal payment entered without a hint). Such a payment is
+     * neither linked nor auto-credited; it stays open for an admin to decide, to avoid both
+     * swallowing a cash deposit and crediting the same money twice.
+     */
+    private function hasAmbiguousDeposit($userId, $amount, $receivedAt)
+    {
+        $row = $this->dbAdapter->query(
+            'SELECT d.id FROM drink_deposits d
+             WHERE d.user_id = ? AND d.amount = ? AND (d.deleted IS NULL OR d.deleted = 0)
+             AND d.deposit_time BETWEEN DATE_SUB(?, INTERVAL 14 DAY) AND DATE_ADD(?, INTERVAL 14 DAY)
+             AND LOWER(COALESCE(d.comment, "")) NOT LIKE "%paypal%"
              AND NOT EXISTS (SELECT 1 FROM drinks_paypal p WHERE p.linked_deposit_id = d.id)
              LIMIT 1',
             [(int)$userId, $amount, $receivedAt, $receivedAt]
         )->current();
-        return ($row && !empty($row['id'])) ? $row : null;
+        return ($row && !empty($row['id']));
     }
 
     /**
@@ -517,6 +541,7 @@ class PaypalTransactionManager
             'assigned' => 0,
             'created'  => 0,
             'skipped'  => 0,
+            'needs_review' => [],
             'errors'   => [],
         ];
 
@@ -579,12 +604,19 @@ class PaypalTransactionManager
                     continue;
                 }
 
-                // Pass 1: ±7 days; Pass 2: ±14 days
+                // A deposit staff entered by hand for this payment ("PayPal" in comment, ±14 days)
                 $existingDeposit = $this->findMatchingDeposit($matchedUserId, $amount, $row['received_at']);
 
                 if ($existingDeposit && !empty($existingDeposit['id'])) {
                     $this->linkToDeposit($paypalId, (int)$existingDeposit['id'], $matchedUserId);
                     $result['assigned']++;
+                    continue;
+                }
+
+                // Same amount without a PayPal hint: leave for an admin instead of guessing
+                if ($this->hasAmbiguousDeposit($matchedUserId, $amount, $row['received_at'])) {
+                    $result['needs_review'][] = $paypalId;
+                    $result['skipped']++;
                     continue;
                 }
 
@@ -797,7 +829,7 @@ class PaypalTransactionManager
                 [$newUserId, $paypalId]
             );
 
-            // Try to link an existing deposit: pass 1 ±7 days, pass 2 ±14 days
+            // Try to link a deposit staff entered by hand for this payment (see findMatchingDeposit)
             $depositLinked = false;
             if ($linkedDepositId <= 0 && !empty($row['received_at']) && !empty($row['amount'])) {
                 $amount = (float)$row['amount'];
