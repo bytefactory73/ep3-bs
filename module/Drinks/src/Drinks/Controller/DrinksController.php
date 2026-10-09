@@ -1663,6 +1663,13 @@ class DrinksController extends AbstractActionController
         $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
 
         $serviceManager = @$this->getServiceLocator();
+        $userSessionManager = $serviceManager->get('User\Manager\UserSessionManager');
+        $sessionUser = $userSessionManager->getSessionUser();
+        if (!$sessionUser) {
+            return $this->getResponse()->setStatusCode(401)->setContent(json_encode(['success' => false, 'error' => 'Not authenticated.']));
+        }
+        $sessionUid = (int)$sessionUser->need('uid');
+
         $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
         $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
 
@@ -1670,6 +1677,44 @@ class DrinksController extends AbstractActionController
         $originalTeamUid = $teamUid; // Save for role determination (same logic as enabling check)
         if ($teamUid <= 0) {
             return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'No team_uid provided']));
+        }
+
+        // Authorize: thekenadmins may view any team; everyone else only the teams they lead
+        // (teamlead_email match, same rule as the frontend panel) or their own member view.
+        $sessionAliasRow = $dbAdapter->query('SELECT thekenadmin FROM drink_aliases WHERE user_id = ?', [$sessionUid])->current();
+        $isThekenadmin = ($sessionAliasRow && isset($sessionAliasRow['thekenadmin']) && (int)$sessionAliasRow['thekenadmin'] === 1);
+        if (!$isThekenadmin) {
+            $ledTeamUids = [];
+            $sessionEmail = trim((string)$sessionUser->get('email'));
+            if ($sessionEmail !== '') {
+                $ledTeamRows = $dbAdapter->query(
+                    'SELECT da.user_id
+                     FROM drink_aliases da
+                     WHERE da.is_team = 1
+                         AND FIND_IN_SET(LOWER(TRIM(?)), REPLACE(REPLACE(LOWER(COALESCE(da.teamlead_email, "")), " ", ""), ";", ",")) > 0',
+                    [$sessionEmail]
+                )->toArray();
+                foreach ($ledTeamRows as $ledTeamRow) {
+                    $ledTeamUids[] = (int)$ledTeamRow['user_id'];
+                }
+            }
+
+            $requestedTeamUids = [];
+            $teamUidsParam = $this->params()->fromQuery('team_uids', null);
+            if ($teamUidsParam) {
+                $decoded = json_decode($teamUidsParam, true);
+                if (is_array($decoded)) {
+                    $requestedTeamUids = array_filter(array_map('intval', $decoded), function($v) { return $v > 0; });
+                }
+            }
+            $requestedUserUid = (int)$this->params()->fromQuery('user_uid', 0);
+
+            $authorized = ($teamUid === $sessionUid || in_array($teamUid, $ledTeamUids, true))
+                && ($requestedUserUid === 0 || $requestedUserUid === $sessionUid)
+                && empty(array_diff($requestedTeamUids, $ledTeamUids));
+            if (!$authorized) {
+                return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'No permission']));
+            }
         }
 
         // Check if team account or if user is a team member
