@@ -142,13 +142,19 @@ var frontendTeamStatsModalController = createTeamStatsModal({
             state.userUid = userUid;
         }
     },
-    buildStatsUrl: function(spieltag, state) {
+    buildStatsUrl: function(spieltag, state, refs) {
         if (!state.teamUid) {
             throw new Error('Ungueltiger Team-Account.');
         }
         var url = '<?= $this->url('user/teamlead-team-stats') ?>?team_uid=' + encodeURIComponent(String(state.teamUid));
         if (spieltag) {
             url += '&spieltag=' + encodeURIComponent(spieltag);
+            // Labels are not unique across teams: also send the selected option's event id
+            var selectedOption = (refs && refs.select && refs.select.selectedIndex >= 0) ? refs.select.options[refs.select.selectedIndex] : null;
+            var selectedEventId = selectedOption && selectedOption.value === spieltag ? parseInt(selectedOption.getAttribute('data-event-id') || '0', 10) : 0;
+            if (selectedEventId > 0) {
+                url += '&team_event_id=' + encodeURIComponent(String(selectedEventId));
+            }
         }
         // Pass all teamLeadTeams UIDs so the API can query events from all teams
         if (state.teamLeadTeams && state.teamLeadTeams.length > 0) {
@@ -318,6 +324,7 @@ var frontendTeamStatsModalController = createTeamStatsModal({
             }
             var openSpieltage = Array.isArray(data.open_spieltage) ? data.open_spieltage : [];
             var selectedSpieltag = data.spieltag || '';
+            var selectedEventId = parseInt(data.team_event_id || 0, 10);
             
             // Handle both flat events array and grouped events by team
             var flatEvents = [];
@@ -363,7 +370,7 @@ var frontendTeamStatsModalController = createTeamStatsModal({
                 opt.setAttribute('data-user-role', eventUserRole);
                 var isOpen = openSpieltage.indexOf(name) !== -1;
                 opt.textContent = isOpen ? (displayText + ' (offen)') : displayText;
-                if (name === selectedSpieltag) opt.selected = true;
+                if (selectedEventId > 0 ? parseInt(event2.id || 0, 10) === selectedEventId : name === selectedSpieltag) opt.selected = true;
                 refs.select.appendChild(opt);
             }
             refs.select.disabled = flatEvents.length === 0;

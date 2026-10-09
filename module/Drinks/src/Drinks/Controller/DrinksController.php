@@ -1848,11 +1848,24 @@ class DrinksController extends AbstractActionController
             $members = [];
         }
 
-        // Get selected team event stats - use spieltag query param if provided
+        // Get selected team event stats: prefer team_event_id (labels are not unique across
+        // teams), fall back to the spieltag label
         $selectedSpieltag = trim((string)$this->params()->fromQuery('spieltag', ''));
+        $requestedEventId = (int)$this->params()->fromQuery('team_event_id', 0);
         $selectedEventId = isset($teamEvents[0]['id']) ? $teamEvents[0]['id'] : 0;
         $selectedEventLabel = isset($teamEvents[0]['label']) ? $teamEvents[0]['label'] : '';
-        if ($selectedSpieltag !== '' && !empty($teamEvents)) {
+        $selectedById = false;
+        if ($requestedEventId > 0) {
+            foreach ($teamEvents as $event) {
+                if ((int)$event['id'] === $requestedEventId) {
+                    $selectedEventId = (int)$event['id'];
+                    $selectedEventLabel = trim((string)$event['label']);
+                    $selectedById = true;
+                    break;
+                }
+            }
+        }
+        if (!$selectedById && $selectedSpieltag !== '' && !empty($teamEvents)) {
             foreach ($teamEvents as $event) {
                 if (trim((string)$event['label']) === $selectedSpieltag) {
                     $selectedEventId = (int)$event['id'];

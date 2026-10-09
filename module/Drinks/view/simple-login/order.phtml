@@ -107,8 +107,10 @@ function syncTeamStatsSpieltagSelect(preferredValue) {
 
     var existing = false;
     for (var i = 0; i < modalSelect.options.length; i++) {
-        if (String(modalSelect.options[i].value || '').trim() === selected) {
+        var optionLabel = String(modalSelect.options[i].getAttribute('data-label') || '').trim();
+        if (String(modalSelect.options[i].value || '').trim() === selected || optionLabel === selected) {
             existing = true;
+            selected = String(modalSelect.options[i].value || '').trim();
             break;
         }
     }
@@ -314,6 +316,34 @@ var teamStatsModalController = createTeamStatsModal({
             }
         }
         
+        // One option per Spieltag (value = event id): labels are not unique across teams.
+        // The server accepts a numeric spieltag as team event id.
+        var selectedEventId = parseInt(data.team_event_id || 0, 10);
+        if (events.length > 0) {
+            var seenEventIds = {};
+            for (var ev = 0; ev < events.length; ev++) {
+                var evId = parseInt(events[ev].id || 0, 10);
+                var evLabel = String(events[ev].label || '').trim();
+                if (!evId || !evLabel || seenEventIds[evId]) continue;
+                seenEventIds[evId] = true;
+                var evOpt = document.createElement('option');
+                evOpt.value = String(evId);
+                evOpt.setAttribute('data-label', evLabel);
+                var evAlias = String(events[ev].team_alias || '').trim();
+                var evText = evAlias !== '' ? (evAlias + ' - ' + evLabel) : evLabel;
+                if (!parseInt(events[ev].closed || 0, 10)) {
+                    evText += ' (offen)';
+                }
+                evOpt.textContent = evText;
+                evOpt.setAttribute('data-user-role', events[ev].role || (events[ev].can_manage_members ? 'Mannschaftsführer' : 'Mitglied'));
+                evOpt.setAttribute('data-team-alias', evAlias);
+                if (selectedEventId > 0 ? evId === selectedEventId : evLabel === selectedSpieltag) evOpt.selected = true;
+                refs.select.appendChild(evOpt);
+            }
+            refs.select.disabled = refs.select.options.length === 0;
+            return;
+        }
+
         for (var i = 0; i < spieltage.length; i++) {
             var name = String(spieltage[i] || '').trim();
             if (!name) continue;
