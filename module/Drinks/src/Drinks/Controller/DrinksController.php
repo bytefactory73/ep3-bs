@@ -1384,48 +1384,29 @@ class DrinksController extends AbstractActionController
             return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'User not found']));
         }
 
-        $amount = isset($paypalRow['amount']) ? (float)$paypalRow['amount'] : 0.0;
-        $paypalDate = '';
-        if (!empty($paypalRow['received_at'])) {
-            $timestamp = strtotime($paypalRow['received_at']);
-            if ($timestamp !== false) {
-                $paypalDate = date('d.m.Y', $timestamp);
-            }
-        }
-        $payerName = isset($paypalRow['payer_name']) ? trim((string)$paypalRow['payer_name']) : '';
-        $transactionNote = isset($paypalRow['transaction_note']) ? trim((string)$paypalRow['transaction_note']) : '';
-        $commentParts = [];
-        $commentParts[] = 'PayPal';
-        if ($payerName !== '') {
-            $commentParts[] = $payerName;
-        }
-        if ($transactionNote !== '') {
-            $commentParts[] = $transactionNote;
-        }
-        $comment = implode(' - ', $commentParts);
-        if ($amount <= 0) {
-            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Invalid PayPal amount']));
-        }
-
-        $depositTime = null;
-        if (!empty($paypalRow['received_at'])) {
-            $depositTime = $paypalRow['received_at'];
-        }
-
         try {
-            $lastInsertId = $this->addDepositAndNotify($serviceManager, $userId, $amount, $comment, $admin->get('uid'), null, $depositTime);
-            if (!$lastInsertId) {
-                return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Deposit creation failed']));
-            }
-            $linked = $paypalManager->linkToDeposit($paypalId, $lastInsertId, $userId);
-            if (!$linked) {
-                return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Failed to link PayPal transaction']));
-            }
+            $creditResult = $paypalManager->createDepositForTransaction($paypalId, $userId, $depositManager, $admin->get('uid'));
         } catch (\Throwable $e) {
-            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => $e->getMessage()]));
+            error_log('createDepositFromPaypal: ' . $e->getMessage());
+            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Deposit creation failed']));
+        }
+        if (empty($creditResult['success'])) {
+            $error = isset($creditResult['error']) ? $creditResult['error'] : '';
+            if ($error === 'already_linked') {
+                return $this->getResponse()->setStatusCode(409)->setContent(json_encode(['success' => false, 'error' => 'PayPal transaction already credited', 'deposit_id' => $creditResult['deposit_id']]));
+            }
+            if ($error === 'invalid_amount') {
+                return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Invalid PayPal amount']));
+            }
+            if ($error === 'locked') {
+                return $this->getResponse()->setStatusCode(409)->setContent(json_encode(['success' => false, 'error' => 'PayPal transaction is being processed, please retry']));
+            }
+            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => $error === 'link_failed' ? 'Failed to link PayPal transaction' : 'Deposit creation failed']));
         }
 
-        return $this->getResponse()->setContent(json_encode(['success' => true, 'deposit_id' => $lastInsertId]));
+        $this->notifyDeposit($serviceManager, $userId, $creditResult['amount'], $creditResult['comment']);
+
+        return $this->getResponse()->setContent(json_encode(['success' => true, 'deposit_id' => $creditResult['deposit_id']]));
     }
 
     /**
@@ -3631,6 +3612,14 @@ class DrinksController extends AbstractActionController
         $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
         $lastInsertId = $dbAdapter->getDriver()->getLastGeneratedValue();
 
+        $this->notifyDeposit($serviceManager, $userId, $amount, $comment);
+
+        return $lastInsertId;
+    }
+
+    private function notifyDeposit($serviceManager, $userId, $amount, $comment)
+    {
+        $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
         try {
             $userManager = $serviceManager->get('User\Manager\UserManager');
             $mailService = $serviceManager->get('User\Service\MailService');
@@ -3652,8 +3641,6 @@ class DrinksController extends AbstractActionController
         } catch (\Throwable $e) {
             error_log('Fehler beim Senden der Einzahlungsbenachrichtigung: ' . $e->getMessage());
         }
-
-        return $lastInsertId;
     }
 
     // -------------------------------------------------------------------------

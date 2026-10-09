@@ -153,7 +153,7 @@ class PaypalTransactionManager
             return false;
         }
 
-        $sql = 'UPDATE drinks_paypal SET linked_deposit_id = ?, linked_user_id = ?, auto_credited = 1, state = ?, processed_at = NOW() WHERE id = ?';
+        $sql = 'UPDATE drinks_paypal SET linked_deposit_id = ?, linked_user_id = ?, auto_credited = 1, state = ?, processed_at = NOW() WHERE id = ? AND linked_deposit_id IS NULL';
         $params = [$depositId, $linkedUserId, 'depositassigned', $paypalId];
         try {
             $statement = $this->dbAdapter->createStatement($sql, $params);
@@ -161,6 +161,93 @@ class PaypalTransactionManager
             return ($result->getAffectedRows() > 0);
         } catch (\Throwable $e) {
             return false;
+        }
+    }
+
+    /**
+     * Create and link a deposit for a PayPal transaction exactly once.
+     * A per-transaction MySQL named lock serialises concurrent attempts (double click,
+     * manual credit racing the cron auto-assign); the row is re-read under the lock.
+     * Returns ['success' => bool, 'deposit_id', 'amount', 'comment', 'deposit_time', 'error'];
+     * error 'already_linked' means the transaction was credited before (no new deposit).
+     */
+    public function createDepositForTransaction($paypalId, $userId, $depositManager, $createdByUserId = null)
+    {
+        $paypalId = (int)$paypalId;
+        $userId = (int)$userId;
+        if ($paypalId <= 0 || $userId <= 0) {
+            return ['success' => false, 'error' => 'invalid_input'];
+        }
+
+        $lockName = 'drinks_paypal_deposit_' . $paypalId;
+        $lockRow = $this->dbAdapter->query('SELECT GET_LOCK(?, 10) AS got_lock', [$lockName])->current();
+        if (!$lockRow || (int)$lockRow['got_lock'] !== 1) {
+            return ['success' => false, 'error' => 'locked'];
+        }
+
+        try {
+            $row = $this->dbAdapter->query('SELECT * FROM drinks_paypal WHERE id = ? LIMIT 1', [$paypalId])->current();
+            if (!$row) {
+                return ['success' => false, 'error' => 'not_found'];
+            }
+            if (!empty($row['linked_deposit_id'])) {
+                return ['success' => false, 'error' => 'already_linked', 'deposit_id' => (int)$row['linked_deposit_id']];
+            }
+            $amount = isset($row['amount']) ? (float)$row['amount'] : 0.0;
+            if ($amount <= 0) {
+                return ['success' => false, 'error' => 'invalid_amount'];
+            }
+
+            $commentParts = ['PayPal'];
+            if (!empty($row['payer_name'])) {
+                $commentParts[] = trim((string)$row['payer_name']);
+            }
+            if (!empty($row['transaction_note'])) {
+                $commentParts[] = trim((string)$row['transaction_note']);
+            }
+            $comment = implode(' - ', array_filter($commentParts, function ($value) {
+                return $value !== '';
+            }));
+            $depositTime = !empty($row['received_at']) ? $row['received_at'] : null;
+
+            $depositResult = $depositManager->addDeposit(
+                $userId,
+                $amount,
+                $comment,
+                $createdByUserId > 0 ? (int)$createdByUserId : null,
+                null,
+                null,
+                $depositTime
+            );
+            $depositId = 0;
+            if ($depositResult && method_exists($depositResult, 'getGeneratedValue')) {
+                $depositId = (int)$depositResult->getGeneratedValue();
+            }
+            if ($depositId <= 0) {
+                $depositId = (int)$this->dbAdapter->getDriver()->getLastGeneratedValue();
+            }
+            if ($depositId <= 0) {
+                return ['success' => false, 'error' => 'deposit_failed'];
+            }
+
+            if (!$this->linkToDeposit($paypalId, $depositId, $userId)) {
+                error_log(sprintf('PayPal #%d: deposit %d created but linking failed', $paypalId, $depositId));
+                return ['success' => false, 'error' => 'link_failed', 'deposit_id' => $depositId];
+            }
+
+            return [
+                'success' => true,
+                'deposit_id' => $depositId,
+                'amount' => $amount,
+                'comment' => $comment,
+                'deposit_time' => $depositTime,
+            ];
+        } finally {
+            try {
+                $this->dbAdapter->query('SELECT RELEASE_LOCK(?)', [$lockName]);
+            } catch (\Throwable $e) {
+                // Lock is released with the connection anyway
+            }
         }
     }
 
@@ -403,53 +490,18 @@ class PaypalTransactionManager
                     continue;
                 }
 
-                $commentParts = ['PayPal'];
-                if (!empty($row['payer_name'])) {
-                    $commentParts[] = trim((string)$row['payer_name']);
-                }
-                if (!empty($row['transaction_note'])) {
-                    $commentParts[] = trim((string)$row['transaction_note']);
-                }
-                $comment = implode(' - ', array_filter($commentParts, function ($value) {
-                    return $value !== '';
-                }));
-
-                $depositTime = !empty($row['received_at']) ? $row['received_at'] : null;
-                $depositResult = $depositManager->addDeposit(
-                    $matchedUserId,
-                    $amount,
-                    $comment,
-                    $createdByUserId > 0 ? $createdByUserId : null,
-                    null,
-                    null,
-                    $depositTime
-                );
-                if (!$depositResult || method_exists($depositResult, 'getAffectedRows') && $depositResult->getAffectedRows() <= 0) {
-                    $result['skipped']++;
-                    continue;
-                }
-
-                $depositId = null;
-                if (method_exists($depositResult, 'getGeneratedValue')) {
-                    $depositId = (int)$depositResult->getGeneratedValue();
-                }
-                if (!$depositId) {
-                    $depositRow = $this->dbAdapter->query('SELECT id FROM drink_deposits WHERE user_id = ? AND amount = ? AND deposit_time = ? ORDER BY id DESC LIMIT 1', [$matchedUserId, $amount, $depositTime])->current();
-                    if ($depositRow && !empty($depositRow['id'])) {
-                        $depositId = (int)$depositRow['id'];
+                $creditResult = $this->createDepositForTransaction($paypalId, $matchedUserId, $depositManager, $createdByUserId);
+                if (empty($creditResult['success'])) {
+                    $error = isset($creditResult['error']) ? $creditResult['error'] : 'unknown';
+                    if ($error !== 'already_linked') {
+                        $result['errors'][] = sprintf('PayPal #%d: deposit not created (%s)', $paypalId, $error);
                     }
-                }
-                if (!$depositId) {
-                    $result['errors'][] = sprintf('PayPal #%d: created deposit but could not resolve id', $paypalId);
                     $result['skipped']++;
                     continue;
                 }
-
-                if (!$this->linkToDeposit($paypalId, $depositId, $matchedUserId)) {
-                    $result['errors'][] = sprintf('PayPal #%d: created deposit %d but linking failed', $paypalId, $depositId);
-                    $result['skipped']++;
-                    continue;
-                }
+                $amount = $creditResult['amount'];
+                $comment = $creditResult['comment'];
+                $depositTime = $creditResult['deposit_time'];
 
                 if ($serviceManager !== null) {
                     try {
