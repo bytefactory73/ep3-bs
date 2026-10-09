@@ -365,7 +365,12 @@ class SimpleLoginController extends AbstractActionController
         $userManager = $this->getServiceLocator()->get('User\Manager\UserManager');
         $user = $userManager->get($session->user_id);
         $drinkManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkManager');
-        $success = $drinkManager->dropOrderAndNotify($orderId, $user, [$this, 't'], $this->getServiceLocator());
+        try {
+            $success = $drinkManager->dropOrderAndNotify($orderId, $user, [$this, 't'], $this->getServiceLocator());
+        } catch (\RuntimeException $e) {
+            list($status, $message) = \Drinks\Manager\DrinkOrderManager::describeDropOrderError($e);
+            return $this->getResponse()->setContent(json_encode(['success' => false, 'error_message' => $message]))->setStatusCode($status);
+        }
         if ($success) {
             return $this->getResponse()->setContent(json_encode(['success' => true]))->setStatusCode(200);
         }

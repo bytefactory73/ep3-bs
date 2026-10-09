@@ -488,7 +488,12 @@ class DrinksController extends AbstractActionController
         if (!$orderId) {
             return $this->getResponse()->setStatusCode(400);
         }
-        $success = $drinkManager->dropOrderAndNotify($orderId, $user, [$this, 't'], $serviceManager);
+        try {
+            $success = $drinkManager->dropOrderAndNotify($orderId, $user, [$this, 't'], $serviceManager);
+        } catch (\RuntimeException $e) {
+            list($status, $message) = \Drinks\Manager\DrinkOrderManager::describeDropOrderError($e);
+            return $this->getResponse()->setContent(json_encode(['success' => false, 'error_message' => $message]))->setStatusCode($status);
+        }
         if ($success) {
             return $this->getResponse()->setContent(json_encode(['success' => true]))->setStatusCode(200);
         } else {

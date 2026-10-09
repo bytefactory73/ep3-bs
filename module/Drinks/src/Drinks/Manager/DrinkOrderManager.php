@@ -69,6 +69,23 @@ class DrinkOrderManager
         return $this->hasTransferReferenceColumns;
     }
 
+    /**
+     * Map a dropOrder() RuntimeException to [HTTP status, user message].
+     */
+    public static function describeDropOrderError(\RuntimeException $e)
+    {
+        switch ($e->getMessage()) {
+            case 'Order can only be deleted within 10 minutes':
+                return [409, 'Stornieren ist nur innerhalb von 10 Minuten nach der Bestellung möglich.'];
+            case 'Order already deleted':
+                return [409, 'Diese Bestellung wurde bereits storniert.'];
+            case 'Order not found':
+                return [404, 'Bestellung nicht gefunden.'];
+            default:
+                return [400, 'Stornierung nicht möglich.'];
+        }
+    }
+
     public function dropOrder($orderId, $userId = null, $deletedByUserId = null)
     {
         if ($userId) {
