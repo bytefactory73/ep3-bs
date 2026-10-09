@@ -944,7 +944,7 @@ class SimpleLoginController extends AbstractActionController
         }
 
         try {
-            $this->deleteTeamEventExtraCost($extraCostId, true);
+            $this->deleteTeamEventExtraCost($extraCostId, true, $teamEventId);
         } catch (\Exception $e) {
             return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Extrakosten konnten nicht gelöscht werden.']));
         }
@@ -1129,7 +1129,7 @@ class SimpleLoginController extends AbstractActionController
         }
 
         try {
-            $this->deleteTeamEventGuestDonation($guestDonationId, true);
+            $this->deleteTeamEventGuestDonation($guestDonationId, true, $teamEventId);
         } catch (\Exception $e) {
             return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Gastspende konnte nicht gelöscht werden.']));
         }

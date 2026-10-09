@@ -1728,7 +1728,7 @@ trait TeamEventTrait
         }
     }
 
-    protected function deleteTeamEventExtraCost($extraCostId, $softDelete = true)
+    protected function deleteTeamEventExtraCost($extraCostId, $softDelete = true, $teamEventId = 0)
     {
         if (!$this->canUseTeamEventExtraCostsTable()) {
             throw new \Exception('Extra costs table not available');
@@ -1740,6 +1740,16 @@ trait TeamEventTrait
         }
 
         $dbAdapter = $this->getTeamEventDbAdapter();
+        // Only delete entries of the given Spieltag (callers have authorised that Spieltag)
+        if ((int)$teamEventId > 0) {
+            $owned = $dbAdapter->query(
+                'SELECT id FROM drinks_teamevent_extra_costs WHERE id = ? AND team_event_id = ?',
+                [$extraCostId, (int)$teamEventId]
+            )->current();
+            if (!$owned) {
+                throw new \Exception('Extra cost not found for this team event');
+            }
+        }
         if ($softDelete) {
             $dbAdapter->query(
                 'UPDATE drinks_teamevent_extra_costs SET deleted = 1 WHERE id = ?',
@@ -1863,7 +1873,7 @@ trait TeamEventTrait
         );
     }
 
-    protected function deleteTeamEventGuestDonation($guestDonationId, $softDelete = true)
+    protected function deleteTeamEventGuestDonation($guestDonationId, $softDelete = true, $teamEventId = 0)
     {
         if (!$this->canUseTeamEventGuestDonationsTable()) {
             throw new \Exception('Guest donations table not available');
@@ -1875,6 +1885,16 @@ trait TeamEventTrait
         }
 
         $dbAdapter = $this->getTeamEventDbAdapter();
+        // Only delete entries of the given Spieltag (callers have authorised that Spieltag)
+        if ((int)$teamEventId > 0) {
+            $owned = $dbAdapter->query(
+                'SELECT id FROM drinks_teamevent_guest_donations WHERE id = ? AND team_event_id = ?',
+                [$guestDonationId, (int)$teamEventId]
+            )->current();
+            if (!$owned) {
+                throw new \Exception('Guest donation not found for this team event');
+            }
+        }
         if ($softDelete) {
             $dbAdapter->query(
                 'UPDATE drinks_teamevent_guest_donations SET deleted = 1 WHERE id = ?',

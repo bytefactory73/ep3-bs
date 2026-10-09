@@ -2190,6 +2190,264 @@ class DrinksController extends AbstractActionController
         return $this->getResponse()->setContent(json_encode(['success' => true]));
     }
 
+    /**
+     * Main-site teamlead actions for Zusatzkosten / Gastspenden (counterparts of the Theke
+     * actions in SimpleLoginController). The team is taken from the Spieltag, and the caller
+     * must be allowed to manage it (canManageTeam).
+     */
+    public function teamleadExtraCostAction()
+    {
+        $request = $this->getRequest();
+        $teamEventId = (int)($request->isGet() ? $this->params()->fromQuery('team_event_id', 0) : $this->params()->fromPost('team_event_id', 0));
+        $context = $this->resolveTeamleadTeamEvent($teamEventId, !$request->isGet());
+        if (!is_array($context)) {
+            return $context;
+        }
+        list($teamAdminUserId, $teamEvent) = $context;
+
+        if ($request->isGet()) {
+            return $this->getResponse()->setContent(json_encode([
+                'success' => true,
+                'extra_costs' => $this->getTeamEventExtraCosts($teamEventId),
+            ]));
+        }
+        if (!$request->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required.']));
+        }
+
+        $payerUserId = (int)$this->params()->fromPost('payer_user_id', 0);
+        $amount = (float)$this->params()->fromPost('amount', 0);
+        $comment = trim((string)$this->params()->fromPost('comment', ''));
+        if ($payerUserId <= 0 || $amount <= 0) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültige Eingabe.']));
+        }
+        $memberUserIds = $this->filterTeamEventMemberIds($teamEventId, $this->params()->fromPost('relevant_member_ids', ''));
+
+        try {
+            $this->saveTeamEventExtraCost($teamEventId, $payerUserId, $amount, $comment, $memberUserIds);
+        } catch (\Exception $e) {
+            error_log('teamleadExtraCost: ' . $e->getMessage());
+            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Extrakosten konnten nicht gespeichert werden.']));
+        }
+        return $this->teamleadTeamEventResponse($teamAdminUserId, $teamEvent);
+    }
+
+    public function teamleadUpdateExtraCostAction()
+    {
+        if (!$this->getRequest()->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required.']));
+        }
+        $teamEventId = (int)$this->params()->fromPost('team_event_id', 0);
+        $context = $this->resolveTeamleadTeamEvent($teamEventId, true);
+        if (!is_array($context)) {
+            return $context;
+        }
+        list($teamAdminUserId, $teamEvent) = $context;
+
+        $extraCostId = (int)$this->params()->fromPost('extra_cost_id', 0);
+        $payerUserId = (int)$this->params()->fromPost('payer_user_id', 0);
+        $amount = (float)$this->params()->fromPost('amount', 0);
+        $comment = trim((string)$this->params()->fromPost('comment', ''));
+        if ($extraCostId <= 0 || $payerUserId <= 0 || $amount <= 0) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültige Eingabe.']));
+        }
+        $memberUserIds = $this->filterTeamEventMemberIds($teamEventId, $this->params()->fromPost('relevant_member_ids', ''));
+
+        try {
+            $this->updateTeamEventExtraCost($extraCostId, $teamEventId, $payerUserId, $amount, $comment, $memberUserIds);
+        } catch (\Exception $e) {
+            error_log('teamleadUpdateExtraCost: ' . $e->getMessage());
+            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Extrakosten konnten nicht gespeichert werden.']));
+        }
+        return $this->teamleadTeamEventResponse($teamAdminUserId, $teamEvent);
+    }
+
+    public function teamleadDeleteExtraCostAction()
+    {
+        if (!$this->getRequest()->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required.']));
+        }
+        $teamEventId = (int)$this->params()->fromPost('team_event_id', 0);
+        $context = $this->resolveTeamleadTeamEvent($teamEventId, true);
+        if (!is_array($context)) {
+            return $context;
+        }
+        list($teamAdminUserId, $teamEvent) = $context;
+
+        $extraCostId = (int)$this->params()->fromPost('extra_cost_id', 0);
+        if ($extraCostId <= 0) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültige Eingabe.']));
+        }
+
+        try {
+            $this->deleteTeamEventExtraCost($extraCostId, true, $teamEventId);
+        } catch (\Exception $e) {
+            error_log('teamleadDeleteExtraCost: ' . $e->getMessage());
+            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Extrakosten konnten nicht gelöscht werden.']));
+        }
+        return $this->teamleadTeamEventResponse($teamAdminUserId, $teamEvent);
+    }
+
+    public function teamleadGuestDonationAction()
+    {
+        $request = $this->getRequest();
+        $teamEventId = (int)($request->isGet() ? $this->params()->fromQuery('team_event_id', 0) : $this->params()->fromPost('team_event_id', 0));
+        $context = $this->resolveTeamleadTeamEvent($teamEventId, !$request->isGet());
+        if (!is_array($context)) {
+            return $context;
+        }
+        list($teamAdminUserId, $teamEvent) = $context;
+
+        if ($request->isGet()) {
+            return $this->getResponse()->setContent(json_encode([
+                'success' => true,
+                'guest_donations' => $this->getTeamEventGuestDonations($teamEventId),
+            ]));
+        }
+        if (!$request->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required.']));
+        }
+
+        $receiverUserId = (int)$this->params()->fromPost('receiver_user_id', 0);
+        $amount = (float)$this->params()->fromPost('amount', 0);
+        $comment = trim((string)$this->params()->fromPost('comment', ''));
+        if ($receiverUserId <= 0 || $amount <= 0) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültige Eingabe.']));
+        }
+        if (!in_array($receiverUserId, $this->getTeamEventMemberUserIds($teamEventId), true)) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Empfänger ist kein aktiver Teilnehmer.']));
+        }
+
+        try {
+            $this->saveTeamEventGuestDonation($teamEventId, $receiverUserId, $amount, $comment);
+        } catch (\Exception $e) {
+            error_log('teamleadGuestDonation: ' . $e->getMessage());
+            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Gastspende konnte nicht gespeichert werden.']));
+        }
+        return $this->teamleadTeamEventResponse($teamAdminUserId, $teamEvent);
+    }
+
+    public function teamleadUpdateGuestDonationAction()
+    {
+        if (!$this->getRequest()->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required.']));
+        }
+        $teamEventId = (int)$this->params()->fromPost('team_event_id', 0);
+        $context = $this->resolveTeamleadTeamEvent($teamEventId, true);
+        if (!is_array($context)) {
+            return $context;
+        }
+        list($teamAdminUserId, $teamEvent) = $context;
+
+        $guestDonationId = (int)$this->params()->fromPost('guest_donation_id', 0);
+        $receiverUserId = (int)$this->params()->fromPost('receiver_user_id', 0);
+        $amount = (float)$this->params()->fromPost('amount', 0);
+        $comment = trim((string)$this->params()->fromPost('comment', ''));
+        if ($guestDonationId <= 0 || $receiverUserId <= 0 || $amount <= 0) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültige Eingabe.']));
+        }
+        if (!in_array($receiverUserId, $this->getTeamEventMemberUserIds($teamEventId), true)) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Empfänger ist kein aktiver Teilnehmer.']));
+        }
+
+        try {
+            $this->updateTeamEventGuestDonation($guestDonationId, $teamEventId, $receiverUserId, $amount, $comment);
+        } catch (\Exception $e) {
+            error_log('teamleadUpdateGuestDonation: ' . $e->getMessage());
+            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Gastspende konnte nicht gespeichert werden.']));
+        }
+        return $this->teamleadTeamEventResponse($teamAdminUserId, $teamEvent);
+    }
+
+    public function teamleadDeleteGuestDonationAction()
+    {
+        if (!$this->getRequest()->isPost()) {
+            return $this->getResponse()->setStatusCode(405)->setContent(json_encode(['success' => false, 'error' => 'POST required.']));
+        }
+        $teamEventId = (int)$this->params()->fromPost('team_event_id', 0);
+        $context = $this->resolveTeamleadTeamEvent($teamEventId, true);
+        if (!is_array($context)) {
+            return $context;
+        }
+        list($teamAdminUserId, $teamEvent) = $context;
+
+        $guestDonationId = (int)$this->params()->fromPost('guest_donation_id', 0);
+        if ($guestDonationId <= 0) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültige Eingabe.']));
+        }
+
+        try {
+            $this->deleteTeamEventGuestDonation($guestDonationId, true, $teamEventId);
+        } catch (\Exception $e) {
+            error_log('teamleadDeleteGuestDonation: ' . $e->getMessage());
+            return $this->getResponse()->setStatusCode(500)->setContent(json_encode(['success' => false, 'error' => 'Gastspende konnte nicht gelöscht werden.']));
+        }
+        return $this->teamleadTeamEventResponse($teamAdminUserId, $teamEvent);
+    }
+
+    /**
+     * Resolve a Spieltag for a main-site teamlead action and authorise the caller.
+     * Returns [teamAdminUserId, teamEventRow], or a JSON error response.
+     */
+    private function resolveTeamleadTeamEvent($teamEventId, $requireOpen)
+    {
+        $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
+        $user = @$this->getServiceLocator()->get('User\Manager\UserSessionManager')->getSessionUser();
+        if (!$user) {
+            return $this->getResponse()->setStatusCode(401)->setContent(json_encode(['success' => false, 'error' => 'Not authenticated.']));
+        }
+        $teamEventId = (int)$teamEventId;
+        if ($teamEventId <= 0) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Ungültiger Spieltag.']));
+        }
+        $row = $this->getTeamEventDbAdapter()->query(
+            'SELECT team_admin_user_id FROM drinks_teamevents WHERE id = ? LIMIT 1',
+            [$teamEventId]
+        )->current();
+        $teamAdminUserId = $row ? (int)$row['team_admin_user_id'] : 0;
+        if ($teamAdminUserId <= 0) {
+            return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'Spieltag nicht gefunden.']));
+        }
+        if (!$this->canManageTeam($user, $teamAdminUserId)) {
+            return $this->getResponse()->setStatusCode(403)->setContent(json_encode(['success' => false, 'error' => 'No permission']));
+        }
+        $teamEvent = $this->getTeamEventById($teamAdminUserId, $teamEventId);
+        if (!$teamEvent) {
+            return $this->getResponse()->setStatusCode(404)->setContent(json_encode(['success' => false, 'error' => 'Spieltag nicht gefunden.']));
+        }
+        if ($requireOpen && $this->isTeamEventClosedRow($teamEvent)) {
+            return $this->getResponse()->setStatusCode(400)->setContent(json_encode(['success' => false, 'error' => 'Abrechnung ist beendet.']));
+        }
+        return [$teamAdminUserId, $teamEvent];
+    }
+
+    /**
+     * Keep only ids of current participants of the Spieltag.
+     */
+    private function filterTeamEventMemberIds($teamEventId, $rawMemberIds)
+    {
+        $allowedLookup = array_flip(array_map('intval', $this->getTeamEventMemberUserIds($teamEventId)));
+        $filtered = [];
+        foreach ($this->parseTeamEventMemberIds($rawMemberIds) as $memberUserId) {
+            $memberUserId = (int)$memberUserId;
+            if ($memberUserId > 0 && isset($allowedLookup[$memberUserId])) {
+                $filtered[] = $memberUserId;
+            }
+        }
+        return array_values(array_unique($filtered));
+    }
+
+    private function teamleadTeamEventResponse($teamAdminUserId, $teamEvent)
+    {
+        $teamEventId = (int)$teamEvent['id'];
+        $teamEventLabel = isset($teamEvent['comment']) ? trim((string)$teamEvent['comment']) : '';
+        return $this->getResponse()->setContent(json_encode(array_merge([
+            'success' => true,
+            'spieltage' => $this->getAvailableTeamEventLabels($teamAdminUserId, true),
+            'open_spieltage' => $this->getAvailableTeamEventLabels($teamAdminUserId, false),
+        ], $this->buildTeamStatsPayload($teamAdminUserId, $teamEventLabel, ['team_event_id' => $teamEventId]))));
+    }
+
     public function teamleadCloseTeamEventAction()
     {
         $this->getResponse()->getHeaders()->addHeaderLine('Content-Type', 'application/json');
