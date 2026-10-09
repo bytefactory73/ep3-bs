@@ -819,9 +819,18 @@ class PaypalTransactionManager
             if ($linkedDepositId > 0) {
                 $this->dbAdapter->query('UPDATE drink_deposits SET user_id = ? WHERE id = ?', [$newUserId, $linkedDepositId]);
             }
+            // Mark as manual so a later API sync does not reset the user (see applyPaypalApiDataToRow)
+            $json = [];
+            if (!empty($row['transaction_json'])) {
+                $decoded = json_decode($row['transaction_json'], true);
+                if (is_array($decoded)) {
+                    $json = $decoded;
+                }
+            }
+            $json['manual_assignment'] = ['user_id' => $newUserId, 'at' => date('Y-m-d H:i:s')];
             $this->dbAdapter->query(
-                'UPDATE drinks_paypal SET linked_user_id = ?, processed_at = NOW() WHERE id = ?',
-                [$newUserId, $paypalId]
+                'UPDATE drinks_paypal SET linked_user_id = ?, transaction_json = ?, processed_at = NOW() WHERE id = ?',
+                [$newUserId, json_encode($json, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $paypalId]
             );
 
             // Try to link a deposit staff entered by hand for this payment (see findMatchingDeposit)
@@ -1139,19 +1148,6 @@ class PaypalTransactionManager
         $transactionNote = $this->normalizeTransactionNoteForStorage($transactionNote);
         $transactionNote = $this->appendFeeNote($transactionNote, isset($parsed['fee']) ? $parsed['fee'] : 0.0);
 
-        $sql = 'UPDATE drinks_paypal SET state = ?, account_id = ?, payer_name = ?, payer_email = ?, amount = ?, transaction_status = ?, transaction_note = ?, transaction_json = ?, processed_at = NOW() WHERE id = ?';
-        $params = [
-            'apifoundsynced',
-            $parsed['account_id'],
-            $payerName,
-            $payerEmail,
-            $parsed['amount'],
-            $parsed['transaction_status'],
-            $transactionNote,
-            json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            (int)$row['id'],
-        ];
-
         $receivedAt = null;
         if (!empty($parsed['received_at'])) {
             $normalizedReceivedAt = $this->normalizePaypalDate($parsed['received_at']);
@@ -1160,7 +1156,13 @@ class PaypalTransactionManager
             }
         }
 
-        $sql = 'UPDATE drinks_paypal SET state = ?, account_id = ?, payer_name = ?, payer_email = ?, amount = ?, transaction_status = ?, transaction_note = ?, transaction_json = ?, linked_user_id = NULL, processed_at = NOW()';
+        // The email import only guesses the user from the payer name (temporary, for the pending
+        // allowance); reset it so auto-assign resolves the user by payer email. An admin's manual
+        // reassignment (marked in transaction_json) is kept.
+        $keepLinkedUser = !empty($existingJson['manual_assignment']);
+        $sql = 'UPDATE drinks_paypal SET state = ?, account_id = ?, payer_name = ?, payer_email = ?, amount = ?, transaction_status = ?, transaction_note = ?, transaction_json = ?, '
+            . ($keepLinkedUser ? '' : 'linked_user_id = NULL, ')
+            . 'processed_at = NOW()';
         if ($receivedAt !== null) {
             $sql .= ', received_at = ?';
         }
