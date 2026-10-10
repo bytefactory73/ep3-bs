@@ -122,12 +122,10 @@ return [
         ],
     ],
     'form_elements' => [
-        'factories' => [
-            'Drinks\Form\EditDrinksAliasForm' => function($formElementManager) {
-                $form = new \Drinks\Form\EditDrinksAliasForm();
-                $form->init();
-                return $form;
-            },
+        // No closures here: the config cache (EP3_BS_DEV_TAG = false) is written with var_export().
+        // init() is called by the FormElementManager initializer.
+        'invokables' => [
+            'Drinks\Form\EditDrinksAliasForm' => 'Drinks\Form\EditDrinksAliasForm',
         ],
     ],
 ];
