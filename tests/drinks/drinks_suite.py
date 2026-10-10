@@ -892,6 +892,37 @@ def destructive_create_and_close_spieltag(ctx):
     return {'closed': True, 'settlement': closed['settlement'], 'create_closed_error': reopen['error']}
 
 
+@test('destructive')
+def destructive_close_spieltag_with_settlement(ctx):
+    """Closing and settling is one transaction: a failing settlement leaves the Spieltag open, a valid
+    one closes it and books the transfer. Leaves a closed test Spieltag; money is cancelled again."""
+    label = '%s A4 %s' % (MARK, time.strftime('%Y-%m-%d %H:%M:%S'))
+    event_id = ctx.admin.post_json('user/create-team-event', {'uid': TEAM_UID, 'label': label})['team_event_id']
+    ctx.admin.post('user/deposits', {'add_deposit': 1, 'deposit_user_id': TEAM_UID, 'deposit_amount': CENT,
+                                     'deposit_comment': MARK, 'deposit_teamevent_id': event_id})
+    teamlead_post(ctx, 'team-members', {'team_event_id': event_id, 'member_user_id': ADMIN_UID, 'operation': 'add'})
+    refund = lambda amount: {'team_event_id': event_id, 'settlement_refunds': json.dumps([{'receiver_user_id': ADMIN_UID, 'amount': amount}])}
+    transfers_before = len([e for e in ctx.history_entries(ADMIN_UID) if e.get('teamevent_id') == event_id and not e['deleted']])
+
+    too_much = teamlead_post(ctx, 'close-team-event', refund(1.00), expect_status=400)
+    after_fail = ctx.team_stats(event_id)
+    expect(too_much.get('error_code') == 'insufficient_settlement_balance', 'unexpected error: %s' % too_much)
+    expect(not after_fail['team_event_closed'], 'failed settlement left the Spieltag closed')
+
+    closed = teamlead_post(ctx, 'close-team-event', refund(CENT))
+    after = ctx.team_stats(event_id)
+    expect(after['team_event_closed'] and closed['already_closed'] is False, 'Spieltag not closed')
+    expect(len(closed['settlement']['transfers']) == 1, 'settlement transfers: %s' % closed['settlement'])
+    received = [e for e in ctx.history_entries(ADMIN_UID)
+                if e['type'] == 'Einzahlung' and e.get('teamevent_id') == event_id and not e['deleted']]
+    expect(len(received) == transfers_before + 1, 'settlement transfer not booked for user %d' % ADMIN_UID)
+
+    # Cancel the money again (the transfer's counterpart is cancelled with it)
+    ctx.toggle('deposit', received[-1]['id'])
+    ctx.toggle('deposit', ctx.newest_entry(TEAM_UID, 'Einzahlung', MARK)['id'])
+    return {'failed_settlement_keeps_open': True, 'closed': True, 'transfers': 1}
+
+
 # --------------------------------------------------------------------------- Theke
 
 class Theke:

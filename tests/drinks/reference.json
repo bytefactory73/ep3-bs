@@ -222,6 +222,11 @@
     },
     "order_redirect": "/user/simple-login"
   },
+  "destructive_close_spieltag_with_settlement": {
+    "closed": true,
+    "failed_settlement_keeps_open": true,
+    "transfers": 1
+  },
   "paypal_emails_import": {
     "result_keys": [
       "errors",
