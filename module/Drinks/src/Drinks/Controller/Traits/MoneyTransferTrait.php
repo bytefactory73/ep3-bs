@@ -154,8 +154,8 @@ trait MoneyTransferTrait
 
         $serviceManager = $this->getServiceLocator();
         $userManager = $serviceManager->get('User\\Manager\\UserManager');
-        $senderUser = $userManager->get($senderUserId);
-        $receiverUser = $userManager->get($receiverUserId);
+        $senderUser = $userManager->get($senderUserId, false);
+        $receiverUser = $userManager->get($receiverUserId, false);
 
         if (!$senderUser || !$receiverUser) {
             return [

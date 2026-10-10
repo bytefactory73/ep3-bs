@@ -347,7 +347,7 @@ class SimpleLoginController extends AbstractActionController
             if ($password === '') {
                 return $this->jsonError(400, 'Bitte Passwort eingeben.');
             }
-            $senderUser = $this->service('User\Manager\UserManager')->get($senderUserId);
+            $senderUser = $this->service('User\Manager\UserManager')->get($senderUserId, false);
             if (!$senderUser) {
                 return $this->jsonError(404, 'Nutzer nicht gefunden.');
             }

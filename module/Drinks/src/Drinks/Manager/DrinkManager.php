@@ -180,7 +180,7 @@ class DrinkManager
     public function notifyDeposit($userId, $amount, $comment, $serviceManager)
     {
         try {
-            $recipient = $serviceManager->get('User\Manager\UserManager')->get($userId);
+            $recipient = $serviceManager->get('User\Manager\UserManager')->get($userId, false);
             if (!$recipient) {
                 return;
             }
@@ -357,7 +357,7 @@ class DrinkManager
                     )->current();
                     if ($counterRow && (int)$counterRow['user_id'] !== (int)$user->need('uid')) {
                         $userManager = $serviceManager->get('User\Manager\UserManager');
-                        $counterUser = $userManager->get($counterRow['user_id']);
+                        $counterUser = $userManager->get($counterRow['user_id'], false);
                         if ($counterUser) {
                             $counterBalance = $this->calculateUserDrinkBalance($counterRow['user_id'], $serviceManager);
                             $senderName = $user->get('alias') ?: $user->get('name');
@@ -468,7 +468,7 @@ class DrinkManager
     public function sendDailySummary($userId, $serviceManager, $tCallback)
     {
         $userManager = $serviceManager->get('User\Manager\UserManager');
-        $user = $userManager->get($userId);
+        $user = $userManager->get($userId, false);
         if (!$user) return false;
 
         // 1. Query all orders of the user from the last 24 hours
@@ -550,7 +550,7 @@ class DrinkManager
     public function sendBalanceReminder($userId, $serviceManager, $tCallback)
     {
         $userManager = $serviceManager->get('User\\Manager\\UserManager');
-        $user = $userManager->get($userId);
+        $user = $userManager->get($userId, false);
         if (!$user || $this->isTeamAccount($userId) || trim((string)$user->get('email')) === '') {
             return false;
         }

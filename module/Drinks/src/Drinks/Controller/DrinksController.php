@@ -761,7 +761,7 @@ class DrinksController extends AbstractActionController
         if (!$uid || empty($orders)) {
             return $this->jsonError(400, 'Invalid input');
         }
-        $user = $this->service('User\Manager\UserManager')->get($uid);
+        $user = $this->service('User\Manager\UserManager')->get($uid, false);
         if (!$user) {
             return $this->jsonError(404, 'User not found');
         }
@@ -874,7 +874,7 @@ class DrinksController extends AbstractActionController
             return $this->jsonResponse(['error' => 'No user selected'], 400);
         }
         $userManager = $this->service('User\Manager\UserManager');
-        if (!$userManager->get($uid)) {
+        if (!$userManager->get($uid, false)) {
             return $this->jsonResponse(['error' => 'User not found'], 404);
         }
         $dbAdapter = $this->service('Zend\Db\Adapter\Adapter');
@@ -1115,7 +1115,7 @@ class DrinksController extends AbstractActionController
             return '<br><br>Kontostand nach Änderung: <b>' . number_format($drinkManager->calculateUserDrinkBalance($userId, $serviceManager), 2, ',', '.') . ' EUR</b>';
         };
 
-        $user = $userManager->get($row['user_id']);
+        $user = $userManager->get($row['user_id'], false);
         if ($user && $entryType === 'deposit') {
             if ($transferReference !== '') {
                 $subject = 'Geldüberweisung ' . ucfirst($action);
@@ -1144,7 +1144,7 @@ class DrinksController extends AbstractActionController
         // The other side of a money transfer
         if ($transferReference !== '') {
             $counterRow = $dbAdapter->query('SELECT user_id FROM ' . $counterTable . ' WHERE transfer_reference = ? LIMIT 1', [$transferReference])->current();
-            $counterUser = ($counterRow && (int)$counterRow['user_id'] !== (int)$row['user_id']) ? $userManager->get($counterRow['user_id']) : null;
+            $counterUser = ($counterRow && (int)$counterRow['user_id'] !== (int)$row['user_id']) ? $userManager->get($counterRow['user_id'], false) : null;
             if ($counterUser) {
                 $counterBody = 'Eine Geldüberweisung, die Ihr Konto betrifft, wurde von ' . $adminName . ' ' . $action . '.' . $balanceLine($counterRow['user_id']);
                 $this->sendFromTheke($mailService, $dbAdapter, $counterUser, 'Geldüberweisung ' . ucfirst($action), $counterBody, ['isHtml' => true]);
@@ -2024,7 +2024,7 @@ class DrinksController extends AbstractActionController
         if (!$paypalManager->getById($paypalId)) {
             return $this->jsonError(404, 'PayPal transaction not found');
         }
-        if (!$this->service('User\Manager\UserManager')->get($userId)) {
+        if (!$this->service('User\Manager\UserManager')->get($userId, false)) {
             return $this->jsonError(404, 'User not found');
         }
 

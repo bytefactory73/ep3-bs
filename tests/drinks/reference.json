@@ -1,0 +1,835 @@
+{
+  "auth_json_endpoints_reject_anonymous": {
+    "GET user/get-user-deposits-data": [
+      403,
+      "No permission"
+    ],
+    "GET user/get-user-team-event-stats-data": [
+      403,
+      "No permission"
+    ],
+    "GET user/money-recipient-team-events": [
+      401,
+      "Not authenticated."
+    ],
+    "GET user/simple-order/spieltag": [
+      401,
+      "Not authenticated."
+    ],
+    "GET user/simple-order/team-stats": [
+      401,
+      "Not authenticated."
+    ],
+    "GET user/teamlead-extra-cost": [
+      401,
+      "Not authenticated."
+    ],
+    "GET user/teamlead-guest-donation": [
+      401,
+      "Not authenticated."
+    ],
+    "GET user/teamlead-team-stats": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/add-drink-booking": [
+      403,
+      "No permission"
+    ],
+    "POST user/bookings/drop-order": [
+      403,
+      ""
+    ],
+    "POST user/bookings/submit-order": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/create-deposit-from-paypal": [
+      403,
+      "No permission"
+    ],
+    "POST user/create-team-event": [
+      403,
+      "No permission"
+    ],
+    "POST user/drinks-admin/party-mode-save": [
+      403,
+      ""
+    ],
+    "POST user/emails-import": [
+      401,
+      "Not logged in"
+    ],
+    "POST user/ignore-paypal-transaction": [
+      401,
+      "Not logged in"
+    ],
+    "POST user/paypal-fetch": [
+      401,
+      "Not logged in"
+    ],
+    "POST user/paypal-history-import": [
+      401,
+      "Not logged in"
+    ],
+    "POST user/reassign-paypal-transaction": [
+      401,
+      "Not logged in"
+    ],
+    "POST user/send-money": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/set-user-drinks-settings": [
+      403,
+      "No permission"
+    ],
+    "POST user/simple-order/close-team-event": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/simple-order/drop-order": [
+      403,
+      ""
+    ],
+    "POST user/simple-order/send-money": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/simple-order/submit-order": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/simple-order/team-delete-extra-cost": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/simple-order/team-delete-guest-donation": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/simple-order/team-extra-cost": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/simple-order/team-guest-donation": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/simple-order/team-members": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/simple-order/team-order-relevance": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/simple-order/team-update-extra-cost": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/simple-order/team-update-guest-donation": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/teamlead-close-team-event": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/teamlead-delete-extra-cost": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/teamlead-delete-guest-donation": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/teamlead-extra-cost": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/teamlead-guest-donation": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/teamlead-order-relevance": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/teamlead-team-members": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/teamlead-update-extra-cost": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/teamlead-update-guest-donation": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/toggle-deposit-order-deleted": [
+      403,
+      "No permission"
+    ],
+    "POST user/update-user-history-team-event": [
+      403,
+      "No permission"
+    ]
+  },
+  "auth_pages_redirect_anonymous": {
+    "user/balance-list": [
+      302,
+      "/user/settings"
+    ],
+    "user/deposit-overview": [
+      302,
+      "/user/settings"
+    ],
+    "user/deposits": [
+      302,
+      "/user/settings"
+    ],
+    "user/drinks": [
+      302,
+      "/user/login"
+    ],
+    "user/drinks-admin": [
+      302,
+      "/user/settings"
+    ],
+    "user/drinks-admin/paypal-settings": [
+      401,
+      ""
+    ],
+    "user/drinks-admin/spieltage-overview": [
+      302,
+      "/user/settings"
+    ],
+    "user/drinks-summary": [
+      302,
+      "/user/settings"
+    ],
+    "user/manage-drinks": [
+      302,
+      "/user/settings"
+    ]
+  },
+  "auth_theke_pages_anonymous": {
+    "login": {
+      "status": 200,
+      "title": null
+    },
+    "order_redirect": "/user/simple-login"
+  },
+  "paypal_emails_import": {
+    "result_keys": [
+      "errors",
+      "folders",
+      "matched",
+      "messages",
+      "skipped",
+      "updated"
+    ],
+    "~folders": 6
+  },
+  "paypal_history_import": {
+    "keys": [
+      "auto_result",
+      "import_result",
+      "message",
+      "success",
+      "sync_result"
+    ],
+    "~import_errors": 0,
+    "~needs_review": 1
+  },
+  "read_admin_pages": {
+    "user/balance-list": {
+      "status": 200,
+      "title": "Kontostände Übersicht &middot; STC Tennisplatz-Buchung (Test)"
+    },
+    "user/deposit-overview": {
+      "status": 200,
+      "title": "Einzahlungsübersicht &middot; STC Tennisplatz-Buchung (Test)"
+    },
+    "user/deposits": {
+      "status": 200,
+      "title": "Benutzer Ein-/Auszahlungen &middot; STC Tennisplatz-Buchung (Test)"
+    },
+    "user/drinks-admin": {
+      "status": 200,
+      "title": "Drinks Verwaltung &middot; STC Tennisplatz-Buchung (Test)"
+    },
+    "user/drinks-admin/paypal-settings": {
+      "status": 200,
+      "title": "PayPal Einstellungen &middot; STC Tennisplatz-Buchung (Test)"
+    },
+    "user/drinks-admin/spieltage-overview": {
+      "status": 200,
+      "title": "Spieltage-Übersicht &middot; STC Tennisplatz-Buchung (Test)"
+    },
+    "user/drinks-summary": {
+      "status": 200,
+      "title": "Gesamtauswertung &middot; STC Tennisplatz-Buchung (Test)"
+    },
+    "user/manage-drinks": {
+      "status": 200,
+      "title": "Manage Drinks &middot; STC Tennisplatz-Buchung (Test)"
+    }
+  },
+  "read_deposit_overview_variants": {
+    "{\"from\": \"2026-01-01\", \"to\": \"2026-12-31\"}": 200,
+    "{\"from\": \"kaputt\"}": 200,
+    "{\"quick\": \"l31d\"}": 200,
+    "{\"showTransfers\": 1}": 200,
+    "{}": 200
+  },
+  "read_drinks_page": {
+    "status": 200,
+    "title": "Drinks &middot; STC Tennisplatz-Buchung (Test)",
+    "~drink_buttons": 62
+  },
+  "read_drinks_summary_variants": {
+    "mode_amount": 200,
+    "mode_count": 200
+  },
+  "read_extra_costs_and_guest_donations_lists": {
+    "16": {
+      "~extra_costs": 0,
+      "~guest_donations": 0
+    },
+    "17": {
+      "~extra_costs": 1,
+      "~guest_donations": 1
+    },
+    "26": {
+      "~extra_costs": 0,
+      "~guest_donations": 0
+    }
+  },
+  "read_invalid_parameters": {
+    "GET add-drink-booking": [
+      405,
+      "POST required."
+    ],
+    "GET on POST endpoint": [
+      405,
+      "POST required."
+    ],
+    "GET send-money": [
+      405,
+      "POST required."
+    ],
+    "booking for unknown user": [
+      404,
+      "User not found"
+    ],
+    "booking without orders": [
+      400,
+      "Invalid input"
+    ],
+    "create team event for non-team": [
+      400,
+      "Benutzer ist kein Mannschafts-Account."
+    ],
+    "create team event without label": [
+      400,
+      "Spieltagname fehlt."
+    ],
+    "deposits data unknown uid": [
+      404,
+      "User not found"
+    ],
+    "deposits data without uid": [
+      400,
+      "No user selected"
+    ],
+    "drop unknown order": [
+      404,
+      "Bestellung nicht gefunden."
+    ],
+    "emails import without dates": [
+      400,
+      "from and to dates required"
+    ],
+    "extra costs of unknown event": [
+      404,
+      "Spieltag nicht gefunden."
+    ],
+    "extra costs without event": [
+      400,
+      "Ungültiger Spieltag."
+    ],
+    "history import without dates": [
+      400,
+      "from and to dates required"
+    ],
+    "history move invalid": [
+      400,
+      "Ungültige Eingabe."
+    ],
+    "money to oneself": [
+      400,
+      "Empfänger darf nicht identisch sein."
+    ],
+    "money to team without Spieltag": [
+      400,
+      "Bitte Spieltag auswählen."
+    ],
+    "money without amount": [
+      400,
+      "Betrag muss positiv sein."
+    ],
+    "paypal deposit invalid ids": [
+      400,
+      "Invalid paypal_id or user_id"
+    ],
+    "paypal deposit unknown": [
+      404,
+      "PayPal transaction not found"
+    ],
+    "paypal ignore invalid": [
+      400,
+      "Invalid paypal_id"
+    ],
+    "paypal reassign invalid": [
+      400,
+      "Invalid paypal_id or user_id"
+    ],
+    "recipient without id": [
+      400,
+      "Empfänger fehlt."
+    ],
+    "settings invalid alias": [
+      400,
+      "Invalid alias"
+    ],
+    "settings invalid email option": [
+      400,
+      "Invalid order email option"
+    ],
+    "settings invalid teamlead email": [
+      400,
+      "Invalid teamlead email address"
+    ],
+    "team stats of a non-team": [
+      400,
+      "Selected user is not a team account"
+    ],
+    "teamlead stats of a non-team": [
+      400,
+      "Not a team account"
+    ],
+    "teamlead stats without team_uid": [
+      400,
+      "No team_uid provided"
+    ],
+    "toggle invalid type": [
+      400,
+      "Invalid entry_type"
+    ],
+    "toggle unknown entry": [
+      404,
+      "Entry not found"
+    ]
+  },
+  "read_money_recipient_team_events": {
+    "single": {
+      "is_team": false,
+      "success": true,
+      "team_events": []
+    },
+    "team_events": [
+      {
+        "id": 26,
+        "label": "Spieltag 2026-06-07"
+      },
+      {
+        "id": 17,
+        "label": "Spieltag 2026-05-06"
+      }
+    ]
+  },
+  "read_paypal_settings_masked": {
+    "imap_password_present": true,
+    "paypal_client_secret_present": true,
+    "saved_flag": true
+  },
+  "read_team_deposits_data": {
+    "team_event_ids": [
+      26,
+      17,
+      16
+    ],
+    "team_event_shape": [
+      "balance",
+      "closed",
+      "id",
+      "label"
+    ],
+    "~balance": -35.0,
+    "~team_event_balances": {
+      "16": -22.0,
+      "17": 0.0,
+      "26": -13.0
+    }
+  },
+  "read_team_stats_admin": {
+    "16": {
+      "can_close_team_event": true,
+      "event_ids": [
+        26,
+        17,
+        16
+      ],
+      "event_shape": [
+        "can_manage_members",
+        "closed",
+        "id",
+        "label",
+        "role",
+        "team_admin_user_id",
+        "team_alias"
+      ],
+      "shape": [
+        "account_balance",
+        "active_members",
+        "can_close_team_event",
+        "can_manage_members",
+        "events",
+        "extra_costs",
+        "guest_donations",
+        "is_editable",
+        "member_candidates",
+        "members",
+        "open_spieltage",
+        "rows",
+        "spieltag",
+        "spieltage",
+        "success",
+        "team_alias",
+        "team_event_closed",
+        "team_event_id",
+        "team_uid",
+        "total_sum",
+        "user_role"
+      ],
+      "spieltag": "Medenspiel 2026-05-09",
+      "team_alias": "D50",
+      "~account_balance": -35.0,
+      "~active_members": [
+        4,
+        90
+      ],
+      "~rows": [
+        [
+          "order",
+          "Kaffee (Tasse)",
+          4,
+          -2.0
+        ],
+        [
+          "order",
+          "Aperol Spritz",
+          4,
+          -20.0
+        ]
+      ],
+      "~total_sum": -22.0
+    },
+    "17": {
+      "can_close_team_event": true,
+      "event_ids": [
+        26,
+        17,
+        16
+      ],
+      "event_shape": [
+        "can_manage_members",
+        "closed",
+        "id",
+        "label",
+        "role",
+        "team_admin_user_id",
+        "team_alias"
+      ],
+      "shape": [
+        "account_balance",
+        "active_members",
+        "can_close_team_event",
+        "can_manage_members",
+        "events",
+        "extra_costs",
+        "guest_donations",
+        "is_editable",
+        "member_candidates",
+        "members",
+        "open_spieltage",
+        "rows",
+        "spieltag",
+        "spieltage",
+        "success",
+        "team_alias",
+        "team_event_closed",
+        "team_event_id",
+        "team_uid",
+        "total_sum",
+        "user_role"
+      ],
+      "spieltag": "Spieltag 2026-05-06",
+      "team_alias": "D50",
+      "~account_balance": -35.0,
+      "~active_members": [
+        4,
+        125
+      ],
+      "~rows": [
+        [
+          "extra_cost",
+          "Extrakosten (Alex Link)",
+          1,
+          -11.0
+        ]
+      ],
+      "~total_sum": -11.0
+    },
+    "26": {
+      "can_close_team_event": true,
+      "event_ids": [
+        26,
+        17,
+        16
+      ],
+      "event_shape": [
+        "can_manage_members",
+        "closed",
+        "id",
+        "label",
+        "role",
+        "team_admin_user_id",
+        "team_alias"
+      ],
+      "shape": [
+        "account_balance",
+        "active_members",
+        "can_close_team_event",
+        "can_manage_members",
+        "events",
+        "extra_costs",
+        "guest_donations",
+        "is_editable",
+        "member_candidates",
+        "members",
+        "open_spieltage",
+        "rows",
+        "spieltag",
+        "spieltage",
+        "success",
+        "team_alias",
+        "team_event_closed",
+        "team_event_id",
+        "team_uid",
+        "total_sum",
+        "user_role"
+      ],
+      "spieltag": "Spieltag 2026-06-07",
+      "team_alias": "D50",
+      "~account_balance": -35.0,
+      "~active_members": [
+        4,
+        89
+      ],
+      "~rows": [
+        [
+          "order",
+          "Radler (Flasche 0.33) Alkoholfrei",
+          2,
+          -3.0
+        ],
+        [
+          "order",
+          "Aperol Spritz",
+          1,
+          -5.0
+        ],
+        [
+          "order",
+          "Medenspielpauschale",
+          1,
+          -5.0
+        ]
+      ],
+      "~total_sum": -13.0
+    }
+  },
+  "read_team_stats_member_view": {
+    "status": 200,
+    "~events": [
+      27,
+      25,
+      23,
+      21
+    ]
+  },
+  "read_team_stats_teamlead_matches_admin": {
+    "16": "identical",
+    "17": "identical",
+    "26": "identical"
+  },
+  "read_user_deposits_data": {
+    "entry_shape_deposit": [
+      "amount",
+      "createdby",
+      "datetime",
+      "deleted",
+      "desc",
+      "id",
+      "spieltag_closed",
+      "spieltag_label",
+      "teamevent_id",
+      "type"
+    ],
+    "entry_shape_order": [
+      "amount",
+      "balance",
+      "comment",
+      "datetime",
+      "deleted",
+      "desc",
+      "drink_id",
+      "id",
+      "quantity",
+      "spieltag_closed",
+      "spieltag_label",
+      "teamevent_id",
+      "type"
+    ],
+    "order_email_option": "summary",
+    "shape": [
+      "balance",
+      "current_teamevent_id",
+      "drinks_alias",
+      "drinks_enabled",
+      "history",
+      "is_team",
+      "order_email_option",
+      "pending_paypal_deposits",
+      "team_events",
+      "teamlead_email"
+    ],
+    "~active_history_entries": 74,
+    "~balance": 1.47
+  },
+  "theke_login_errors": {
+    "empty": "Bitte geben Sie eine Theken-ID ein.",
+    "stale_quick_login": "Schnell-Login ist abgelaufen",
+    "unknown": "Theken-ID nicht gefunden."
+  },
+  "theke_order_and_drop_roundtrip": {
+    "drop_twice": "Diese Bestellung wurde bereits storniert.",
+    "dropped": true,
+    "empty_order_balance": true,
+    "ordered": true
+  },
+  "theke_order_page_and_spieltag": {
+    "member_team_stats": 200,
+    "non_team_spieltag": 403,
+    "simple_mode": true,
+    "status": 200,
+    "team_page": {
+      "status": 200,
+      "title": null
+    },
+    "title": null
+  },
+  "theke_send_money_requires_password": {
+    "missing_password": "Bitte Passwort eingeben.",
+    "theke_recipient_events": true,
+    "wrong_password": "Passwort ist falsch."
+  },
+  "theke_team_stats_match_admin": {
+    "16": "identical",
+    "17": "identical",
+    "26": "identical"
+  },
+  "theke_team_writes_roundtrip": {
+    "foreign_team_spieltag_error": "Spieltag nicht gefunden.",
+    "restored": true
+  },
+  "write_admin_booking_roundtrip": {
+    "delta": -0.02,
+    "entry_comment": "SMOKETEST",
+    "entry_quantity": 2,
+    "restored": true
+  },
+  "write_closed_spieltag_is_read_only": {
+    "close_again": true,
+    "extra-cost": "Abrechnung ist beendet.",
+    "guest-donation": "Abrechnung ist beendet.",
+    "order-relevance": "Abrechnung ist beendet.",
+    "team-members": "Abrechnung ist beendet."
+  },
+  "write_deposit_roundtrip": {
+    "createdby_set": true,
+    "delta_after_deposit": 0.01,
+    "delta_after_storno": 0.0
+  },
+  "write_deposit_storno_restore_roundtrip": {
+    "restored": true
+  },
+  "write_extra_cost_roundtrip": {
+    "delete_other_spieltag_error": "Extrakosten konnten nicht gelöscht werden.",
+    "listed": true,
+    "row_article": "Extrakosten: SMOKETEST (Tilo Kühn (Admin))",
+    "zero_amount_error": "Ungültige Eingabe."
+  },
+  "write_guest_donation_roundtrip": {
+    "due_amount": -0.01,
+    "non_member_error": null,
+    "updated_amount": 0.02
+  },
+  "write_history_move_roundtrip": {
+    "closed_target_error": "Abgeschlossene Spieltage können nicht ausgewählt werden.",
+    "moved_label": true
+  },
+  "write_manage_drinks_roundtrip": {
+    "added_category": "0",
+    "deleted": true,
+    "edited": [
+      "SMOKETEST 2",
+      0.02
+    ],
+    "~drink_count": 36
+  },
+  "write_money_transfer_roundtrip": {
+    "already_processed": true,
+    "both_restored": true,
+    "receiver_delta": 0.01,
+    "sender_delta": -0.01
+  },
+  "write_money_transfer_to_team_roundtrip": {
+    "payer_listed": true,
+    "team_balance_delta": 0.01
+  },
+  "write_order_relevance_roundtrip": {
+    "restored": true
+  },
+  "write_party_mode_roundtrip": {
+    "enabled": true,
+    "redirect": "/user/drinks-admin",
+    "~theke_shows_party_mode": false
+  },
+  "write_team_booking_roundtrip": {
+    "restored": true,
+    "spieltag_delta": -0.01
+  },
+  "write_team_members_roundtrip": {
+    "added_then_removed": true,
+    "invalid_operation_error": "Ungültige Eingabe."
+  },
+  "write_user_settings_roundtrip": {
+    "noop_save_changed": [],
+    "normalised_teamlead_email": "a@example.org, b@example.org"
+  }
+}
