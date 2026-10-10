@@ -1,6 +1,6 @@
 <?php
 
-return array(
+return [
 
     'You are not logged in (anymore)' => 'Nincs bejelentkezve',
     'You have no permission for this' => 'Ehhez nincs jogosultsága',
@@ -84,19 +84,19 @@ return array(
     'Family' => 'Család',
     'Firm' => 'Cég',
 
-    'May manage users' => 'Kezelhet felhasználókat',
-    'May manage bookings' => 'Kezelhet foglalásokat',
-    'May manage events' => 'Kezelhet eseményeket',
-    'May change configuration' => 'Változtathat beállításokat',
-    'Can see the admin menu' => 'Láthatja az adminisztrátori menüt',
-    'Can see the past in calendar' => 'Láthatja az előzményeket naptárban',
-    'Can see names and data in calendar' => 'Láthatja a neveket és az adatokat a naptárban',
-    'May create single bookings' => 'Foglalást létrehozhat',
-    'May cancel single bookings' => 'Foglalást lemondhat',
-    'May delete single bookings' => 'Foglalást törölhet',
-    'May create multiple bookings' => 'Többszörös fogalást létrehozhat',
-    'May cancel multiple bookings' => 'Többszörös foglalást lemondhat',
-    'May delete multiple bookings' => 'Többszörös foglalást törölhet',
+    'Can manage users' => 'Kezelhet felhasználókat',
+    'Can manage bookings' => 'Kezelhet foglalásokat',
+    'Can manage events' => 'Kezelhet eseményeket',
+    'Can change configuration' => 'Változtathat beállításokat',
+    'Sees the admin menu' => 'Láthatja az adminisztrátori menüt',
+    'Sees past bookings' => 'Láthatja az előzményeket naptárban',
+    'Sees names and data in calendar' => 'Láthatja a neveket és az adatokat a naptárban',
+    'Can create single bookings' => 'Foglalást létrehozhat',
+    'Can cancel single bookings' => 'Foglalást lemondhat',
+    'Can delete single bookings' => 'Foglalást törölhet',
+    'Can create recurring bookings' => 'Többszörös fogalást létrehozhat',
+    'Can cancel recurring bookings' => 'Többszörös foglalást lemondhat',
+    'Can delete recurring bookings' => 'Többszörös foglalást törölhet',
 
     'Request activation mail' => 'Aktivációs email kérése',
     'Resend activation email' => 'Aktivációs email újraküldése',
@@ -259,4 +259,4 @@ return array(
     'Sincerely' => 'Üdvözlettel',
     'Your' => 'Az ön',
 
-);
+];

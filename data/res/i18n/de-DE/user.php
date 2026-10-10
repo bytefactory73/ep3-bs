@@ -1,6 +1,6 @@
 <?php
 
-return array(
+return [
 
     'You are not logged in (anymore)' => 'Sie sind nicht (mehr) angemeldet',
     'You have no permission for this' => 'Das dürfen Sie leider nicht',
@@ -84,19 +84,20 @@ return array(
     'Family' => 'Familie',
     'Firm' => 'Firma',
 
-    'May manage users' => 'Darf Benutzer verwalten',
-    'May manage bookings' => 'Darf Buchungen verwalten',
-    'May manage events' => 'Darf Veranstaltungen verwalten',
-    'May change configuration' => 'Darf Einstellungen verändern',
-    'Can see the admin menu' => 'Sieht das Verwaltungsmenü',
-    'Can see the past in calendar' => 'Sieht auch vergangene Buchungen',
-    'Can see names and data in calendar' => 'Sieht Namen und Details im Kalender',
-    'May create single bookings' => 'Darf Einzelbuchungen erstellen',
-    'May cancel single bookings' => 'Darf Einzelbuchungen stornieren',
-    'May delete single bookings' => 'Darf Einzelbuchungen löschen',
-    'May create multiple bookings' => 'Darf Abos erstellen',
-    'May cancel multiple bookings' => 'Darf Abos stornieren',
-    'May delete multiple bookings' => 'Darf Abos löschen',
+    'Can manage users' => 'Kann Benutzer verwalten',
+    'Can manage bookings' => 'Kann Buchungen verwalten',
+    'Can manage events' => 'Kann Veranstaltungen verwalten',
+    'Can change configuration' => 'Kann Einstellungen verändern',
+    'Sees the admin menu' => 'Sieht das Verwaltungsmenü',
+    'Sees past bookings' => 'Sieht vergangene Buchungen',
+    'Sees names and data in calendar' => 'Sieht Namen und Details im Kalender',
+    'Can create single bookings' => 'Kann Einzelbuchungen erstellen',
+    'Can cancel single bookings' => 'Kann Einzelbuchungen stornieren',
+    'Can delete single bookings' => 'Kann Einzelbuchungen löschen',
+    'Can create recurring bookings' => 'Kann Abos erstellen',
+    'Can cancel recurring bookings' => 'Kann Abos stornieren',
+    'Can cancel events of recurring bookings' => 'Kann Abo-Reservierungen stornieren',
+    'Can delete recurring bookings' => 'Kann Abos löschen',
 
     'Request activation mail' => 'Aktivierungs E-Mail senden',
     'Resend activation email' => 'Aktivierung erneut senden',
@@ -225,7 +226,7 @@ return array(
     'We are very sorry, but the registration is currently not possible.' => 'Entschuldigung, aber die Registrierung ist derzeit nicht möglich.',
 
     'Login data' => 'Zugangsdaten',
-    'Account data' => 'Zugangsdaten',
+    'Account data' => 'Einstellungen',
     'Personal data' => 'Persönliche Angaben',
 
     'I have read and accept the %1$sprivacy policy%2$s' => 'Ich habe die %1$sDatenschutzerklärung%2$s gelesen und akzeptiere diese',
@@ -259,4 +260,4 @@ return array(
     'Sincerely' => 'Viele Grüße',
     'Your' => 'Ihr',
 
-);
+];

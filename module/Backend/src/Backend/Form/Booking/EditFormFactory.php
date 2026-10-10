@@ -12,6 +12,7 @@ class EditFormFactory implements FactoryInterface
     {
         return new EditForm(
             $sm->getServiceLocator()->get('Booking\Service\BookingStatusService'),
+            $sm->getServiceLocator()->get('Booking\Service\BookingTypeService'),
             $sm->getServiceLocator()->get('Square\Manager\SquareManager'));
     }
 

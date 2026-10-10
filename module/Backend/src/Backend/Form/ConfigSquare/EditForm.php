@@ -141,6 +141,18 @@ class EditForm extends Form
         ));
 
         $this->add(array(
+            'name' => 'cf-allow-custom-name',
+            'type' => 'Checkbox',
+            'attributes' => array(
+                'id' => 'cf-allow-custom-name',
+            ),
+            'options' => array(
+                'label' => 'Allow users to set a custom name for their booking',
+                'notes' => 'The custom name replaces the booking user\'s name in the calendar',
+            ),
+        ));
+
+        $this->add(array(
             'name' => 'cf-time-start',
             'type' => 'Text',
             'attributes' => array(
@@ -253,8 +265,8 @@ class EditForm extends Form
                 'style' => 'width: 80px;',
             ),
             'options' => array(
-                'label' => 'Buchungen einschränken',
-                'notes' => 'Auf 0 setzen, um beliebig viele Buchungen zu erlauben',
+                'label' => 'Limit bookings',
+                'notes' => 'Auf 0 setzen, um die Einstellung aus "Verhalten" zu übernehmen;<br />kann pro Benutzer überschrieben werden',
                 'postfix' => 'gleichzeitige Buchung(en) pro Benutzer',
             ),
         ));

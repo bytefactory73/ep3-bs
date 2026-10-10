@@ -21,11 +21,11 @@ $this->headScript()->appendFile($this->basePath('js/controller/user/settings.min
 
     <div class="separator-small"></div>
 
-    <style type="text/css">
+    <style>
         .symbolic-user { padding-left: 32px; background-position: 6px 1px; }
         .symbolic-email { padding-left: 32px; background-position: 4px 3px; }
         .symbolic-pw { padding-left: 32px; background-position: 8px 2px; }
-        .symbolic-phone { padding-left: 32px; background-position: 5px 0px; }
+        .symbolic-phone { padding-left: 32px; background-position: 5px 0; }
         .symbolic-cross { padding-left: 32px; background-position: 5px 1px; }
 
         .dark-gray { color: #666; }
@@ -134,7 +134,7 @@ $this->headScript()->appendFile($this->basePath('js/controller/user/settings.min
 
                 ?>
 
-                <table class="default-table" style="margin: 0px;">
+                <table class="default-table" style="margin: 0;">
                     <tr>
                         <td>
                             <?= $this->formElement($form->get('epf-phone')) ?>
@@ -176,7 +176,7 @@ $this->headScript()->appendFile($this->basePath('js/controller/user/settings.min
 
                 ?>
 
-                <table class="default-table" style="margin: 0px;">
+                <table class="default-table" style="margin: 0;">
                     <tr>
                         <td>
                             <?= $this->formElement($form->get('eef-email1')) ?>
@@ -219,7 +219,7 @@ $this->headScript()->appendFile($this->basePath('js/controller/user/settings.min
 
                 ?>
 
-                <table class="default-table" style="margin: 0px;">
+                <table class="default-table" style="margin: 0;">
                     <tr>
                         <td>
                             <?= $this->formElement($form->get('enf-booking-notifications')) ?>
@@ -258,7 +258,7 @@ $this->headScript()->appendFile($this->basePath('js/controller/user/settings.min
 
                 ?>
 
-                <table class="default-table" style="margin: 0px;">
+                <table class="default-table" style="margin: 0;">
                     <tr>
                         <td colspan="3">
                             <?= $this->formElement($form->get('epf-pw-current')) ?>
@@ -308,7 +308,7 @@ $this->headScript()->appendFile($this->basePath('js/controller/user/settings.min
 
                 ?>
 
-                <table class="default-table" style="margin: 0px;">
+                <table class="default-table" style="margin: 0;">
                     <tr>
                         <td colspan="2">
                             <?= $this->formElement($form->get('daf-why')) ?>

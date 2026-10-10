@@ -1,6 +1,6 @@
 <?php
 
-return array(
+return [
 
     'This %s is already occupied' => 'Dieser %s ist bereits belegt',
     '%sNote:%s Please read and accept the "%s".' => '%sHinweis:%s Bitte lesen und akzeptieren Sie die "%s".',
@@ -11,6 +11,7 @@ return array(
 
     'This booking cannot be cancelled anymore online.' => 'Diese Buchung kann nicht mehr storniert werden.',
     'Your booking has been %scancelled%s.' => 'Ihre Buchung wurde %sstorniert%s.',
+    'Your reservation has been %scancelled%s.' => 'Ihre Reservierung wurde %sstorniert%s.',
     'Your %s-booking has been cancelled' => 'Ihre %s-Buchung wurde storniert',
 
     'Disabled' => 'Deaktiviert',
@@ -61,11 +62,20 @@ return array(
         => 'Ihre Buchung ist verbindlich. Sie können sie jedoch bis zu %s vorher stornieren.',
     'Complete booking' => 'Buchung abschließen',
 
+    'Type' => 'Spielart',
+    '- none -' => '- keine -',
+    'Booking name' => 'Bezeichnung',
+
     'Cancel this booking' => 'Buchung stornieren',
     'Cancel booking' => 'Buchung stornieren',
     'Are you sure you want to cancel this booking?' => 'Sind Sie sicher, dass Sie diese Buchung stornieren möchten?',
     'Yes, cancel this booking' => 'Ja, Buchung stornieren',
+    'Cancel this reservation' => 'Reservierung stornieren',
+    'Are you sure you want to cancel this reservation?' => 'Sind Sie sicher, dass Sie diese Reservierung stornieren möchten?',
+    'Yes, cancel this reservation' => 'Ja, Reservierung stornieren',
     'No, go back' => 'Nein, zurück',
+    'The booking itself will not be changed. Only the reservation at this date will be cancelled.'
+        => 'Die Buchung bleibt unverändert. Nur die Reservierung an diesem Termin wird storniert.',
 
     'This %s is still free.' => 'Dieser %s ist noch frei.',
     'This %s is still free for %s %s.' => 'Dieser %s ist noch frei für %s %s.',
@@ -95,7 +105,7 @@ return array(
     'Check' => 'Prüfen',
 
     'You need to activate %sJavaScript%s in your web browser to proceed. If in doubt, switch to another web browser (e.g. Mozilla Firefox).'
-        => '%sJavaScript%s muss in Ihrem Webbrowser aktiviert sein um fortzufahren. Im Zweifelsfall benutzen Sie einfach einen anderen Webbrowser (z.B. Mozilla Firefox).',
+        => '%sJavaScript%s muss in Ihrem Webbrowser aktiviert sein um fortzufahren. Im Zweifelsfall benutzen Sie einfach einen anderen Webbrowser (z. B. Mozilla Firefox).',
 
     'until' => 'bis',
     'with' => 'mit',
@@ -109,4 +119,4 @@ return array(
     'and email address' => 'und E-Mail Adresse',
     'and phone number' => 'und Telefonnummer',
 
-);
+];

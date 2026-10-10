@@ -41,6 +41,7 @@ $this->headScript()->appendFile($this->basePath('js/controller/backend/config/be
             <?= $this->formRowDefault($form, 'cf-registration') ?>
             <?= $this->formRowDefault($form, 'cf-registration-message') ?>
             <?= $this->formRowDefault($form, 'cf-activation') ?>
+            <?= $this->formRowDefault($form, 'cf-user-default-max-active-bookings') ?>
             <?= $this->formRowDefault($form, 'cf-calendar-days') ?>
             <?= $this->formRowDefault($form, 'cf-calendar-day-exceptions') ?>
             <?= $this->formRowDefault($form, 'cf-hours-between-bookings') ?>
@@ -59,6 +60,15 @@ $this->headScript()->appendFile($this->basePath('js/controller/backend/config/be
                 <td>
                     <a href="<?= $this->url('backend/config/behaviour/status-colors') ?>" class="default-button">
                         <span class="symbolic symbolic-edit"><?= $this->t('Edit billing status names and colors') ?></span>
+                    </a>
+                </td>
+            </tr>
+
+            <tr>
+                <td class="default-form-label-row">&nbsp;</td>
+                <td>
+                    <a href="<?= $this->url('backend/config/behaviour/type-colors') ?>" class="default-button">
+                        <span class="symbolic symbolic-edit"><?= $this->t('Edit booking type names and colors') ?></span>
                     </a>
                 </td>
             </tr>

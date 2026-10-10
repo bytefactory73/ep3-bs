@@ -152,9 +152,9 @@ class ReservationManager extends AbstractManager
             $reservations = array();
 
             $walkingDate = clone $dateStart;
-            $walkingDate->setTime(0, 0, 0);
+            $walkingDate->setTime(0, 0);
             $walkingDateLimit = clone $dateEnd;
-            $walkingDateLimit->setTime(0, 0, 0);
+            $walkingDateLimit->setTime(0, 0);
 
             while ($walkingDate <= $walkingDateLimit) {
                 $reservation = $this->create($booking, $walkingDate, $timeStart, $timeEnd);
@@ -165,6 +165,7 @@ class ReservationManager extends AbstractManager
 
             if ($transaction) {
                 $connection->commit();
+                $transaction = false;
             }
 
             $this->getEventManager()->trigger('createByRange', $reservations);
@@ -233,9 +234,9 @@ class ReservationManager extends AbstractManager
             $reservations = array();
 
             $walkingDate = clone $dateTimeStart;
-            $walkingDate->setTime(0, 0, 0);
+            $walkingDate->setTime(0, 0);
             $walkingDateLimit = clone $dateTimeEnd;
-            $walkingDateLimit->setTime(0, 0, 0);
+            $walkingDateLimit->setTime(0, 0);
             $walkingDateIndex = 0;
 
             while ($walkingDate <= $walkingDateLimit) {
@@ -260,6 +261,7 @@ class ReservationManager extends AbstractManager
 
             if ($transaction) {
                 $connection->commit();
+                $transaction = false;
             }
 
             $this->getEventManager()->trigger('createRange', $reservations);
@@ -382,6 +384,7 @@ class ReservationManager extends AbstractManager
 
             if ($transaction) {
                 $connection->commit();
+                $transaction = false;
             }
 
             $this->getEventManager()->trigger('save', $reservation);

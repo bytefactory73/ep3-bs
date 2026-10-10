@@ -1,6 +1,6 @@
 <?php
 
-return array(
+return [
 
     'Users' => 'Felhasználók',
     'Create, edit or delete the users of your system' => 'A rendszerben a felhasználók létrehozása, szerkesztése vagy törlése',
@@ -16,9 +16,6 @@ return array(
     'User-Statistic' => 'Felhasználó-statisztikák',
     'Booking-Statistic' => 'Foglalás-statisztikák',
     'Event-Statistic' => 'Esemény-statisztikák',
-
-    'File manager' => 'File kezelő',
-    'Manage the images and files on your server' => 'A képek és file-ok kezelése a szerveren',
 
     'Configuration' => 'Beállítás',
     'Configuration has been saved' => 'Beállítás elmentve',
@@ -231,8 +228,8 @@ return array(
     'Sets how many days are displayed in the calendar' => 'Szabályozza, hogy hány nap látszódik a naptárban',
 
     'Hide these days' => 'Az alábbi napok elrejtése',
-    'Day names (like Sunday) or concrete dates (like 2016-08-16);<br>Separated by line breaks or commas;<br>Force concrete dates to be shown by adding a plus (like +2016-08-30)'
-        => 'Nap nevek (pl. Vasárnap) vagy konkrét dátum (pl. 2016-08-16);<br>Új sorral vagy pontosvesszővel elválasztva;<br>Konkrét dátum megjelenítésének a kikényszerítéséhez plusz jelet kell megadni (pl. +2016-08-30)',
+    'Day names (like Sunday) or concrete dates (like 2016-08-16];<br>Separated by line breaks or commas;<br>Force concrete dates to be shown by adding a plus (like +2016-08-30)'
+        => 'Nap nevek (pl. Vasárnap) vagy konkrét dátum (pl. 2016-08-16];<br>Új sorral vagy pontosvesszővel elválasztva;<br>Konkrét dátum megjelenítésének a kikényszerítéséhez plusz jelet kell megadni (pl. +2016-08-30)',
 
     'Your name' => 'Az ön neve',
     'Will be shown as the operator of this site.<br>Displayed next to the logo, for example.'
@@ -392,4 +389,4 @@ return array(
     'Booked by' => 'Lefoglalva',
 
     'User matched by' => 'Felhasználó párosítva',
-);
+];

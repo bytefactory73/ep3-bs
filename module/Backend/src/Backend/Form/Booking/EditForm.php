@@ -4,6 +4,7 @@ namespace Backend\Form\Booking;
 
 use Booking\Entity\Booking;
 use Booking\Service\BookingStatusService;
+use Booking\Service\BookingTypeService;
 use Square\Manager\SquareManager;
 use Zend\Form\Form;
 use Zend\InputFilter\Factory;
@@ -12,13 +13,15 @@ class EditForm extends Form
 {
 
     protected $bookingStatusService;
+    protected $bookingTypeService;
     protected $squareManager;
 
-    public function __construct(BookingStatusService $bookingStatusService, SquareManager $squareManager)
+    public function __construct(BookingStatusService $bookingStatusService, BookingTypeService $bookingTypeService, SquareManager $squareManager)
     {
         parent::__construct();
 
         $this->bookingStatusService = $bookingStatusService;
+        $this->bookingTypeService = $bookingTypeService;
         $this->squareManager = $squareManager;
     }
 
@@ -75,6 +78,32 @@ class EditForm extends Form
             'options' => array(
                 'label' => 'Billing status',
                 'value_options' => $this->bookingStatusService->getStatusTitles(),
+            ),
+        ));
+
+        $this->add(array(
+            'name' => 'bf-type',
+            'type' => 'Select',
+            'attributes' => array(
+                'id' => 'bf-type',
+                'style' => 'width: 124px',
+            ),
+            'options' => array(
+                'label' => 'Type',
+                'value_options' => array('' => '-') + $this->bookingTypeService->getTypeTitles(),
+            ),
+        ));
+
+        $this->add(array(
+            'name' => 'bf-custom-name',
+            'type' => 'Text',
+            'attributes' => array(
+                'id' => 'bf-custom-name',
+                'style' => 'width: 124px',
+            ),
+            'options' => array(
+                'label' => 'Booking name',
+                'notes' => 'Shown in the calendar instead of the booking user\'s name',
             ),
         ));
 

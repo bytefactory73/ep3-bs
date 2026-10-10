@@ -1,6 +1,6 @@
 <?php
 
-return array(
+return [
 
     'Users' => 'Utilisateurs',
     'Create, edit or delete the users of your system' => 'Créez, Editez ou supprimez un Utilisateur',
@@ -16,9 +16,6 @@ return array(
     'User-Statistic' => 'Statistiques Utilisateurs',
     'Booking-Statistic' => 'Statistiques Réservations',
     'Event-Statistic' => 'Statistiques Evènements',
-
-    'File manager' => 'Explorer',
-    'Manage the images and files on your server' => 'Gérer voss images et fichiers',
 
     'Configuration' => 'Configuration',
     'Configuration has been saved' => 'La Configuration a été sauvée',
@@ -380,4 +377,4 @@ return array(
     'Booked by' => 'Réservé par',
 
     'User matched by' => 'Utilisateur déterminé par',
-);
+];

@@ -11,7 +11,7 @@ $showMfTheke = ($teamLeadTeamUserId > 0) || $isTeamMember;
     <tr>
         <td class="responsive-pass-4" style="padding-right: 12px; border-right: solid 1px #CCC;">
             <div id="userpanel-status" class="no-wrap">
-                <?= sprintf($this->t('Online as %s'), $this->user->need('alias')) ?>
+                <?= sprintf($this->t('Online as %s'), $this->escapeHtml($this->user->need('alias'))) ?>
             </div>
         </td>
 

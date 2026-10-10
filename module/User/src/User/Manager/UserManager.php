@@ -21,6 +21,7 @@ class UserManager extends AbstractManager
 
     protected $userTable;
     protected $userMetaTable;
+    protected $buffer = [];
 
     /**
      * Creates a new user manager object.
@@ -185,6 +186,7 @@ class UserManager extends AbstractManager
 
             if ($transaction) {
                 $connection->commit();
+                $transaction = false;
             }
 
             $this->getEventManager()->trigger('save', $user);

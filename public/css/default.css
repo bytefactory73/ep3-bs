@@ -437,7 +437,6 @@ a.squarebox-primary-close-link:hover {
 
 .symbolic-plus { padding-left: 20px; background-image: url(../imgs/icons/plus.png); }
 .symbolic-plus-link { padding-left: 20px; background-image: url(../imgs/icons/plus-link.png); }
-.symbolic-minus { padding-left: 20px; background-image: url(../imgs/icons/minus.png); }
 .symbolic-email { padding-left: 24px; background-image: url(../imgs/icons/email.png); }
 .symbolic-pw { padding-left: 16px; background-image: url(../imgs/icons/pw.png); }
 .symbolic-phone { padding-left: 20px; background-image: url(../imgs/icons/phone.png); }
@@ -541,6 +540,9 @@ p.symbolic { display: block; }
 
 .half-table { width: 49%; }
 .half-table:last-child { width: 50%; border-left: solid 1px #CCC; }
+
+.quarter-table { float: left; width: 25%; box-sizing: border-box; padding-right: 16px; }
+.quarter-table:last-child { padding-right: 0; }
 
 .middle-table td { vertical-align: middle; }
 
@@ -748,6 +750,9 @@ option { padding-right: 16px; }
     .half-table { margin-bottom: 32px; width: 100% !important; border: none !important; }
     .half-table:last-child { margin-bottom: 32px; width: 100% !important; border: none !important; }
 
+    .quarter-table { margin-bottom: 32px; width: 100% !important; float: none !important; padding-right: 0 !important; }
+    .quarter-table:last-child { margin-bottom: 0; }
+
     .padded { padding: 8px; }
 
     #content { padding: 0; }
@@ -796,6 +801,9 @@ option { padding-right: 16px; }
 
     .half-table { margin-bottom: 32px; width: 100% !important; border: none !important; }
     .half-table:last-child { margin-bottom: 32px; width: 100% !important; border: none !important; }
+
+    .quarter-table { margin-bottom: 32px; width: 100% !important; float: none !important; padding-right: 0 !important; }
+    .quarter-table:last-child { margin-bottom: 0; }
 
     #content { padding: 0; }
 

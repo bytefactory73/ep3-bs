@@ -105,6 +105,20 @@ class EditForm extends Form
             ),
         ));
 
+        $this->add(array(
+            'name' => 'euf-max-active-bookings',
+            'type' => 'Text',
+            'attributes' => array(
+                'id' => 'euf-max-active-bookings',
+                'style' => 'width: 40px;',
+            ),
+            'options' => array(
+                'label' => 'Limit bookings',
+                'notes' => 'Leer lassen oder auf 0 setzen,<br />um die Einstellung des Platzes zu übernehmen',
+                'postfix' => 'gleichzeitig',
+            ),
+        ));
+
         /* Personal data */
 
         $this->add(array(
