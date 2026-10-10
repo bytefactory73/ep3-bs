@@ -93,7 +93,7 @@ class IndexController extends AbstractActionController
 			        }
 
 	                if ($type == 'Checkbox') {
-				        $formValue = (boolean) $formValue;
+				        $formValue = (bool) $formValue;
 			        }
 
                     $optionManager->set($key, $formValue);

@@ -42,7 +42,7 @@ class ConfigController extends AbstractActionController
 			        }
 
 	                if ($type == 'Checkbox') {
-				        $formValue = (boolean) $formValue;
+				        $formValue = (bool) $formValue;
 			        }
 
                     if (($formValue && $formValue != $currentValue) || is_bool($formValue)) {
