@@ -300,7 +300,7 @@ def read_admin_pages(ctx):
         'user/drinks-admin/paypal-settings': ['imap_host', 'paypal_client_id', 'minimum_account_balance'],
         'user/drinks-admin/spieltage-overview': ['createAdminTeamStatsModal', 'TEAM_STATS_URLS', 'spieltage-overview-item'],
         'user/manage-drinks': ['add_drink', 'edit_drink'],
-        'user/deposits': ['createAdminTeamStatsModal', 'TEAM_STATS_URLS', 'add_deposit', 'team-stats-modal.js?v='],
+        'user/deposits': ['DEPOSITS_PAGE', 'drinks/deposits-page.js?v=', 'TEAM_STATS_URLS', 'add_deposit', 'team-stats-modal.js?v='],
         'user/balance-list': [],
         'user/deposit-overview': [],
         'user/drinks-summary': [],
@@ -320,10 +320,26 @@ def read_drinks_page(ctx):
     resp = ctx.admin.get('user/drinks')
     expect(resp.status == 200, 'HTTP %d' % resp.status)
     facts = page_facts(resp)
-    for marker in ['user-info-bar', 'user/money-recipient-team-events', 'bookings/submit-order', 'bookings/drop-order']:
+    for marker in ['user-info-bar', 'DRINKS_PAGE', 'drinks/money-send.js?v=', 'drinks/order-form.js?v=', 'drinks/simple-order-session.js?v=']:
         expect(marker in resp.text, 'missing ' + marker)
     expect('party-mode-block' not in resp.text, 'party mode block shown although party mode is not active')
     facts['~drink_buttons'] = resp.text.count('data-drink-id=')
+    return facts
+
+
+@test('read')
+def read_page_scripts_load(ctx):
+    """Every <script src> of the Drinks pages exists on the server (catches files missing in a deploy)."""
+    facts = {}
+    for path in ['user/drinks'] + ADMIN_PAGES:
+        html = ctx.admin.get(path).text
+        for src in sorted(set(re.findall(r'<script[^>]+src="([^"]+)"', html))):
+            if src.startswith('http'):
+                continue
+            script = src.split('?')[0]
+            resp = ctx.admin.get(urllib.parse.urlparse(ctx.admin.base_url).path.rstrip('/') + script if not script.startswith('/') else script.lstrip('/'))
+            expect(resp.status == 200 and len(resp.body) > 0, '%s: %s -> HTTP %d' % (path, src, resp.status))
+            facts[script] = resp.status
     return facts
 
 

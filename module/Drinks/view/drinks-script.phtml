@@ -1,0 +1,10 @@
+<?php
+// <script> for public/js/<src>; the file time busts browser caches after each deploy.
+// Optional 'data': exposed to the script as window[<name>] (JSON, safe inside <script>).
+if (isset($this->data)) {
+    foreach ($this->data as $name => $value) {
+        echo '<script>window.' . $name . ' = ' . json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) . ';</script>' . "\n";
+    }
+}
+?>
+<script src="<?= $this->basePath('js/' . $this->src . '?v=' . filemtime('public/js/' . $this->src)) ?>"></script>
