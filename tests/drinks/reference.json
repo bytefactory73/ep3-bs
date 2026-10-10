@@ -483,7 +483,8 @@
       "balance",
       "closed",
       "id",
-      "label"
+      "label",
+      "team_admin_user_id"
     ],
     "~balance": -35.0,
     "~team_event_balances": {

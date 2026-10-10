@@ -220,9 +220,6 @@ trait MoneyTransferTrait
                 $transferTeamEventId
             );
             $orderId = $this->getInsertIdFromResult($orderInsertResult);
-            if ($transferTeamEventId !== null && $transferTeamEventId > 0 && $orderId > 0) {
-                $dbAdapter->query('UPDATE drink_orders SET teamevent_id = ? WHERE id = ? AND (teamevent_id IS NULL OR teamevent_id = 0)', [$transferTeamEventId, $orderId]);
-            }
             if ($orderId <= 0) {
                 throw new \RuntimeException('Transfer order insert failed');
             }
@@ -240,9 +237,6 @@ trait MoneyTransferTrait
                 $transferTeamEventId
             );
             $depositId = $this->getInsertIdFromResult($depositInsertResult);
-            if ($transferTeamEventId !== null && $transferTeamEventId > 0 && $depositId > 0) {
-                $dbAdapter->query('UPDATE drink_deposits SET teamevent_id = ? WHERE id = ? AND (teamevent_id IS NULL OR teamevent_id = 0)', [$transferTeamEventId, $depositId]);
-            }
             if ($depositId <= 0) {
                 throw new \RuntimeException('Transfer deposit insert failed');
             }

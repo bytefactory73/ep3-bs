@@ -14,6 +14,13 @@ class DrinkManager
      */
     const CUSTOM_PRICE_DRINK_IDS = [1, -1];
 
+    /**
+     * Articles booked per Spieltag: the Medenspiel-Pauschale (added to a new Spieltag at the
+     * Theke) and HTV balls; both show as badges in the Spieltage overview.
+     */
+    const MEDENSPIEL_FLAT_DRINK_ID = 2;
+    const HTV_BALLS_DRINK_ID = 21;
+
     protected $dbAdapter;
 
     public function __construct(Adapter $dbAdapter)
@@ -165,6 +172,32 @@ class DrinkManager
     {
         $comment = trim((string)$comment);
         return ((int)$quantity > 1 ? $quantity . 'x ' : '') . ($comment !== '' ? $comment : $fallbackName);
+    }
+
+    /**
+     * One position line of an order mail: "Bier x 2 = 3.00 EUR", or for "Sonstiges" / transfers
+     * "2x comment = 3.00 EUR".
+     */
+    public static function formatOrderLine($drinkId, $name, $quantity, $comment, $total)
+    {
+        if (self::isCustomPriceDrink($drinkId)) {
+            return sprintf('%s = %.2f EUR', self::formatCustomEntryLabel($quantity, $comment, $name), $total);
+        }
+        return sprintf('%s x %d = %.2f EUR', $name, $quantity, $total);
+    }
+
+    /**
+     * HTML body of an order mail: intro, lines, the balance line and, below zero, the warning.
+     */
+    private function orderMailHtml($intro, array $lines, $balanceLabel, $balance, $tCallback)
+    {
+        $lines[] = '';
+        $lines[] = sprintf(call_user_func($tCallback, $balanceLabel) . '<b> %.2f EUR </b>', $balance);
+        $text = $intro . '<br><br>' . implode('<br>', $lines);
+        if ($balance < 0) {
+            $text .= '<br><br>' . $this->negativeBalanceWarningHtml($tCallback);
+        }
+        return $text;
     }
 
     public function negativeBalanceWarningHtml($tCallback)
@@ -325,26 +358,21 @@ class DrinkManager
             $subject = $isTransferOrder
                 ? call_user_func($tCallback, 'Stornierung Deiner Geldüberweisung')
                 : call_user_func($tCallback, 'Stornierung Deiner Getränkebestellung');
-            $lines = [];
-            if (self::isCustomPriceDrink($order['drink_id'])) {
-                // Sonstiges (1) and money transfers (-1): only show the comment
-                $drinkName = isset($order['drink_name']) ? $order['drink_name'] : ('ID ' . $order['drink_id']);
-                $label = self::formatCustomEntryLabel($order['quantity'], isset($order['comment']) ? $order['comment'] : '', $drinkName);
-                $lines[] = sprintf('%s = %.2f EUR', $label, $order['quantity'] * $order['price']);
-            } else {
-                $lines[] = sprintf('%s x %d = %.2f EUR', $order['drink_name'], $order['quantity'], $order['quantity'] * $order['price']);
-            }
-            $lines[] = '---------------------';
-            $lines[] = sprintf(call_user_func($tCallback, 'Storniert am:') . ' %s', date('d.m.Y H:i'));
-            $lines[] = '';
-            $lines[] = sprintf(call_user_func($tCallback, 'Kontostand nach Stornierung:') . '<b> %.2f EUR </b>', $balance);
-            $text = ($isTransferOrder
+            $lines = [
+                self::formatOrderLine(
+                    $order['drink_id'],
+                    isset($order['drink_name']) ? $order['drink_name'] : ('ID ' . $order['drink_id']),
+                    $order['quantity'],
+                    isset($order['comment']) ? $order['comment'] : '',
+                    $order['quantity'] * $order['price']
+                ),
+                '---------------------',
+                sprintf(call_user_func($tCallback, 'Storniert am:') . ' %s', date('d.m.Y H:i')),
+            ];
+            $intro = $isTransferOrder
                 ? call_user_func($tCallback, 'Deine Geldüberweisung wurde erfolgreich storniert.')
-                : call_user_func($tCallback, 'Deine Getränkebestellung wurde erfolgreich storniert.'))
-                . "<br><br>" . implode("<br>", $lines);
-            if ($balance < 0) {
-                $text .= '<br><br>' . $this->negativeBalanceWarningHtml($tCallback);
-            }
+                : call_user_func($tCallback, 'Deine Getränkebestellung wurde erfolgreich storniert.');
+            $text = $this->orderMailHtml($intro, $lines, 'Kontostand nach Stornierung:', $balance, $tCallback);
             $userMailService = $serviceManager->get('User\Service\MailService');
             $this->sendFromTheke($userMailService, $this->dbAdapter, $user, $subject, $text, ['isHtml' => true]);
 
@@ -388,20 +416,19 @@ class DrinkManager
     public function addOrdersAndNotify($user, $drinkCounts, $tCallback, $serviceManager, $isAutoOrder = 0, $comment = null, $teamEventId = null, $allowBelowMinimum = false)
     {
         $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
-        $anyOrdered = false;
-        $orderedDrinks = [];
-        $orderTotal = 0.0;
         $orderItems = [];
+        $orderTotal = 0.0;
         foreach ($drinkCounts as $drinkId => $quantity) {
             $drinkId = (int)$drinkId;
             $quantity = (int)$quantity;
-            if ($drinkId > 0 && $quantity > 0) {
-                $drink = $this->get($drinkId);
-                if ($drink) {
-                    $orderTotal += $quantity * (float)$drink['price'];
-                    $orderItems[] = [$drinkId, $quantity];
-                }
+            $drink = ($drinkId > 0 && $quantity > 0) ? $this->get($drinkId) : null;
+            if ($drink) {
+                $orderItems[] = ['id' => $drinkId, 'name' => $drink['name'], 'quantity' => $quantity, 'total' => $quantity * (float)$drink['price']];
+                $orderTotal += $quantity * (float)$drink['price'];
             }
+        }
+        if (empty($orderItems)) {
+            return ['success' => false, 'balance' => 0, 'error' => call_user_func($tCallback, 'Bitte mindestens ein Getränk auswählen.')];
         }
         if (!$this->isOrderAllowed($user->need('uid'), $orderTotal, $serviceManager, $allowBelowMinimum)) {
             return [
@@ -410,52 +437,20 @@ class DrinkManager
                 'error' => call_user_func($tCallback, 'Keine Buchung möglich bis Guthaben aufgeladen ist'),
             ];
         }
-        foreach ($orderItems as $orderItem) {
-            $drinkId = $orderItem[0];
-            $quantity = $orderItem[1];
-            $drinkOrderManager->addOrder($user->need('uid'), $drinkId, $quantity, null, $isAutoOrder, $comment, null, $teamEventId);
-            $anyOrdered = true;
-            $drink = $this->get($drinkId);
-            if ($drink) {
-                $orderedDrinks[] = [
-                    'id' => $drinkId,
-                    'name' => $drink['name'],
-                    'quantity' => $quantity,
-                    'price' => $drink['price'],
-                    'total' => $quantity * $drink['price'],
-                    'comment' => $comment,
-                ];
-            }
+
+        $lines = [];
+        foreach ($orderItems as $item) {
+            $drinkOrderManager->addOrder($user->need('uid'), $item['id'], $item['quantity'], null, $isAutoOrder, $comment, null, $teamEventId);
+            $lines[] = self::formatOrderLine($item['id'], $item['name'], $item['quantity'], $comment, $item['total']);
         }
-        if ($anyOrdered) {
-            $balance = $this->calculateUserDrinkBalance($user->need('uid'), $serviceManager);
-            if ($this->shouldSendOrderEmail($user->need('uid'), $balance)) {
-                $subject = call_user_func($tCallback, 'Bestätigung Deiner Getränkebestellung');
-                $lines = [];
-                $totalSum = 0;
-                foreach ($orderedDrinks as $item) {
-                    if ((int)$item['id'] === 1) {
-                        $label = self::formatCustomEntryLabel($item['quantity'], isset($item['comment']) ? $item['comment'] : '', $item['name']);
-                        $lines[] = sprintf('%s = %.2f EUR', $label, $item['total']);
-                    } else {
-                        $lines[] = sprintf('%s x %d = %.2f EUR', $item['name'], $item['quantity'], $item['total']);
-                    }
-                    $totalSum += $item['total'];
-                }
-                $lines[] = '---------------------';
-                $lines[] = sprintf(call_user_func($tCallback, 'Gesamt:') . ' %.2f EUR', $totalSum);
-                $lines[] = '';
-                $lines[] = sprintf(call_user_func($tCallback, 'Kontostand nach Bestellung:') . '<b> %.2f EUR </b>', $balance);
-                $text = call_user_func($tCallback, 'Vielen Dank für Deine Getränkebestellung!') . "<br><br>" . implode("<br>", $lines);
-                if ($balance < 0) {
-                    $text .= '<br><br>' . $this->negativeBalanceWarningHtml($tCallback);
-                }
-                $userMailService = $serviceManager->get('User\Service\MailService');
-                $this->sendFromTheke($userMailService, $this->dbAdapter, $user, $subject, $text, ['isHtml' => true]);
-            }
-            return ['success' => true, 'balance' => $balance, 'error' => null];
+        $balance = $this->calculateUserDrinkBalance($user->need('uid'), $serviceManager);
+        if ($this->shouldSendOrderEmail($user->need('uid'), $balance)) {
+            $lines[] = '---------------------';
+            $lines[] = sprintf(call_user_func($tCallback, 'Gesamt:') . ' %.2f EUR', $orderTotal);
+            $text = $this->orderMailHtml(call_user_func($tCallback, 'Vielen Dank für Deine Getränkebestellung!'), $lines, 'Kontostand nach Bestellung:', $balance, $tCallback);
+            $this->sendFromTheke($serviceManager->get('User\Service\MailService'), $this->dbAdapter, $user, call_user_func($tCallback, 'Bestätigung Deiner Getränkebestellung'), $text, ['isHtml' => true]);
         }
-        return ['success' => false, 'balance' => 0, 'error' => call_user_func($tCallback, 'Bitte mindestens ein Getränk auswählen.')];
+        return ['success' => true, 'balance' => $balance, 'error' => null];
     }
 
     /**
@@ -502,29 +497,21 @@ class DrinkManager
             foreach ($ordersForDay as $order) {
                 if (self::isCustomPriceDrink($order['drink_id'])) {
                     // Sonstiges (1) and money transfers (-1): group by comment
-                    $key = $order['comment'];
-                    if (!isset($drinkSums[$key])) {
-                        $drinkSums[$key] = ['quantity' => 0, 'total' => 0.0, 'comment' => $order['comment']];
-                    }
-                    $drinkSums[$key]['quantity'] += $order['quantity'];
-                    $drinkSums[$key]['total'] += $order['quantity'] * $order['price'];
+                    $key = 'c:' . $order['comment'];
+                    $name = (string)$order['comment'];
                 } else {
                     $drink = $this->get($order['drink_id']);
-                    $drinkName = $drink ? $drink['name'] : ('ID ' . $order['drink_id']);
-                    if (!isset($drinkSums[$drinkName])) {
-                        $drinkSums[$drinkName] = ['quantity' => 0, 'total' => 0.0];
-                    }
-                    $drinkSums[$drinkName]['quantity'] += $order['quantity'];
-                    $drinkSums[$drinkName]['total'] += $order['quantity'] * $order['price'];
+                    $name = $drink ? $drink['name'] : ('ID ' . $order['drink_id']);
+                    $key = 'd:' . $name;
                 }
+                if (!isset($drinkSums[$key])) {
+                    $drinkSums[$key] = ['drink_id' => $order['drink_id'], 'name' => $name, 'comment' => $order['comment'], 'quantity' => 0, 'total' => 0.0];
+                }
+                $drinkSums[$key]['quantity'] += $order['quantity'];
+                $drinkSums[$key]['total'] += $order['quantity'] * $order['price'];
             }
-            foreach ($drinkSums as $key => $sum) {
-                if (isset($sum['comment'])) {
-                    $label = self::formatCustomEntryLabel($sum['quantity'], $sum['comment'], $key);
-                    $lines[] = sprintf('%s = %.2f EUR', $label, $sum['total']);
-                } else {
-                    $lines[] = sprintf('%s x %d = %.2f EUR', $key, $sum['quantity'], $sum['total']);
-                }
+            foreach ($drinkSums as $sum) {
+                $lines[] = self::formatOrderLine($sum['drink_id'], $sum['name'], $sum['quantity'], $sum['comment'], $sum['total']);
                 $totalSum += $sum['total'];
             }
             $lines[] = '';
@@ -532,14 +519,9 @@ class DrinkManager
         if (empty($lines)) return false;
         $lines[] = '---------------------';
         $lines[] = sprintf($tCallback('Gesamt:') . ' %.2f EUR', $totalSum);
-        $lines[] = '';
-        // Calculate balance (all time): sum(deposits) - sum(orders)
+        // Balance of all time: sum(deposits) - sum(orders)
         $balance = $this->calculateUserDrinkBalance($userId, $serviceManager);
-        $lines[] = sprintf($tCallback('Kontostand:') . '<b> %.2f EUR </b>', $balance);
-        $text = $tCallback('Deine Getränkebestellungen im Überblick:') . "<br><br>" . implode("<br>", $lines);
-        if ($balance < 0) {
-            $text .= '<br><br>' . $this->negativeBalanceWarningHtml($tCallback);
-        }
+        $text = $this->orderMailHtml($tCallback('Deine Getränkebestellungen im Überblick:'), $lines, 'Kontostand:', $balance, $tCallback);
         $subject = $tCallback('Deine Getränkebestellungen (Zusammenfassung)');
 
         $mailService = $serviceManager->get('User\Service\MailService');

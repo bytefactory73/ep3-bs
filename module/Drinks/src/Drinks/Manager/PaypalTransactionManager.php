@@ -17,6 +17,14 @@ class PaypalTransactionManager
         'paypal_client_secret',
     ];
 
+    /**
+     * Active deposit of the user (?) with the amount (?) within ±14 days of the payment (?, ?)
+     * that no PayPal entry has claimed yet. Shared by findMatchingDeposit / hasAmbiguousDeposit.
+     */
+    const UNCLAIMED_DEPOSIT_NEAR_SQL = 'd.user_id = ? AND d.amount = ? AND (d.deleted IS NULL OR d.deleted = 0)
+             AND d.deposit_time BETWEEN DATE_SUB(?, INTERVAL 14 DAY) AND DATE_ADD(?, INTERVAL 14 DAY)
+             AND NOT EXISTS (SELECT 1 FROM drinks_paypal p WHERE p.linked_deposit_id = d.id)';
+
     /** @var AdapterInterface */
     private $dbAdapter;
 
@@ -250,7 +258,7 @@ class PaypalTransactionManager
         }
 
         try {
-            $row = $this->dbAdapter->query('SELECT * FROM drinks_paypal WHERE id = ? LIMIT 1', [$paypalId])->current();
+            $row = $this->getById($paypalId);
             if (!$row) {
                 return ['success' => false, 'error' => 'not_found'];
             }
@@ -362,11 +370,8 @@ class PaypalTransactionManager
     private function findMatchingDeposit($userId, $amount, $receivedAt)
     {
         $row = $this->dbAdapter->query(
-            'SELECT d.id FROM drink_deposits d
-             WHERE d.user_id = ? AND d.amount = ? AND (d.deleted IS NULL OR d.deleted = 0)
-             AND d.deposit_time BETWEEN DATE_SUB(?, INTERVAL 14 DAY) AND DATE_ADD(?, INTERVAL 14 DAY)
+            'SELECT d.id FROM drink_deposits d WHERE ' . self::UNCLAIMED_DEPOSIT_NEAR_SQL . '
              AND LOWER(COALESCE(d.comment, "")) LIKE "%paypal%"
-             AND NOT EXISTS (SELECT 1 FROM drinks_paypal p WHERE p.linked_deposit_id = d.id)
              ORDER BY ABS(TIMESTAMPDIFF(SECOND, d.deposit_time, ?)) ASC
              LIMIT 1',
             [(int)$userId, $amount, $receivedAt, $receivedAt, $receivedAt]
@@ -383,11 +388,8 @@ class PaypalTransactionManager
     private function hasAmbiguousDeposit($userId, $amount, $receivedAt)
     {
         $row = $this->dbAdapter->query(
-            'SELECT d.id FROM drink_deposits d
-             WHERE d.user_id = ? AND d.amount = ? AND (d.deleted IS NULL OR d.deleted = 0)
-             AND d.deposit_time BETWEEN DATE_SUB(?, INTERVAL 14 DAY) AND DATE_ADD(?, INTERVAL 14 DAY)
+            'SELECT d.id FROM drink_deposits d WHERE ' . self::UNCLAIMED_DEPOSIT_NEAR_SQL . '
              AND LOWER(COALESCE(d.comment, "")) NOT LIKE "%paypal%"
-             AND NOT EXISTS (SELECT 1 FROM drinks_paypal p WHERE p.linked_deposit_id = d.id)
              LIMIT 1',
             [(int)$userId, $amount, $receivedAt, $receivedAt]
         )->current();
@@ -787,7 +789,7 @@ class PaypalTransactionManager
             return ['success' => false];
         }
         try {
-            $row = $this->dbAdapter->query('SELECT * FROM drinks_paypal WHERE id = ? LIMIT 1', [$paypalId])->current();
+            $row = $this->getById($paypalId);
             if (!$row) {
                 return ['success' => false];
             }

@@ -404,8 +404,7 @@ class SimpleLoginController extends AbstractActionController
             if ($isNewTeamEventRequest) {
                 if ((int)$this->params()->fromPost('is_medenspiel', 1) === 1) {
                     try {
-                        // Drink 2: Medenspiel-Pauschale
-                        $this->ensureTeamEventDrinkOrderExists($teamAdminUserId, (int)$event['id'], 2, 1);
+                        $this->ensureTeamEventDrinkOrderExists($teamAdminUserId, (int)$event['id'], DrinkManager::MEDENSPIEL_FLAT_DRINK_ID, 1);
                     } catch (\Exception $e) {
                         return $this->jsonError(500, 'Medenspielpauschale konnte nicht angelegt werden.');
                     }

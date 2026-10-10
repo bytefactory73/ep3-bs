@@ -166,6 +166,7 @@ echo $this->partial('drinks-script', [
         ],
         'users' => $pageUsers,
         'drinks' => $pageDrinks,
+        'customPriceDrinkIds' => \Drinks\Manager\DrinkManager::CUSTOM_PRICE_DRINK_IDS,
     ]],
 ]);
 ?>

@@ -1,8 +1,22 @@
 /**
  * Einzahlungen (admin): deposits, bookings and settings of a user; data from deposits.phtml
- * via window.DEPOSITS_PAGE = { urls, users, drinks }.
+ * via window.DEPOSITS_PAGE = { urls, users, drinks, customPriceDrinkIds }.
  */
 var PAGE = window.DEPOSITS_PAGE;
+
+function escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// "Sonstiges" and money transfers are priced per entry (DrinkManager::CUSTOM_PRICE_DRINK_IDS)
+function isCustomPriceDrink(drinkId) {
+    return PAGE.customPriceDrinkIds.indexOf(parseInt(drinkId, 10)) !== -1;
+}
 
 function formatCurrency(amount) {
     return amount != null ? amount.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) : '';
@@ -374,9 +388,9 @@ document.addEventListener('DOMContentLoaded', function() {
         input.value = countValue || 1;
         input.style.width = '80px';
 
-        // Special case: if drinkId == 1, use EUR field
+        // Custom price articles ("Sonstiges"): the input takes an EUR amount
         function updateInputType() {
-            if (select.value === '1') {
+            if (isCustomPriceDrink(select.value)) {
                 input.type = 'text';
                 input.placeholder = 'EUR';
                 input.min = '';
@@ -455,8 +469,8 @@ document.addEventListener('DOMContentLoaded', function() {
             var input = row.querySelector('input');
             var price = 0;
             var count = 1;
-            if (select && select.value === '1') {
-                // Special case: id==1, price is entered manually in input
+            if (select && isCustomPriceDrink(select.value)) {
+                // Custom price: the amount is entered in the input
                 price = input && input.value ? parseFloat(input.value.replace(',', '.')) : 0;
                 count = 1;
             } else {
@@ -508,8 +522,8 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 comment = localComment;
             }
-            if (drinkId === '1') {
-                // Special case: EUR field, price goes into price, quantity is always 1
+            if (isCustomPriceDrink(drinkId)) {
+                // EUR field: the amount goes into price, quantity is always 1
                 var price = parseFloat(input.value.replace(',', '.')) || 0;
                 if (drinkId && price > 0) {
                     orders.push({ drink_id: drinkId, count: 1, price: price, comment: comment });
@@ -1182,14 +1196,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     balanceBox.style.display = '';
                     balanceBox.textContent = 'Aktueller Kontostand: ' + formatCurrency(data.balance);
                 }
-                function escapeHtml(value) {
-                    return String(value == null ? '' : value)
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
-                }
                 function renderHistory(history, showStorno) {
                     function hashLabelColor(label) {
                         var s = String(label || '');
@@ -1341,10 +1347,10 @@ document.addEventListener('DOMContentLoaded', function() {
                             }
                             // For Sonstiges (1) and money transfers (-1), show only the comment
                             var descWithComment = '';
-                            if (entry.drink_id == 1 || entry.drink_id == -1) {
+                            if (isCustomPriceDrink(entry.drink_id)) {
                                 // Only show comment for special items, no drink name, no qty
                                 if (entry.comment && entry.comment.trim() !== '') {
-                                    descWithComment = '<span style="color:#888;">' + entry.comment.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span>';
+                                    descWithComment = '<span style="color:#888;">' + escapeHtml(entry.comment) + '</span>';
                                 } else {
                                     descWithComment = '';
                                 }
@@ -1355,7 +1361,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     descWithComment = descWithComment.replace(/^\s*1x\s+/, '');
                                 }
                                 if (entry.comment && entry.comment.trim() !== '') {
-                                    descWithComment += ' <span style="color:#888;">(' + entry.comment.replace(/</g, '&lt;').replace(/>/g, '&gt;') + ')</span>';
+                                    descWithComment += ' <span style="color:#888;">(' + escapeHtml(entry.comment) + ')</span>';
                                 }
                             }
                             html += '<tr style="' + style + '">';
