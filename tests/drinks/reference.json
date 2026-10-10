@@ -455,6 +455,19 @@
       }
     ]
   },
+  "read_page_scripts_load": {
+    "/js/default.min.js": 200,
+    "/js/drinks/category-filter.js": 200,
+    "/js/drinks/deposits-page.js": 200,
+    "/js/drinks/ios-compat.js": 200,
+    "/js/drinks/money-send.js": 200,
+    "/js/drinks/order-form.js": 200,
+    "/js/drinks/order-history.js": 200,
+    "/js/drinks/simple-order-session.js": 200,
+    "/js/jquery-ui/jquery-ui.min.js": 200,
+    "/js/jquery/jquery.min.js": 200,
+    "/js/team-stats-modal.js": 200
+  },
   "read_paypal_settings_masked": {
     "imap_password_present": true,
     "paypal_client_secret_present": true,
@@ -820,7 +833,7 @@
     "restored": true
   },
   "write_party_mode_roundtrip": {
-    "enabled": true,
+    "enabled": false,
     "redirect": "/user/drinks-admin",
     "~theke_shows_party_mode": false
   },
