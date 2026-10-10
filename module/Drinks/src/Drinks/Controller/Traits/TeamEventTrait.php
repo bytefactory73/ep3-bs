@@ -1141,16 +1141,18 @@ trait TeamEventTrait
             ];
         }
 
+        // Settlement always goes through: closed Spieltag, members may drop below the minimum balance
+        $settlementOptions = ['allow_closed_event' => true, 'ignore_minimum_balance' => true];
         $transfers = [];
         foreach ($validRefunds as $refundRow) {
             $receiverUserId = (int)$refundRow['receiver_user_id'];
             $amount = MoneyCalculator::roundMoney((float)$refundRow['amount']);
             if ($amount > 0) {
-                $transferResult = $this->executeMoneyTransfer($teamAdminUserId, $receiverUserId, $amount, $teamEventId, true);
+                $transferResult = $this->executeMoneyTransfer($teamAdminUserId, $receiverUserId, $amount, $teamEventId, $settlementOptions);
                 $direction = 'team_to_member';
                 $effectiveAmount = $amount;
             } else {
-                $transferResult = $this->executeMoneyTransfer($receiverUserId, $teamAdminUserId, abs($amount), $teamEventId, true);
+                $transferResult = $this->executeMoneyTransfer($receiverUserId, $teamAdminUserId, abs($amount), $teamEventId, $settlementOptions);
                 $direction = 'member_to_team';
                 $effectiveAmount = 0.0 - abs($amount);
             }

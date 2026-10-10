@@ -10,6 +10,12 @@ use Drinks\Service\DbSchema;
 trait MoneyTransferTrait
 {
     /**
+     * Mails of transfers made inside a caller's transaction; sent by sendDeferredTransferMails()
+     * after its commit, dropped on rollback.
+     */
+    private $deferredTransferMails = [];
+
+    /**
      * JSON response for a transfer from $senderUserId to the POSTed receiver_user_id
      * (team_event_id for a team receiver, amount, optional transfer_key).
      */
@@ -21,8 +27,7 @@ trait MoneyTransferTrait
             (int)$this->params()->fromPost('receiver_user_id', 0),
             $amount,
             (int)$this->params()->fromPost('team_event_id', 0),
-            false,
-            (string)$this->params()->fromPost('transfer_key', '')
+            ['transfer_key' => (string)$this->params()->fromPost('transfer_key', '')]
         );
         return $this->jsonResponse($transferResult['payload'], $transferResult['statusCode']);
     }
@@ -66,18 +71,22 @@ trait MoneyTransferTrait
     }
 
     /**
-     * $transferKey: optional client-generated UUID (one per submit). It is stored as
-     * transfer_reference; a retry with the same key returns success without moving money again.
+     * $options:
+     *  - transfer_key: client-generated UUID (one per submit). It is stored as transfer_reference;
+     *    a retry with the same key returns success without moving money again.
+     *  - allow_closed_event: the receiver's Spieltag may be closed (settlement of a Spieltag).
+     *  - ignore_minimum_balance: the sender may drop below the minimum balance (settlement).
+     * Inside a caller's transaction the transfer joins it, throws on failure and defers its mails.
      */
-    protected function executeMoneyTransfer($senderUserId, $receiverUserId, $amount, $receiverTeamEventId = 0, $allowClosedReceiverTeamEvent = false, $transferKey = null)
+    protected function executeMoneyTransfer($senderUserId, $receiverUserId, $amount, $receiverTeamEventId = 0, array $options = [])
     {
-        $transferKey = is_string($transferKey) ? strtolower(trim($transferKey)) : '';
+        $transferKey = isset($options['transfer_key']) && is_string($options['transfer_key']) ? strtolower(trim($options['transfer_key'])) : '';
         if (!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $transferKey)) {
             $transferKey = '';
         }
         $dbAdapter = $this->getServiceLocator()->get('Zend\\Db\\Adapter\\Adapter');
         if ($transferKey === '' || !DbSchema::hasTransferReferenceColumns($dbAdapter)) {
-            return $this->runMoneyTransfer($senderUserId, $receiverUserId, $amount, $receiverTeamEventId, $allowClosedReceiverTeamEvent, null);
+            return $this->runMoneyTransfer($senderUserId, $receiverUserId, $amount, $receiverTeamEventId, $options, null);
         }
 
         $lockName = 'drinks_transfer_' . $transferKey;
@@ -107,7 +116,7 @@ trait MoneyTransferTrait
                     ],
                 ];
             }
-            return $this->runMoneyTransfer($senderUserId, $receiverUserId, $amount, $receiverTeamEventId, $allowClosedReceiverTeamEvent, $transferKey);
+            return $this->runMoneyTransfer($senderUserId, $receiverUserId, $amount, $receiverTeamEventId, $options, $transferKey);
         } finally {
             try {
                 $dbAdapter->query('SELECT RELEASE_LOCK(?)', [$lockName]);
@@ -117,13 +126,13 @@ trait MoneyTransferTrait
         }
     }
 
-    private function runMoneyTransfer($senderUserId, $receiverUserId, $amount, $receiverTeamEventId, $allowClosedReceiverTeamEvent, $transferKey)
+    private function runMoneyTransfer($senderUserId, $receiverUserId, $amount, $receiverTeamEventId, array $options, $transferKey)
     {
         $senderUserId = (int)$senderUserId;
         $receiverUserId = (int)$receiverUserId;
         $amount = round((float)$amount, 2);
         $receiverTeamEventId = (int)$receiverTeamEventId;
-        $allowClosedReceiverTeamEvent = (bool)$allowClosedReceiverTeamEvent;
+        $allowClosedReceiverTeamEvent = !empty($options['allow_closed_event']);
 
         if ($senderUserId <= 0) {
             return [
@@ -169,7 +178,7 @@ trait MoneyTransferTrait
         $drinkOrderManager = $serviceManager->get('Drinks\\Manager\\DrinkOrderManager');
         $drinkManager = $serviceManager->get('Drinks\\Manager\\DrinkManager');
         $dbAdapter = $serviceManager->get('Zend\\Db\\Adapter\\Adapter');
-        if (!$allowClosedReceiverTeamEvent && !$drinkManager->isOrderAllowed($senderUserId, $amount, $serviceManager)) {
+        if (empty($options['ignore_minimum_balance']) && !$drinkManager->isOrderAllowed($senderUserId, $amount, $serviceManager)) {
             return [
                 'statusCode' => 400,
                 'payload' => ['success' => false, 'error' => 'Kein Geld senden möglich bis Guthaben aufgeladen ist'],
@@ -204,7 +213,10 @@ trait MoneyTransferTrait
 
         // Order (sender) and deposit (receiver) are written atomically: either both or neither.
         $connection = $dbAdapter->getDriver()->getConnection();
-        $connection->beginTransaction();
+        $ownTransaction = !$connection->inTransaction();
+        if ($ownTransaction) {
+            $connection->beginTransaction();
+        }
         try {
             // Sender side: transfer out as an expense order (positive price).
             $orderInsertResult = $drinkOrderManager->addOrder(
@@ -242,8 +254,13 @@ trait MoneyTransferTrait
                 $dbAdapter->query('UPDATE drink_deposits SET transfer_reference = ? WHERE id = ?', [$transferReference, $depositId]);
             }
 
-            $connection->commit();
+            if ($ownTransaction) {
+                $connection->commit();
+            }
         } catch (\Exception $e) {
+            if (!$ownTransaction) {
+                throw $e; // the caller rolls back its whole transaction
+            }
             try {
                 $connection->rollback();
             } catch (\Exception $rollbackException) {
@@ -256,29 +273,15 @@ trait MoneyTransferTrait
             ];
         }
 
-        // Notifications after commit: a mail failure must not report a completed transfer as failed.
-        $mailer = $serviceManager->get('Drinks\Service\ThekeMailer');
-        try {
-            $senderSubject = $this->t('Geld versendet');
-            $senderText = sprintf(
-                $this->t('Du hast %.2f EUR an %s überwiesen.'),
-                $amount,
-                $receiverName
-            );
-            $mailer->send($senderUser, $senderSubject, $senderText, ['isHtml' => false]);
-        } catch (\Exception $e) {
-            error_log('Money transfer notification (sender) failed: ' . $e->getMessage());
-        }
-        try {
-            $receiverSubject = $this->t('Geld erhalten');
-            $receiverText = sprintf(
-                $this->t('Du hast %.2f EUR von %s erhalten.'),
-                $amount,
-                $senderName
-            );
-            $mailer->send($receiverUser, $receiverSubject, $receiverText, ['isHtml' => false]);
-        } catch (\Exception $e) {
-            error_log('Money transfer notification (receiver) failed: ' . $e->getMessage());
+        // Notifications only after commit: a mail failure must not report a completed transfer as failed.
+        $mails = [
+            [$senderUser, $this->t('Geld versendet'), sprintf($this->t('Du hast %.2f EUR an %s überwiesen.'), $amount, $receiverName)],
+            [$receiverUser, $this->t('Geld erhalten'), sprintf($this->t('Du hast %.2f EUR von %s erhalten.'), $amount, $senderName)],
+        ];
+        if ($ownTransaction) {
+            $this->sendTransferMails($mails);
+        } else {
+            $this->deferredTransferMails = array_merge($this->deferredTransferMails, $mails);
         }
 
         $newBalance = (float)$drinkManager->calculateUserDrinkBalance($senderUserId, $serviceManager);
@@ -289,5 +292,33 @@ trait MoneyTransferTrait
                 'balance' => $newBalance,
             ],
         ];
+    }
+
+    /**
+     * Send the mails of transfers made inside the caller's transaction (call after its commit).
+     */
+    protected function sendDeferredTransferMails()
+    {
+        $mails = $this->deferredTransferMails;
+        $this->deferredTransferMails = [];
+        $this->sendTransferMails($mails);
+    }
+
+    protected function discardDeferredTransferMails()
+    {
+        $this->deferredTransferMails = [];
+    }
+
+    private function sendTransferMails(array $mails)
+    {
+        $mailer = $this->getServiceLocator()->get('Drinks\Service\ThekeMailer');
+        foreach ($mails as $mail) {
+            list($recipient, $subject, $text) = $mail;
+            try {
+                $mailer->send($recipient, $subject, $text, ['isHtml' => false]);
+            } catch (\Exception $e) {
+                error_log('Money transfer notification failed: ' . $e->getMessage());
+            }
+        }
     }
 }

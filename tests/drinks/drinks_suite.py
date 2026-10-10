@@ -941,6 +941,22 @@ def theke_order_page_and_spieltag(ctx):
 
 
 @test('theke')
+def theke_new_spieltag_name_must_be_unique(ctx):
+    """'Neuen Spieltag anlegen' with an existing name is rejected; the existing Spieltag keeps its members."""
+    team = Theke(ctx, TEAM_UID)
+    label = team.client.get_json('user/simple-order/spieltag')['current_spieltag']
+    if not label:
+        raise Skip('team %d has no open Spieltag' % TEAM_UID)
+    event = next(e for e in ctx.open_team_events() if e['label'] == label)
+    before = ctx.admin.get_json('user/get-user-team-event-stats-data', uid=TEAM_UID, team_event_id=event['id'])
+    data = team.client.post_json('user/simple-order/spieltag', {'spieltag': '__new__', 'new_spieltag': label, 'member_user_ids': '', 'is_medenspiel': 0}, expect_status=409)
+    after = ctx.admin.get_json('user/get-user-team-event-stats-data', uid=TEAM_UID, team_event_id=event['id'])
+    members = lambda stats: sorted(m['uid'] for m in stats['members'] if m.get('is_member'))
+    expect(members(before) == members(after), 'members changed: %s -> %s' % (members(before), members(after)))
+    return {'status': 409, 'error_mentions_name': label in data.get('error', ''), 'members_kept': True}
+
+
+@test('theke')
 def theke_team_stats_match_admin(ctx):
     team = Theke(ctx, TEAM_UID)
     facts = {}

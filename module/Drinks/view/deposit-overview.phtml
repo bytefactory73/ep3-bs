@@ -1,12 +1,13 @@
 <?php
-// Admin-only: Einzahlungsübersicht
+// Einzahlungsübersicht: backend admins and thekenadmins (the latter assign PayPal payments)
 $showAdminActions = array_key_exists('admin', $_GET);
+$homeUrl = $this->isAdmin ? $this->url('user/drinks-admin') : $this->url('user/drinks');
 $this->setup([
     'title' => 'Einzahlungsübersicht',
     'panel' => 'centered-panel',
-    'back' => $this->url('user/drinks-admin'),
+    'back' => $homeUrl,
     'links' => [
-        'Drinks Verwaltung' => $this->url('user/drinks-admin'),
+        ($this->isAdmin ? 'Drinks Verwaltung' : 'Getränke') => $homeUrl,
     ],
 ]);
 ?>
@@ -619,11 +620,14 @@ function postForm(url, fields, onSuccess, onFailure) {
                         <span style="font-weight:bold; color:#1976d2; display:inline-block; white-space:normal; word-break:break-word; overflow-wrap:anywhere; hyphens:manual;">
                             <?= $this->escapeHtml($deposit['payer_email'] ?: $deposit['name']) ?>
                         </span>
-                    <?php else: ?>
-                                <a href="<?= $this->url('user/deposits') . '?uid=' . urlencode($deposit['user_id']) ?>"
-                                    style="color:#1976d2; text-decoration:underline; font-weight:bold; white-space:normal; word-break:break-word; overflow-wrap:anywhere; hyphens:manual;">
+                    <?php elseif ($this->isAdmin): ?>
+                        <a href="<?= $this->url('user/deposits') . '?uid=' . urlencode($deposit['user_id']) ?>"
+                            style="color:#1976d2; text-decoration:underline; font-weight:bold; white-space:normal; word-break:break-word; overflow-wrap:anywhere; hyphens:manual;">
                             <?= $this->escapeHtml($deposit['name']) ?>
                         </a>
+                    <?php else: ?>
+                        <?php // Einzahlungen (user/deposits) is for backend admins only ?>
+                        <span style="color:#1976d2; font-weight:bold; white-space:normal; word-break:break-word; overflow-wrap:anywhere; hyphens:manual;"><?= $this->escapeHtml($deposit['name']) ?></span>
                     <?php endif; ?>
                     <?php if (!empty($deposit['is_paypal_transaction']) && empty($deposit['linked_user_id']) && !empty($deposit['payer_email'])): ?>
                         <div style="font-size:0.9em; color:#666; white-space:normal; word-break:break-word; overflow-wrap:anywhere; hyphens:manual;"><?= $this->escapeHtml($deposit['payer_email']) ?></div>

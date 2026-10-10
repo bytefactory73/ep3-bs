@@ -45,8 +45,8 @@
       "Not authenticated."
     ],
     "POST user/create-deposit-from-paypal": [
-      403,
-      "No permission"
+      401,
+      "Not logged in"
     ],
     "POST user/create-team-event": [
       403,
@@ -199,8 +199,8 @@
       "/user/settings"
     ],
     "user/drinks-admin/paypal-settings": [
-      401,
-      ""
+      302,
+      "/user/settings"
     ],
     "user/drinks-admin/spieltage-overview": [
       302,
@@ -291,8 +291,8 @@
     "~drink_buttons": 62
   },
   "read_drinks_summary_groupings_agree": {
-    "~amount": "425,79",
-    "~count": "122"
+    "~amount": "429,79",
+    "~count": "125"
   },
   "read_drinks_summary_variants": {
     "mode_amount": 200,
@@ -743,6 +743,11 @@
     "empty": "Bitte geben Sie eine Theken-ID ein.",
     "stale_quick_login": "Schnell-Login ist abgelaufen",
     "unknown": "Theken-ID nicht gefunden."
+  },
+  "theke_new_spieltag_name_must_be_unique": {
+    "error_mentions_name": true,
+    "members_kept": true,
+    "status": 409
   },
   "theke_order_and_drop_roundtrip": {
     "drop_twice": "Diese Bestellung wurde bereits storniert.",

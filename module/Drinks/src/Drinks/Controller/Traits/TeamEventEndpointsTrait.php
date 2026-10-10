@@ -7,7 +7,7 @@ namespace Drinks\Controller\Traits;
  * Gastspenden, closing a Spieltag). Shared by the Theke (SimpleLoginController, team account
  * logged in) and the main site (DrinksController, teamlead or thekenadmin logged in); the
  * controllers differ only in resolveManagedTeamEvent().
- * Requires JsonResponseTrait and TeamEventTrait.
+ * Requires JsonResponseTrait, TeamEventTrait and MoneyTransferTrait.
  */
 trait TeamEventEndpointsTrait
 {
@@ -236,7 +236,8 @@ trait TeamEventEndpointsTrait
     }
 
     /**
-     * Close a Spieltag, then pay out / collect the settlement transfers the modal sent.
+     * Close a Spieltag and pay out / collect the settlement transfers the modal sent, in one
+     * transaction: if a transfer fails, the Spieltag stays open and no transfer is booked.
      */
     protected function handleCloseTeamEventRequest()
     {
@@ -250,42 +251,35 @@ trait TeamEventEndpointsTrait
         list($teamAdminUserId, $teamEvent) = $context;
         $teamEventId = (int)$teamEvent['id'];
 
-        $closeResult = $this->closeTeamEvent($teamAdminUserId, $teamEventId);
-        if (empty($closeResult['success'])) {
-            $error = isset($closeResult['error']) ? $closeResult['error'] : '';
-            if ($error === 'feature_unavailable') {
-                return $this->jsonError(500, 'Team-Event Schließen ist noch nicht verfügbar.');
-            }
-            if ($error === 'not_found') {
-                return $this->jsonError(404, 'Spieltag nicht gefunden.');
-            }
-            return $this->jsonError(400, 'Ungültiger Spieltag.');
-        }
-
         $settlementRefunds = $this->params()->fromPost('settlement_refunds', '');
         if (is_string($settlementRefunds)) {
             $settlementRefunds = trim($settlementRefunds) !== '' ? json_decode($settlementRefunds, true) : [];
         }
-        $settlementResult = ['success' => true, 'total_refund' => 0.0, 'transfers' => []];
-        if (!empty($settlementRefunds) && is_array($settlementRefunds)) {
-            $settlementResult = $this->processTeamEventSettlementRefunds($teamAdminUserId, $teamEventId, $settlementRefunds, true);
-            if (empty($settlementResult['success'])) {
-                $errorCode = isset($settlementResult['error']) ? (string)$settlementResult['error'] : '';
-                $messages = [
-                    'insufficient_settlement_balance' => 'Spieltagssaldo reicht für die gewünschten Ausgleichszahlungen nicht aus.',
-                    'transfer_failed' => 'Mindestens eine Ausgleichszahlung ist fehlgeschlagen.',
-                ];
-                return $this->jsonError(
-                    400,
-                    isset($messages[$errorCode]) ? $messages[$errorCode] : 'Ausgleichszahlungen konnten nicht vollständig ausgeführt werden.',
-                    [
-                        'error_code' => $errorCode !== '' ? $errorCode : 'settlement_failed',
-                        'settlement' => $settlementResult,
-                    ]
-                );
+
+        $connection = $this->getTeamEventDbAdapter()->getDriver()->getConnection();
+        $connection->beginTransaction();
+        try {
+            $closeResult = $this->closeTeamEvent($teamAdminUserId, $teamEventId);
+            $settlementResult = ['success' => true, 'total_refund' => 0.0, 'transfers' => []];
+            if (!empty($closeResult['success']) && !empty($settlementRefunds) && is_array($settlementRefunds)) {
+                $settlementResult = $this->processTeamEventSettlementRefunds($teamAdminUserId, $teamEventId, $settlementRefunds, true);
             }
+            if (empty($closeResult['success']) || empty($settlementResult['success'])) {
+                $connection->rollback();
+                $this->discardDeferredTransferMails();
+                return empty($closeResult['success'])
+                    ? $this->closeTeamEventError($closeResult)
+                    : $this->settlementError($settlementResult);
+            }
+            $connection->commit();
+        } catch (\Exception $e) {
+            $connection->rollback();
+            $this->discardDeferredTransferMails();
+            error_log('close team event: ' . $e->getMessage());
+            return $this->jsonError(500, 'Spieltag konnte nicht abgeschlossen werden.');
         }
 
+        $this->sendDeferredTransferMails();
         $this->afterTeamEventClosed($teamAdminUserId, $teamEvent);
 
         return $this->jsonResponse([
@@ -293,6 +287,36 @@ trait TeamEventEndpointsTrait
             'already_closed' => !empty($closeResult['already_closed']),
             'settlement' => $settlementResult,
         ]);
+    }
+
+    private function closeTeamEventError(array $closeResult)
+    {
+        $error = isset($closeResult['error']) ? $closeResult['error'] : '';
+        if ($error === 'feature_unavailable') {
+            return $this->jsonError(500, 'Team-Event Schließen ist noch nicht verfügbar.');
+        }
+        if ($error === 'not_found') {
+            return $this->jsonError(404, 'Spieltag nicht gefunden.');
+        }
+        return $this->jsonError(400, 'Ungültiger Spieltag.');
+    }
+
+    private function settlementError(array $settlementResult)
+    {
+        $errorCode = isset($settlementResult['error']) ? (string)$settlementResult['error'] : '';
+        $messages = [
+            'insufficient_settlement_balance' => 'Spieltagssaldo reicht für die gewünschten Ausgleichszahlungen nicht aus.',
+            'transfer_failed' => 'Mindestens eine Ausgleichszahlung ist fehlgeschlagen.',
+        ];
+        return $this->jsonError(
+            400,
+            isset($messages[$errorCode]) ? $messages[$errorCode] : 'Ausgleichszahlungen konnten nicht vollständig ausgeführt werden.',
+            [
+                'error_code' => $errorCode !== '' ? $errorCode : 'settlement_failed',
+                // Nothing was booked: the whole close was rolled back
+                'settlement' => array_merge($settlementResult, ['transfers' => []]),
+            ]
+        );
     }
 
     /**

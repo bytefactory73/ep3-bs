@@ -393,6 +393,10 @@ class SimpleLoginController extends AbstractActionController
             if ($selected === '') {
                 return $this->jsonError(400, 'Ungültiger Spieltag.');
             }
+            // A new Spieltag must not reuse a name: that would replace the members of the existing one
+            if ($isNewTeamEventRequest && $this->getTeamEventByLabel($teamAdminUserId, $selected)) {
+                return $this->jsonError(409, 'Einen Spieltag „' . $selected . '“ gibt es schon. Bitte einen anderen Namen wählen oder ihn in der Liste auswählen.');
+            }
 
             $event = $this->getOrCreateTeamEventByLabel($teamAdminUserId, $selected);
             if (!$event) {

@@ -221,8 +221,8 @@ class DrinksController extends AbstractActionController
      */
     public function drinksSummaryAction()
     {
-        // Backend admins, or a thekenadmin logged in at the Theke
-        $user = $this->getAdminUser();
+        // Backend admins and thekenadmins, on the main site or logged in at the Theke
+        $user = $this->getDrinksStaffUser();
         $simpleUserId = $user ? 0 : $this->getSimpleLoginUserId();
         $isSimple = $simpleUserId > 0 && $this->getDrinkManager()->isThekenadmin($simpleUserId);
         if (!$user && !$isSimple) {
@@ -248,15 +248,15 @@ class DrinksController extends AbstractActionController
 
         try {
             $row = $dbAdapter->query(
-                'SELECT dc.user_id, dc.check_time, u.alias AS user_alias, da.alias AS drink_alias
+                'SELECT dc.user_id, dc.check_time, u.alias, u.name
                  FROM drink_checks dc
                  LEFT JOIN bs_users u ON u.uid = dc.user_id
-                 LEFT JOIN drink_aliases da ON da.user_id = dc.user_id
                  ORDER BY dc.check_time DESC LIMIT 1', []
             )->current();
             if ($row) {
+                // Never the Theken-ID (drink_aliases.alias): it is a login credential
                 $lastCheckDate = $row['check_time'];
-                $lastCheckUserName = $row['user_alias'] ?: ($row['drink_alias'] ?: ($row['user_id'] ? 'UID ' . $row['user_id'] : null));
+                $lastCheckUserName = $row['alias'] ?: ($row['name'] ?: ($row['user_id'] ? 'UID ' . $row['user_id'] : null));
             }
         } catch (\Exception $e) { /* ignore */ }
 
@@ -536,16 +536,19 @@ class DrinksController extends AbstractActionController
     }
 
     /**
-     * Admin: Drinks management page
+     * Admin or thekenadmin: Drinks management page (thekenadmins see only their entries)
      */
     public function drinksAdminAction()
     {
-        if (!$this->getAdminUser()) {
+        $user = $this->getDrinksStaffUser();
+        if (!$user) {
             return $this->redirect()->toRoute('user/settings');
         }
+        $isAdmin = $user->get('status') === 'admin';
         // The settings form shows the stored switch; 'active' also respects the time window.
         $viewModel = new ViewModel([
             'partyMode' => $this->getDrinkManager()->getPartyMode(@$this->getServiceLocator()),
+            'isAdmin' => $isAdmin,
         ]);
         $viewModel->setTemplate('drinks-admin.phtml');
         return $viewModel;
@@ -1272,13 +1275,16 @@ class DrinksController extends AbstractActionController
     }
 
     /**
-     * Admin: Deposit overview showing all member deposits with balance after deposit
+     * Admin or thekenadmin: Deposit overview showing all member deposits with balance after deposit;
+     * thekenadmins assign PayPal payments here.
      */
     public function depositOverviewAction()
     {
-        if (!$this->getAdminUser()) {
+        $user = $this->getDrinksStaffUser();
+        if (!$user) {
             return $this->redirect()->toRoute('user/settings');
         }
+        $isAdmin = $user->get('status') === 'admin';
         $serviceManager = @$this->getServiceLocator();
         $userManager = $serviceManager->get('User\Manager\UserManager');
         $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
@@ -1593,6 +1599,7 @@ class DrinksController extends AbstractActionController
             'toFilterValue' => $toFilter ? $toFilter->format('Y-m-d') : '',
             'allUsers' => $userMap,
             'paypalLastSyncLabel' => $paypalLastSyncLabel,
+            'isAdmin' => $isAdmin,
         ]);
         $viewModel->setTemplate('deposit-overview.phtml');
         return $viewModel;
@@ -1608,21 +1615,14 @@ class DrinksController extends AbstractActionController
         }
         $dbAdapter = $this->service('Zend\Db\Adapter\Adapter');
 
-        // Fetch all team accounts
-        $teamAccountRows = $dbAdapter->query(
-            'SELECT da.user_id, da.alias FROM drink_aliases da WHERE da.is_team = 1 ORDER BY da.alias ASC',
-            []
-        )->toArray();
-
-        $teamAliasMap = [];
-        foreach ($teamAccountRows as $row) {
-            $uid = (int)$row['user_id'];
-            $teamAliasMap[$uid] = isset($row['alias']) ? trim((string)$row['alias']) : ('Team ' . $uid);
-        }
-
-        // All Spieltage of all team accounts, newest first
+        // All Spieltage of all team accounts, newest first; teams by display name, never by Theken-ID
+        $teamUserIds = array_map('intval', array_column(
+            $dbAdapter->query('SELECT user_id FROM drink_aliases WHERE is_team = 1', [])->toArray(),
+            'user_id'
+        ));
+        $teamNames = $this->getTeamDisplayNames($teamUserIds);
         $allEvents = [];
-        foreach ($this->getTeamEventsWithBalances(array_keys($teamAliasMap), true, true) as $event) {
+        foreach ($this->getTeamEventsWithBalances($teamUserIds, true, true) as $event) {
             $teamUserId = $event['team_admin_user_id'];
             $allEvents[] = [
                 'id' => $event['id'],
@@ -1630,7 +1630,7 @@ class DrinksController extends AbstractActionController
                 'balance' => $event['balance'],
                 'closed' => $event['closed'],
                 'team_user_id' => $teamUserId,
-                'team_alias' => $teamAliasMap[$teamUserId] ?? ('Team ' . $teamUserId),
+                'team_alias' => $teamNames[$teamUserId],
             ];
         }
 
@@ -1689,12 +1689,12 @@ class DrinksController extends AbstractActionController
     }
 
     /**
-     * Thekenadmin: PayPal settings page
+     * Admin: PayPal settings page (credentials, so backend admins only)
      */
     public function paypalSettingsAction()
     {
-        if ($error = $this->rejectNonThekenadmin()) {
-            return $error;
+        if (!$this->getAdminUser()) {
+            return $this->redirect()->toRoute('user/settings');
         }
         $optionManager = $this->service('Base\Manager\OptionManager');
         $paypalSettings = PaypalTransactionManager::loadSettings($optionManager);
@@ -1719,11 +1719,11 @@ class DrinksController extends AbstractActionController
      */
     public function savePaypalSettingsAction()
     {
-        if (!$this->getRequest()->isPost()) {
-            return $this->redirect()->toRoute('user/drinks-admin/paypal-settings');
-        }
         if (!$this->getAdminUser()) {
             return $this->redirect()->toRoute('user/settings');
+        }
+        if (!$this->getRequest()->isPost()) {
+            return $this->redirect()->toRoute('user/drinks-admin/paypal-settings');
         }
 
         $optionManager = $this->service('Base\Manager\OptionManager');
@@ -1790,7 +1790,8 @@ class DrinksController extends AbstractActionController
             $response['auto_result'] = $autoResult;
             return $this->jsonResponse($response);
         } catch (\Throwable $e) {
-            return $this->jsonError(500, $e->getMessage());
+            error_log('PayPal action: ' . $e->getMessage());
+            return $this->jsonError(500, 'PayPal-Aktion fehlgeschlagen, Details im Server-Log.');
         }
     }
 
@@ -1858,7 +1859,8 @@ class DrinksController extends AbstractActionController
                 'auto_result'   => $autoResult,
             ]);
         } catch (\Throwable $e) {
-            return $this->jsonError(500, $e->getMessage());
+            error_log('PayPal action: ' . $e->getMessage());
+            return $this->jsonError(500, 'PayPal-Aktion fehlgeschlagen, Details im Server-Log.');
         }
     }
 
@@ -1908,20 +1910,17 @@ class DrinksController extends AbstractActionController
                 'result'  => $result,
             ]);
         } catch (\Throwable $e) {
-            return $this->jsonError(500, $e->getMessage());
+            error_log('PayPal action: ' . $e->getMessage());
+            return $this->jsonError(500, 'PayPal-Aktion fehlgeschlagen, Details im Server-Log.');
         }
     }
 
     /**
-     * AJAX: Create a deposit from a PayPal transaction
+     * Thekenadmin AJAX: Create a deposit from a PayPal transaction
      */
     public function createDepositFromPaypalAction()
     {
-        $admin = $this->getAdminUser();
-        if (!$admin) {
-            return $this->jsonError(403, 'No permission');
-        }
-        if ($error = $this->rejectNonPost()) {
+        if ($error = $this->rejectNonThekenadmin() ?: $this->rejectNonPost()) {
             return $error;
         }
 
@@ -1940,7 +1939,7 @@ class DrinksController extends AbstractActionController
         }
 
         try {
-            $creditResult = $paypalManager->createDepositForTransaction($paypalId, $userId, $this->service('Drinks\Manager\DrinkDepositManager'), $admin->get('uid'));
+            $creditResult = $paypalManager->createDepositForTransaction($paypalId, $userId, $this->service('Drinks\Manager\DrinkDepositManager'), $this->getSessionUser()->get('uid'));
         } catch (\Throwable $e) {
             error_log('createDepositFromPaypal: ' . $e->getMessage());
             return $this->jsonError(500, 'Deposit creation failed');
@@ -1970,7 +1969,7 @@ class DrinksController extends AbstractActionController
     }
 
     /**
-     * AJAX: Reassign a PayPal transaction (and its linked deposit) to a different user
+     * Thekenadmin AJAX: Reassign a PayPal transaction (and its linked deposit) to a different user
      */
     public function reassignPaypalTransactionAction()
     {
@@ -1994,7 +1993,7 @@ class DrinksController extends AbstractActionController
     }
 
     /**
-     * AJAX: Ignore a PayPal transaction (mark as 'ignored' state)
+     * Thekenadmin AJAX: Ignore a PayPal transaction (mark as 'ignored' state)
      */
     public function ignorePaypalTransactionAction()
     {
@@ -2009,7 +2008,8 @@ class DrinksController extends AbstractActionController
             $this->service('Zend\Db\Adapter\Adapter')->query('UPDATE drinks_paypal SET state = ? WHERE id = ?', ['ignored', $paypalId]);
             return $this->jsonResponse(['success' => true]);
         } catch (\Throwable $e) {
-            return $this->jsonError(500, $e->getMessage());
+            error_log('PayPal action: ' . $e->getMessage());
+            return $this->jsonError(500, 'PayPal-Aktion fehlgeschlagen, Details im Server-Log.');
         }
     }
 
@@ -2063,6 +2063,18 @@ class DrinksController extends AbstractActionController
             return true;
         }
         return in_array($teamAdminUserId, $this->getDrinkManager()->getLedTeamUids($user->get('email')), true);
+    }
+
+    /**
+     * The session user if it is a backend admin or has the thekenadmin flag, otherwise null.
+     */
+    private function getDrinksStaffUser()
+    {
+        $user = $this->getSessionUser();
+        if (!$user) {
+            return null;
+        }
+        return ($user->get('status') === 'admin' || $this->getDrinkManager()->isThekenadmin($user->get('uid'))) ? $user : null;
     }
 
     /**

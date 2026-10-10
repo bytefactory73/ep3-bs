@@ -1,13 +1,23 @@
 <?php
-// Drinks admin landing page: choose between Einzahlungen, Artikel konfigurieren
+// Drinks admin landing page. Thekenadmins (without backend admin status) see only their entries.
+$isAdmin = (bool)$this->isAdmin;
 $this->setup([
     'title' => 'Drinks Verwaltung',
     'panel' => 'centered-panel large-sized',
-    'back' => $this->url('backend/config'),
-    'links' => [
-        'Konfiguration' => $this->url('backend/config'),
-    ],
+    'back' => $isAdmin ? $this->url('backend/config') : $this->url('user/drinks'),
+    'links' => $isAdmin ? ['Konfiguration' => $this->url('backend/config')] : ['Getränke' => $this->url('user/drinks')],
 ]);
+
+// [route, button label, description, backend admins only]
+$entries = [
+    ['user/deposits', 'Benutzer Ein-/Auszahlungen', 'Verwalten Sie Einzahlungen und Kontostände der Nutzer.', true],
+    ['user/balance-list', 'Kontostände Übersicht', 'Alle Nutzer mit Buchungen oder Einzahlungen, sortiert nach Kontostand.', true],
+    ['user/deposit-overview', 'Einzahlungsübersicht', 'Zeigt alle Einzahlungen an, sortiert nach Datum absteigend. PayPal-Zahlungen zuordnen.', false],
+    ['user/drinks-admin/spieltage-overview', 'Spieltage-Übersicht', 'Zeigt alle Spieltage aller Mannschaften, neueste zuerst.', true],
+    ['user/manage-drinks', 'Artikel konfigurieren', 'Fügen Sie neue Getränke hinzu, bearbeiten Sie Preise und verwalten Sie das Sortiment.', true],
+    ['user/drinks-summary', 'Gesamtauswertung', 'Sehen Sie eine Gesamtauswertung aller Getränkeumsätze und Einzahlungen.', false],
+    ['user/drinks-admin/paypal-settings', 'PayPal Einstellungen', 'Konfigurieren Sie PayPal-IMAP-Zugangsdaten und starten Sie manuelle Abrufe.', true],
+];
 ?>
 
 <div>
@@ -17,93 +27,23 @@ $this->setup([
     <div class="separator separator-line"></div>
     <div class="padded">
         <table class="default-table middle-table">
-            <tr>
-                <td>
-                    <a href="<?= $this->url('user/deposits') ?>" class="default-button" style="width: 200px; text-align: left;">
-                        <span class="symbolic symbolic-config"><?= $this->t('Benutzer Ein-/Auszahlungen') ?></span>
-                    </a>
-                </td>
-                <td>
-                    <p class="gray">
-                        <?= $this->t('Verwalten Sie Einzahlungen und Kontostände der Nutzer.') ?>
-                    </p>
-                </td>
-            </tr>
-           <tr>
-               <td>
-                   <a href="<?= $this->url('user/balance-list') ?>" class="default-button" style="width: 200px; text-align: left;">
-                       <span class="symbolic symbolic-config"><?= $this->t('Kontostände Übersicht') ?></span>
-                   </a>
-               </td>
-               <td>
-                   <p class="gray">
-                       <?= $this->t('Alle Nutzer mit Buchungen oder Einzahlungen, sortiert nach Kontostand.') ?>
-                   </p>
-               </td>
-           </tr>
-           <tr>
-               <td>
-                   <a href="<?= $this->url('user/deposit-overview') ?>" class="default-button" style="width: 200px; text-align: left;">
-                       <span class="symbolic symbolic-config"><?= $this->t('Einzahlungsübersicht') ?></span>
-                   </a>
-               </td>
-               <td>
-                   <p class="gray">
-                       <?= $this->t('Zeigt alle Einzahlungen an, sortiert nach Datum absteigend.') ?>
-                   </p>
-               </td>
-           </tr>
-           <tr>
-               <td>
-                   <a href="<?= $this->url('user/drinks-admin/spieltage-overview') ?>" class="default-button" style="width: 200px; text-align: left;">
-                       <span class="symbolic symbolic-config"><?= $this->t('Spieltage-Übersicht') ?></span>
-                   </a>
-               </td>
-               <td>
-                   <p class="gray">
-                       <?= $this->t('Zeigt alle Spieltage aller Mannschaften, neueste zuerst.') ?>
-                   </p>
-               </td>
-           </tr>
-            <tr>
-                <td>
-                    <a href="<?= $this->url('user/manage-drinks') ?>" class="default-button" style="width: 200px; text-align: left;">
-                        <span class="symbolic symbolic-config"><?= $this->t('Artikel konfigurieren') ?></span>
-                    </a>
-                </td>
-                <td>
-                    <p class="gray">
-                        <?= $this->t('Fügen Sie neue Getränke hinzu, bearbeiten Sie Preise und verwalten Sie das Sortiment.') ?>
-                    </p>
-                </td>
-            </tr>
-            <tr>
-                <td>
-                    <a href="<?= $this->url('user/drinks-summary') ?>" class="default-button" style="width: 200px; text-align: left;">
-                        <span class="symbolic symbolic-config"><?= $this->t('Gesamtauswertung') ?></span>
-                    </a>
-                </td>
-                <td>
-                    <p class="gray">
-                        <?= $this->t('Sehen Sie eine Gesamtauswertung aller Getränkeumsätze und Einzahlungen.') ?>
-                    </p>
-                </td>
-            </tr>
-            <tr>
-                <td>
-                    <a href="<?= $this->url('user/drinks-admin/paypal-settings') ?>" class="default-button" style="width: 200px; text-align: left;">
-                        <span class="symbolic symbolic-config"><?= $this->t('PayPal Einstellungen') ?></span>
-                    </a>
-                </td>
-                <td>
-                    <p class="gray">
-                        <?= $this->t('Konfigurieren Sie PayPal-IMAP-Zugangsdaten und starten Sie manuelle Abrufe.') ?>
-                    </p>
-                </td>
-            </tr>
+            <?php foreach ($entries as list($route, $label, $description, $adminOnly)): ?>
+                <?php if ($adminOnly && !$isAdmin) continue; ?>
+                <tr>
+                    <td>
+                        <a href="<?= $this->url($route) ?>" class="default-button" style="width: 200px; text-align: left;">
+                            <span class="symbolic symbolic-config"><?= $this->t($label) ?></span>
+                        </a>
+                    </td>
+                    <td>
+                        <p class="gray"><?= $this->t($description) ?></p>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
         </table>
     </div>
 
+    <?php if ($isAdmin): // System Nachricht (party mode) is saved by backend admins only ?>
     <?php
     $partyModeEnabled = $this->partyMode['enabled'];
     $partyModeActive = $this->partyMode['active'];
@@ -199,5 +139,6 @@ $this->setup([
             .pm-readonly { background:#f5f5f5 !important; color:#555; }
             .pm-readonly:focus { outline:none; }
         </style>
+    <?php endif; ?>
 
 </div>
