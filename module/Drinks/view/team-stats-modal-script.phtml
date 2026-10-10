@@ -1,0 +1,21 @@
+<?php
+// Kostenübersicht modal (public/js/team-stats-modal.js); the file time busts browser caches after each deploy.
+// Main-site URLs for the modal: the teamlead write routes check the user's rights per Spieltag.
+$teamStatsUrls = [
+    'adminStats' => $this->url('user/get-user-team-event-stats-data'),
+    'teamleadStats' => $this->url('user/teamlead-team-stats'),
+    'endpoints' => [
+        'members' => $this->url('user/teamlead-team-members'),
+        'orderRelevance' => $this->url('user/teamlead-order-relevance'),
+        'extraCost' => $this->url('user/teamlead-extra-cost'),
+        'updateExtraCost' => $this->url('user/teamlead-update-extra-cost'),
+        'deleteExtraCost' => $this->url('user/teamlead-delete-extra-cost'),
+        'guestDonation' => $this->url('user/teamlead-guest-donation'),
+        'updateGuestDonation' => $this->url('user/teamlead-update-guest-donation'),
+        'deleteGuestDonation' => $this->url('user/teamlead-delete-guest-donation'),
+        'closeEvent' => $this->url('user/teamlead-close-team-event'),
+    ],
+];
+?>
+<script>window.TEAM_STATS_URLS = <?= json_encode($teamStatsUrls, JSON_UNESCAPED_SLASHES) ?>;</script>
+<script src="<?= $this->basePath('js/team-stats-modal.js?v=' . filemtime('public/js/team-stats-modal.js')) ?>"></script>

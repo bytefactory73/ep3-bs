@@ -121,21 +121,6 @@ $this->setup([
 
 <div id="user-history-section"></div>
 
-<div id="depositsTeamEventStatsModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:100010; align-items:center; justify-content:center;">
-    <div style="position:relative; width:min(980px,96vw); height:90vh; max-height:90vh; background:#fff; border-radius:10px; box-shadow:0 10px 28px rgba(0,0,0,0.25); overflow:auto; padding:18px 16px 16px 16px;">
-        <button type="button" onclick="closeDepositsTeamEventStatsModal()" style="position:absolute;top:10px;right:12px;z-index:10;background:#eee;border:none;border-radius:50%;width:34px;height:34px;font-size:20px;cursor:pointer;">&times;</button>
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin:2px 42px 12px 4px; flex-wrap:wrap;">
-            <h2 id="deposits-team-event-stats-title" style="margin:0; color:#1769aa;">Kostenübersicht</h2>
-            <div id="deposits-team-event-stats-balance-header" style="font-weight:bold; text-align:right; color:#333;">Gesamtsaldo Mannschaftskonto: -</div>
-        </div>
-        <div style="display:flex; align-items:center; gap:8px; margin:0 4px 12px 4px; flex-wrap:wrap;">
-            <label for="deposits-team-event-stats-select" style="color:#1769aa; font-weight:bold;">Spieltag:</label>
-            <select id="deposits-team-event-stats-select" style="font-size:1em; max-width:100%; min-width:220px; padding:4px 6px; border:1px solid #2196f3; border-radius:6px; color:#1769aa;"></select>
-        </div>
-        <div id="depositsTeamEventStatsContent" style="padding:2px 4px 8px 4px;"></div>
-    </div>
-</div>
-
 <div id="depositsHistoryTeamEventEditModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.55); z-index:100011; align-items:center; justify-content:center;">
     <div style="position:relative; width:min(460px,94vw); background:#fff; border-radius:10px; box-shadow:0 10px 28px rgba(0,0,0,0.25); padding:18px 16px 16px 16px;">
         <button type="button" id="deposits-history-team-event-edit-close-x" style="position:absolute;top:10px;right:12px;z-index:10;background:#eee;border:none;border-radius:50%;width:34px;height:34px;font-size:20px;cursor:pointer;">&times;</button>
@@ -152,21 +137,10 @@ $this->setup([
     </div>
 </div>
 
-<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260608-13') ?>"></script>
+<?= $this->partial('team-stats-modal-script') ?>
 <script>
 function formatCurrency(amount) {
     return amount != null ? amount.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) : '';
-}
-
-function closeDepositsTeamEventStatsModal() {
-    if (window.__depositsTeamStatsModalController && typeof window.__depositsTeamStatsModalController.close === 'function') {
-        window.__depositsTeamStatsModalController.close();
-        return;
-    }
-    var modal = document.getElementById('depositsTeamEventStatsModal');
-    if (modal) {
-        modal.style.display = 'none';
-    }
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -337,86 +311,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     setActiveDepositTab(initialDepositTab);
 
-    if (typeof createTeamStatsModal === 'function') {
-        depositsTeamStatsModalController = createTeamStatsModal({
-            modalId: 'depositsTeamEventStatsModal',
-            contentId: 'depositsTeamEventStatsContent',
-            balanceHeaderId: 'deposits-team-event-stats-balance-header',
-            selectId: 'deposits-team-event-stats-select',
-            titleId: 'deposits-team-event-stats-title',
-            memberInputId: 'deposits-team-stats-member-search',
-            memberListId: 'deposits-team-stats-member-list',
-            memberAddBtnId: 'deposits-team-stats-member-add',
-            memberClearBtnId: 'deposits-team-stats-member-clear',
-            rowClass: 'deposits-team-stats-member-row',
-            removeButtonClass: 'deposits-team-stats-member-remove',
-            addDirectButtonClass: 'deposits-team-stats-member-add-direct',
-            closeEventBtnId: 'deposits-team-stats-close-event-btn',
-            getTitle: function(teamAlias) {
-                var alias = String(teamAlias || '').trim();
-                return alias ? ('Kostenübersicht - ' + alias) : 'Kostenübersicht';
-            },
-            onOpen: function(args, state) {
-                var uid = parseInt(args[0] || 0, 10);
-                if (uid > 0) {
-                    state.teamUid = uid;
-                    var user = findUserByUid(String(uid));
-                    if (user && user.alias) {
-                        state.teamAlias = String(user.alias);
-                    }
-                }
-                state.preferredTeamEventId = args[1] ? String(args[1]) : '';
-            },
-            getInitialSpieltag: function(args, state) {
-                return String(state.preferredTeamEventId || '');
-            },
-            buildStatsUrl: function(spieltag, state) {
-                var uid = parseInt(state.teamUid || 0, 10);
-                if (!uid) {
-                    throw new Error('Ungültiger Team-Account.');
-                }
-                var url = '<?= $this->url('user/get-user-team-event-stats-data') ?>?uid=' + encodeURIComponent(String(uid));
-                var teamEventId = String(spieltag || state.preferredTeamEventId || '').trim();
-                if (teamEventId !== '') {
-                    url += '&team_event_id=' + encodeURIComponent(teamEventId);
-                }
-                return url;
-            },
-            endpoints: {
-                members: '<?= $this->url('user/teamlead-team-members') ?>',
-                closeEvent: '<?= $this->url('user/teamlead-close-team-event') ?>'
-            },
-            afterLoadData: function(data, state, refs) {
-                state.preferredTeamEventId = String(data.team_event_id || '');
-                if (!refs.select) return;
-
-                while (refs.select.firstChild) {
-                    refs.select.removeChild(refs.select.firstChild);
-                }
-
-                var teamEvents = Array.isArray(data.events) ? data.events : [];
-                for (var i = 0; i < teamEvents.length; i++) {
-                    var eventRow = teamEvents[i] || {};
-                    var eventId = String(eventRow.id || '').trim();
-                    var label = String(eventRow.label || '').trim();
-                    if (!eventId || !label) continue;
-                    var option = document.createElement('option');
-                    option.value = eventId;
-                    option.textContent = label + (eventRow.closed ? ' (abgeschlossen)' : ' (offen)');
-                    refs.select.appendChild(option);
-                }
-
-                if (state.preferredTeamEventId && refs.select.querySelector('option[value="' + state.preferredTeamEventId.replace(/"/g, '\\"') + '"]')) {
-                    refs.select.value = state.preferredTeamEventId;
-                } else if (refs.select.options.length > 0) {
-                    refs.select.selectedIndex = 0;
-                    state.preferredTeamEventId = refs.select.value || '';
-                }
-                refs.select.disabled = refs.select.options.length === 0;
-            }
-        });
-        window.__depositsTeamStatsModalController = depositsTeamStatsModalController;
-    }
+    depositsTeamStatsModalController = createAdminTeamStatsModal('deposits-team-stats');
 
     function clearActiveTeamEventContext() {
         pendingNewSpieltagName = '';
@@ -845,6 +740,30 @@ document.addEventListener('DOMContentLoaded', function() {
     var showStorno = localStorage.getItem('deposits_show_storno') === '1';
 
     // Helper: find user by uid
+    /**
+     * Save drink account settings of a user (only the given fields); alerts on failure.
+     * Resolves to true on success.
+     */
+    async function saveUserDrinksSettings(uid, fields, what) {
+        try {
+            const resp = await fetch('<?= $this->url('user/set-user-drinks-settings') ?>', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                credentials: 'same-origin',
+                body: new URLSearchParams(Object.assign({ uid: uid }, fields))
+            });
+            const data = await resp.json();
+            if (!data.success) {
+                alert('Fehler beim Speichern: ' + (data.error || 'Unbekannter Fehler'));
+                return false;
+            }
+            return true;
+        } catch (e) {
+            alert('Netzwerkfehler beim Speichern ' + what + '.');
+            return false;
+        }
+    }
+
     function findUserByUid(uid) {
         return users.find(u => u.uid === uid);
     }
@@ -1070,23 +989,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         setTeamleadControlsDisabled(!uid || !drinksEnabled || !isTeamCheckbox.checked);
         if (uid) {
-            try {
-                const resp = await fetch('<?= $this->url('user/set-user-drinks-settings') ?>', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    credentials: 'same-origin',
-                    body: new URLSearchParams({
-                        uid: uid,
-                        drinks_enabled: drinksEnabled ? '1' : '0'
-                    })
-                });
-                const data = await resp.json();
-                if (!data.success) {
-                    alert('Fehler beim Speichern: ' + (data.error || 'Unbekannter Fehler'));
-                }
-            } catch (e) {
-                alert('Netzwerkfehler beim Speichern der Drinks-Einstellung.');
-            }
+            await saveUserDrinksSettings(uid, { drinks_enabled: drinksEnabled ? '1' : '0' }, 'der Drinks-Einstellung');
         }
     });
     if (orderEmailOptionSelect) {
@@ -1096,23 +999,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!uid) {
                 return;
             }
-            try {
-                const resp = await fetch('<?= $this->url('user/set-user-drinks-settings') ?>', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    credentials: 'same-origin',
-                    body: new URLSearchParams({
-                        uid: uid,
-                        order_email_option: orderEmailOption
-                    })
-                });
-                const data = await resp.json();
-                if (!data.success) {
-                    alert('Fehler beim Speichern: ' + (data.error || 'Unbekannter Fehler'));
-                }
-            } catch (e) {
-                alert('Netzwerkfehler beim Speichern der Bestell-Emails-Einstellung.');
-            }
+            await saveUserDrinksSettings(uid, { order_email_option: orderEmailOption }, 'der Bestell-Emails-Einstellung');
         });
     }
     isTeamCheckbox.addEventListener('change', async function() {
@@ -1130,24 +1017,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         setTeamleadControlsDisabled(!uid || !drinksEnabledCheckbox.checked || !isTeam);
         if (uid) {
-            try {
-                const resp = await fetch('<?= $this->url('user/set-user-drinks-settings') ?>', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    credentials: 'same-origin',
-                    body: new URLSearchParams({
-                        uid: uid,
-                        is_team: isTeam ? '1' : '0'
-                    })
-                });
-                const data = await resp.json();
-                if (!data.success) {
-                    alert('Fehler beim Speichern: ' + (data.error || 'Unbekannter Fehler'));
-                } else {
-                    updateUserInfo();
-                }
-            } catch (e) {
-                alert('Netzwerkfehler beim Speichern der Mannschafts-Account-Einstellung.');
+            if (await saveUserDrinksSettings(uid, { is_team: isTeam ? '1' : '0' }, 'der Mannschafts-Account-Einstellung')) {
+                updateUserInfo();
             }
         }
     });
@@ -1208,20 +1079,7 @@ document.addEventListener('DOMContentLoaded', function() {
         var normalizedEmails = Array.isArray(emails) ? emails : [];
         var storedValue = normalizedEmails.join(', ');
         if (user) user.teamlead_email = storedValue;
-        try {
-            const resp = await fetch('<?= $this->url('user/set-user-drinks-settings') ?>', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                credentials: 'same-origin',
-                body: new URLSearchParams({ uid: uid, teamlead_email: storedValue })
-            });
-            const data = await resp.json();
-            if (!data.success) {
-                alert('Fehler beim Speichern: ' + (data.error || 'Unbekannter Fehler'));
-            }
-        } catch (e) {
-            alert('Netzwerkfehler beim Speichern des Mannschaftführers.');
-        }
+        await saveUserDrinksSettings(uid, { teamlead_email: storedValue }, 'des Mannschaftführers');
     }
 
     function setTeamleadControlsDisabled(disabled) {
@@ -1426,28 +1284,11 @@ document.addEventListener('DOMContentLoaded', function() {
             user.drinks_alias = alias;
         }
         if (uid) {
-            try {
-                setAliasBtn.disabled = true;
-                setAliasBtn.textContent = '...';
-                const resp = await fetch('<?= $this->url('user/set-user-drinks-settings') ?>', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    credentials: 'same-origin',
-                    body: new URLSearchParams({
-                        uid: uid,
-                        drinks_alias: alias
-                    })
-                });
-                const data = await resp.json();
-                if (!data.success) {
-                    alert('Fehler beim Speichern: ' + (data.error || 'Unbekannter Fehler'));
-                }
-            } catch (e) {
-                alert('Netzwerkfehler beim Speichern der Theken-ID.');
-            } finally {
-                setAliasBtn.disabled = false;
-                setAliasBtn.textContent = 'Theken-ID speichern';
-            }
+            setAliasBtn.disabled = true;
+            setAliasBtn.textContent = '...';
+            await saveUserDrinksSettings(uid, { drinks_alias: alias }, 'der Theken-ID');
+            setAliasBtn.disabled = false;
+            setAliasBtn.textContent = 'Theken-ID speichern';
         }
     });
 

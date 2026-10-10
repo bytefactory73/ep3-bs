@@ -30,59 +30,13 @@
     </div>
 </div>
 
-<!-- Team Stats Modal Overlay -->
-<div id="teamStatsModal" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.6);z-index:99999;align-items:center;justify-content:center;">
-    <div style="position:relative;width:min(980px,96vw);height:90vh;max-height:90vh;background:#fff;border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,0.25);overflow:auto;padding:18px 16px 16px 16px;">
-        <button onclick="closeTeamStatsModal()" style="position:absolute;top:10px;right:12px;z-index:10;background:#eee;border:none;border-radius:50%;width:34px;height:34px;font-size:20px;cursor:pointer;">&times;</button>
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin:2px 42px 12px 4px; flex-wrap:wrap;">
-            <h2 style="margin:0; color:#1769aa;">Kostenübersicht</h2>
-            <div id="team-stats-account-balance-header" style="font-weight:bold; text-align:right; color:#333;">Gesamtsaldo Mannschaftskonto: -</div>
-        </div>
-        <div style="display:flex; align-items:center; gap:8px; margin:0 4px 12px 4px; flex-wrap:wrap;">
-            <label for="team-stats-spieltag-select" style="color:#1769aa; font-weight:bold;">Spieltag:</label>
-            <select id="team-stats-spieltag-select" style="font-size:1em; max-width:100%; min-width:220px; padding:4px 6px; border:1px solid #2196f3; border-radius:6px; color:#1769aa;"></select>
-        </div>
-        <div id="teamStatsContent" style="padding:2px 4px 8px 4px;"></div>
-    </div>
-</div>
-<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260608-13') ?>"></script>
+<?= $this->partial('team-stats-modal-script') ?>
 <script>
 function getCurrentBookingSpieltag() {
     var bookingSelect = document.getElementById('spieltag-select');
     if (!bookingSelect) return '';
     var value = String(bookingSelect.value || '').trim();
     return value === '__new__' ? '' : value;
-}
-
-function syncTeamStatsSpieltagSelect(preferredValue) {
-    // Keep this helper minimal to avoid overwriting the modal dropdown
-    // with the booking select options before the API response arrives.
-    var modalSelect = document.getElementById('team-stats-spieltag-select');
-    if (!modalSelect) return '';
-    if (!preferredValue) return '';
-
-    var selected = String(preferredValue).trim();
-    if (!selected || selected === '__new__') {
-        return '';
-    }
-
-    var existing = false;
-    for (var i = 0; i < modalSelect.options.length; i++) {
-        var optionLabel = String(modalSelect.options[i].getAttribute('data-label') || '').trim();
-        if (String(modalSelect.options[i].value || '').trim() === selected || optionLabel === selected) {
-            existing = true;
-            selected = String(modalSelect.options[i].value || '').trim();
-            break;
-        }
-    }
-    if (!existing) {
-        var opt = document.createElement('option');
-        opt.value = selected;
-        opt.textContent = selected;
-        modalSelect.appendChild(opt);
-    }
-    modalSelect.value = selected;
-    return selected;
 }
 
 window.teamSpieltagUpdateFromApi = function(data) {
@@ -122,27 +76,12 @@ window.teamSpieltagUpdateFromApi = function(data) {
 };
 
 var teamStatsModalController = createTeamStatsModal({
-    modalId: 'teamStatsModal',
-    contentId: 'teamStatsContent',
-    balanceHeaderId: 'team-stats-account-balance-header',
-    selectId: 'team-stats-spieltag-select',
-    memberInputId: 'team-stats-member-search',
-    memberListId: 'team-stats-member-list',
-    memberAddBtnId: 'team-stats-member-add',
-    memberClearBtnId: 'team-stats-member-clear',
-    rowClass: 'team-stats-member-row',
-    removeButtonClass: 'team-stats-member-remove',
-    addDirectButtonClass: 'team-stats-member-add-direct',
-    buildStatsUrl: function(selectedSpieltag) {
-        if (selectedSpieltag === '__new__') {
-            throw new Error('Bitte zuerst einen Spieltag auswählen.');
-        }
-        var url = 'simple-order/team-stats';
-        if (selectedSpieltag) {
-            url += '?spieltag=' + encodeURIComponent(selectedSpieltag);
-        }
-        return url;
+    id: 'theke-team-stats',
+    buildStatsUrl: function(teamEvent) {
+        return 'simple-order/team-stats' + (teamEvent ? '?spieltag=' + encodeURIComponent(teamEvent) : '');
     },
+    // Opens on the Spieltag selected for booking
+    getInitialEventId: getCurrentBookingSpieltag,
     endpoints: {
         members: 'simple-order/team-members',
         orderRelevance: 'simple-order/team-order-relevance',
@@ -154,121 +93,20 @@ var teamStatsModalController = createTeamStatsModal({
         deleteGuestDonation: 'simple-order/team-delete-guest-donation',
         closeEvent: 'simple-order/close-team-event'
     },
+    // The booking dropdown only lists open Spieltage
     onTeamEventClosed: function() {
         fetch('simple-order/spieltag', {
             credentials: 'same-origin',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest'
-            }
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
         })
         .then(function(resp) { return resp.json(); })
-        .then(function(data) {
-            if (typeof window.teamSpieltagUpdateFromApi === 'function') {
-                window.teamSpieltagUpdateFromApi(data);
-            }
-        })
+        .then(window.teamSpieltagUpdateFromApi)
         .catch(function() {});
-    },
-    afterLoadData: function(data, state, refs) {
-        if (!refs.select) return;
-        while (refs.select.firstChild) {
-            refs.select.removeChild(refs.select.firstChild);
-        }
-        var spieltage = Array.isArray(data.spieltage) ? data.spieltage : [];
-        var openSpieltage = Array.isArray(data.open_spieltage) ? data.open_spieltage : [];
-        var selectedSpieltag = String(data.spieltag || '').trim();
-        
-        // Build a map of event label -> role from the events array
-        var eventRoleMap = {};
-        var events = Array.isArray(data.events) ? data.events : [];
-        for (var ei = 0; ei < events.length; ei++) {
-            var eventLabel = String(events[ei].label || '').trim();
-            var eventRole = events[ei].role || (events[ei].can_manage_members ? 'Mannschaftsführer' : 'Mitglied');
-            if (eventLabel) {
-                eventRoleMap[eventLabel] = eventRole;
-            }
-        }
-        
-        // One option per Spieltag (value = event id): labels are not unique across teams.
-        // The server accepts a numeric spieltag as team event id.
-        var selectedEventId = parseInt(data.team_event_id || 0, 10);
-        if (events.length > 0) {
-            var seenEventIds = {};
-            for (var ev = 0; ev < events.length; ev++) {
-                var evId = parseInt(events[ev].id || 0, 10);
-                var evLabel = String(events[ev].label || '').trim();
-                if (!evId || !evLabel || seenEventIds[evId]) continue;
-                seenEventIds[evId] = true;
-                var evOpt = document.createElement('option');
-                evOpt.value = String(evId);
-                evOpt.setAttribute('data-label', evLabel);
-                var evAlias = String(events[ev].team_alias || '').trim();
-                var evText = evAlias !== '' ? (evAlias + ' - ' + evLabel) : evLabel;
-                if (!parseInt(events[ev].closed || 0, 10)) {
-                    evText += ' (offen)';
-                }
-                evOpt.textContent = evText;
-                evOpt.setAttribute('data-user-role', events[ev].role || (events[ev].can_manage_members ? 'Mannschaftsführer' : 'Mitglied'));
-                evOpt.setAttribute('data-team-alias', evAlias);
-                if (selectedEventId > 0 ? evId === selectedEventId : evLabel === selectedSpieltag) evOpt.selected = true;
-                refs.select.appendChild(evOpt);
-            }
-            refs.select.disabled = refs.select.options.length === 0;
-            return;
-        }
-
-        for (var i = 0; i < spieltage.length; i++) {
-            var name = String(spieltage[i] || '').trim();
-            if (!name) continue;
-            var opt = document.createElement('option');
-            opt.value = name;
-            var isOpen = openSpieltage.indexOf(name) !== -1;
-            // Find team alias for this event to show in front (e.g., "MF - Team - Teamevent")
-            var teamAlias = '';
-            var eventRole = eventRoleMap[name] || (isOpen ? 'Mannschaftsführer' : 'Mitglied');
-            for (var ej = 0; ej < events.length; ej++) {
-                if (String(events[ej].label || '').trim() === name) {
-                    var alias = String(events[ej].team_alias || '').trim();
-                    if (alias !== '') {
-                        teamAlias = alias;
-                    }
-                    eventRole = events[ej].role || eventRole;
-                    break;
-                }
-            }
-            // Display team alias in front of event label (e.g., "MF - Team - Teamevent")
-            var displayText = name;
-            if (teamAlias !== '') {
-                displayText = teamAlias + ' - ' + name;
-            }
-            if (isOpen) {
-                displayText += ' (offen)';
-            }
-            opt.textContent = displayText;
-            // Add data attributes for per-event role and team alias
-            opt.setAttribute('data-user-role', eventRole);
-            opt.setAttribute('data-team-alias', teamAlias);
-            if (name === selectedSpieltag) opt.selected = true;
-            refs.select.appendChild(opt);
-        }
-        refs.select.disabled = spieltage.length === 0;
-    },
-    getInitialSpieltag: function() {
-        var preferredSpieltag = getCurrentBookingSpieltag();
-        return syncTeamStatsSpieltagSelect(preferredSpieltag);
     }
 });
 
 function openTeamStatsModal() {
     return teamStatsModalController.open();
-}
-
-function loadTeamStatsForSpieltag(selectedSpieltag) {
-    return teamStatsModalController.load(selectedSpieltag);
-}
-
-function closeTeamStatsModal() {
-    teamStatsModalController.close();
 }
 
 function openDrinksSummaryModal() {

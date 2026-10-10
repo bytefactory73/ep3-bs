@@ -32,7 +32,6 @@ class IndexController extends AbstractActionController
         }
         // The first led team drives the button for backward compatibility
         $teamLeadTeamUserId = !empty($teamLeadTeams) ? $teamLeadTeams[0]['user_id'] : 0;
-        $teamLeadTeamAlias = !empty($teamLeadTeams) ? $teamLeadTeams[0]['alias'] : '';
 
         $this->redirectBack()->setOrigin('frontend');
 
@@ -42,7 +41,6 @@ class IndexController extends AbstractActionController
             'squaresFilter' => $squaresFilter,
             'user' => $user,
             'teamLeadTeamUserId' => $teamLeadTeamUserId,
-            'teamLeadTeamAlias' => $teamLeadTeamAlias,
             'teamLeadTeams' => $teamLeadTeams,
             'isTeamMember' => $isTeamMember,
         ));

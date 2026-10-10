@@ -1306,19 +1306,6 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
     <div id="drink-order-feedback" style="display:none; margin: 12px 0; text-align:center; font-weight:bold;"></div>
     <script>
     // --- AJAX drink order submission ---
-    function getDrinkOrderData() {
-        var data = {};
-        var inputs = document.querySelectorAll('input[id^="input-"]');
-        for (var i = 0; i < inputs.length; i++) {
-            var input = inputs[i];
-            var count = parseInt(input.value, 10) || 0;
-            if (count > 0) {
-                var id = input.id.replace('input-', '');
-                data['drink_counts[' + id + ']'] = count;
-            }
-        }
-        return data;
-    }
     function showOrderFeedback(msg, isError) {
         var box = document.getElementById('drink-order-feedback');
         box.textContent = msg;
@@ -1353,27 +1340,15 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
                 }
                 if (typeof confirmDrinkOrder === 'function' && !confirmDrinkOrder()) return;
                 var data = getDrinkOrderData();
-                var hasData = false;
-                for (var k in data) { if (data.hasOwnProperty(k)) { hasData = true; break; } }
-                if (!hasData) {
+                if (Object.keys(data).length === 0) {
                     showOrderFeedback('<?= $this->t('Bitte mindestens ein Getränk auswählen.') ?>', true);
                     return;
                 }
                 submitBtn.disabled = true;
                 submitBtn.className += ' loading';
                 var url = window.SIMPLE_ORDER_MODE ? 'simple-order/submit-order' : 'bookings/submit-order';
-                var params = [];
-                for (var key in data) {
-                    if (data.hasOwnProperty(key)) {
-                        params.push(encodeURIComponent(key) + '=' + encodeURIComponent(data[key]));
-                    }
-                }
-                // Add keep_logged_in parameter
-                if (window.SIMPLE_ORDER_MODE) {
-                    var keepLoggedInCheckbox = document.getElementById('keep-logged-in-header');
-                    if (keepLoggedInCheckbox) {
-                        params.push('keep_logged_in=' + (keepLoggedInCheckbox.checked ? '1' : '0'));
-                    }
+                if (window.SIMPLE_ORDER_MODE && document.getElementById('keep-logged-in-header')) {
+                    data.keep_logged_in = getKeepLoggedInValue();
                 }
                 var xhr = new XMLHttpRequest();
                 xhr.open('POST', url, true);
@@ -1409,7 +1384,7 @@ button.stc-main-button[disabled], button.stc-main-button:disabled {
                     submitBtn.disabled = false;
                     submitBtn.className = submitBtn.className.replace(/\bloading\b/, '');
                 };
-                xhr.send(params.join('&'));
+                xhr.send(new URLSearchParams(data).toString());
             });
         }
         // Drink order tile logic
@@ -1862,14 +1837,8 @@ function clearSelectionAndLogout(logoutUser) {
     }
     if (logoutUser) {
         if (window.SIMPLE_ORDER_MODE && !window.__KEEP_LOGGED_IN_UPDATED__) {
-            // Always synchronously update keep_logged_in state in DB before redirect
-            var keepLoggedInCheckbox = document.getElementById('keep-logged-in-header');
-            var keepVal = (keepLoggedInCheckbox && keepLoggedInCheckbox.checked) ? '1' : '0';
-            var xhr = new XMLHttpRequest();
-            xhr.open('POST', 'simple-order/submit-order', false); // synchronous
-            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-            try { xhr.send('keep_logged_in=' + keepVal); } catch(e) {}
+            // Save the keep_logged_in state before leaving the page
+            submitSimpleOrderSync({ keep_logged_in: getKeepLoggedInValue() });
         }
         window.location.replace('<?= $this->url("user/simple-login") ?>');
     }
@@ -2265,6 +2234,35 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
 <?php endif; ?>
 
 <script>
+// Drinks selected in the order tiles, as form fields drink_counts[<id>]
+function getDrinkOrderData() {
+    var data = {};
+    document.querySelectorAll('input[id^="input-"]').forEach(function(input) {
+        var count = parseInt(input.value, 10) || 0;
+        if (count > 0) {
+            data['drink_counts[' + input.id.replace('input-', '') + ']'] = count;
+        }
+    });
+    return data;
+}
+
+// Theke: the "angemeldet bleiben" checkbox as '1' / '0'
+function getKeepLoggedInValue() {
+    var checkbox = document.getElementById('keep-logged-in-header');
+    return (checkbox && checkbox.checked) ? '1' : '0';
+}
+
+// Theke: submit the order form synchronously, so it is saved before the page is left
+function submitSimpleOrderSync(fields) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', 'simple-order/submit-order', false);
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+    try {
+        xhr.send(new URLSearchParams(fields).toString());
+    } catch (e) {}
+}
+
 document.addEventListener('DOMContentLoaded', function() {
         // --- Simple order mode: auto-logout after 5 minutes of inactivity, persistent across sleep ---
         if (window.SIMPLE_ORDER_MODE) {
@@ -2295,41 +2293,13 @@ document.addEventListener('DOMContentLoaded', function() {
             function performLogout() {
                 clearLogoutDeadline();
                 // --- AUTO-ORDER SUBMISSION ON LOGOUT (simple mode) ---
-                if (window.SIMPLE_ORDER_MODE) {
-                    var data = {};
-                    var inputs = document.querySelectorAll('input[id^="input-"]');
-                    var hasOrder = false;
-                    for (var i = 0; i < inputs.length; i++) {
-                        var input = inputs[i];
-                        var count = parseInt(input.value, 10) || 0;
-                        if (count > 0) {
-                            var id = input.id.replace('input-', '');
-                            data['drink_counts[' + id + ']'] = count;
-                            hasOrder = true;
-                        }
-                    }
-                    // Always include keep_logged_in state in auto-order
-                    var keepLoggedInCheckbox = document.getElementById('keep-logged-in-header');
-                    data['keep_logged_in'] = (keepLoggedInCheckbox && keepLoggedInCheckbox.checked) ? '1' : '0';
-                    if (hasOrder) {
-                        // Add is_auto_order flag
-                        data['is_auto_order'] = '1';
-                    }
-                    var url = 'simple-order/submit-order';
-                    var params = [];
-                    for (var key in data) {
-                        if (data.hasOwnProperty(key)) {
-                            params.push(encodeURIComponent(key) + '=' + encodeURIComponent(data[key]));
-                        }
-                    }
-                    var xhr = new XMLHttpRequest();
-                    xhr.open('POST', url, false); // synchronous to ensure state is saved before logout
-                    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-                    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-                    try {
-                        xhr.send(params.join('&'));
-                    } catch (e) {}
+                // Book the drinks still selected (auto order) and save the keep_logged_in state
+                var data = getDrinkOrderData();
+                if (Object.keys(data).length > 0) {
+                    data.is_auto_order = '1';
                 }
+                data.keep_logged_in = getKeepLoggedInValue();
+                submitSimpleOrderSync(data);
                 if (typeof clearSelectionAndLogout === 'function') {
                     // Suppress confirmation dialog for auto-order logout
                     // Mark keep_logged_in as already updated to skip duplicate XHR

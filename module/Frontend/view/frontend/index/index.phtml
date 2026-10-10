@@ -14,7 +14,6 @@ $this->headScript()->appendFile($this->basePath('js/controller/frontend/index.mi
             <?= $this->partial('frontend/index/userpanel.online.phtml', [
                 'user' => $this->user,
                 'teamLeadTeamUserId' => $this->teamLeadTeamUserId,
-                'teamLeadTeamAlias' => $this->teamLeadTeamAlias,
                 'teamLeadTeams' => isset($this->teamLeadTeams) ? $this->teamLeadTeams : [],
                 'isTeamMember' => isset($this->isTeamMember) ? $this->isTeamMember : false,
             ]) ?>

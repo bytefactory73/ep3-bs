@@ -84,7 +84,8 @@ class Client:
         if query:
             url += '?' + urllib.parse.urlencode(query)
         data = None
-        headers = {'User-Agent': 'drinks-suite', 'X-Requested-With': 'XMLHttpRequest'}
+        # The test system sends no mails for suite requests (User\\Service\\MailService)
+        headers = {'User-Agent': 'drinks-suite', 'X-Requested-With': 'XMLHttpRequest', 'X-EP3-Suppress-Mail': '1'}
         if json_body is not None:
             data = json.dumps(json_body).encode()
             headers['Content-Type'] = 'application/json'
@@ -297,9 +298,9 @@ def read_admin_pages(ctx):
     markers = {
         'user/drinks-admin': ['party_mode_enabled', 'user/drinks-admin/party-mode-save'],
         'user/drinks-admin/paypal-settings': ['imap_host', 'paypal_client_id', 'minimum_account_balance'],
-        'user/drinks-admin/spieltage-overview': ['spieltageTeamEventStatsModal', 'spieltage-overview-item'],
+        'user/drinks-admin/spieltage-overview': ['createAdminTeamStatsModal', 'TEAM_STATS_URLS', 'spieltage-overview-item'],
         'user/manage-drinks': ['add_drink', 'edit_drink'],
-        'user/deposits': ['depositsTeamEventStatsModal', 'add_deposit', 'team-stats-modal.js'],
+        'user/deposits': ['createAdminTeamStatsModal', 'TEAM_STATS_URLS', 'add_deposit', 'team-stats-modal.js?v='],
         'user/balance-list': [],
         'user/deposit-overview': [],
         'user/drinks-summary': [],
@@ -351,6 +352,28 @@ def read_drinks_summary_variants(ctx):
     for mode in ['count', 'amount']:
         resp = ctx.admin.get('user/drinks-summary', mode=mode, show_users=0, show_emptycols=1, **{'from': '2026-01-01', 'to': '2026-12-31'})
         facts['mode_' + mode] = page_facts(resp)['status']
+    return facts
+
+
+@test('read')
+def read_drinks_summary_groupings_agree(ctx):
+    """The grand total must not depend on the grouping (weekday amounts used to be off by 100x)."""
+    def grand_total(group, mode):
+        html = ctx.admin.get('user/drinks-summary', group=group, mode=mode, show_users=1, show_emptycols=0,
+                             **{'from': '2026-01-01', 'to': '2026-12-31'}).text
+        if mode == 'amount':
+            body = re.search(r'<tbody>(.*?)</tbody>', html, re.S)
+            values = re.findall(r'<td style="text-align: right;[^"]*">([^<]+)</td>', body.group(1) if body else '')
+            badly_formatted = [v for v in values if not re.match(r'^-?\d{1,3}(\.\d{3})*,\d{2}$', v.strip())]
+            expect(not badly_formatted, '%s: amount cells not formatted as money: %s' % (group, badly_formatted[:5]))
+        foot = re.search(r'<tfoot>(.*?)</tfoot>', html, re.S)
+        cells = re.findall(r'<th[^>]*>\s*(.*?)\s*</th>', foot.group(1), re.S) if foot else []
+        return cells[-1] if cells else None
+    facts = {}
+    for mode in ['count', 'amount']:
+        totals = {group: grand_total(group, mode) for group in ['date', 'week', 'month', 'year', 'weekday']}
+        expect(len(set(totals.values())) == 1, '%s totals differ by grouping: %s' % (mode, totals))
+        facts['~' + mode] = totals['date']
     return facts
 
 

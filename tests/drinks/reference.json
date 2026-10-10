@@ -290,6 +290,10 @@
     "title": "Drinks &middot; STC Tennisplatz-Buchung (Test)",
     "~drink_buttons": 62
   },
+  "read_drinks_summary_groupings_agree": {
+    "~amount": "425,79",
+    "~count": "122"
+  },
   "read_drinks_summary_variants": {
     "mode_amount": 200,
     "mode_count": 200

@@ -86,17 +86,100 @@
         return id ? document.getElementById(id) : null;
     }
 
+    var ELEMENT_SUFFIXES = {
+        modalId: '-modal',
+        contentId: '-content',
+        balanceHeaderId: '-balance',
+        selectId: '-select',
+        titleId: '-title',
+        memberInputId: '-member-search',
+        memberListId: '-member-list',
+        memberAddBtnId: '-member-add',
+        memberClearBtnId: '-member-clear',
+        rowClass: '-member-row',
+        removeButtonClass: '-member-remove',
+        addDirectButtonClass: '-member-add-direct',
+        closeEventBtnId: '-close-event-btn'
+    };
+
+    /**
+     * Kostenübersicht modal. config.id prefixes all element ids (one modal per page);
+     * buildStatsUrl(teamEventIdOrLabel, state) returns the stats URL; endpoints maps the write
+     * actions to URLs (see postForm); optional hooks: onOpen(args, state),
+     * getInitialEventId(args, state), afterLoadData(data, state), onTeamEventClosed(state);
+     * showRoleInTitle adds Mannschaftsführer/Mitglied to the title.
+     */
     function createTeamStatsModal(config) {
+        var prefix = config.id || 'team-stats';
+        Object.keys(ELEMENT_SUFFIXES).forEach(function(key) {
+            config[key] = prefix + ELEMENT_SUFFIXES[key];
+        });
+
+        // Action buttons inside the stats table
+        var relevanceTriggerClass = 'team-stats-order-relevance-trigger';
+        var extraCostAddClass = 'team-stats-extra-cost-add';
+        var extraCostEditClass = 'team-stats-extra-cost-edit';
+        var extraCostDeleteClass = 'team-stats-extra-cost-delete';
+        var extraCostRelevanceTriggerClass = 'team-stats-extra-cost-relevance-trigger';
+        var guestDonationAddClass = 'team-stats-guest-donation-add';
+        var guestDonationEditClass = 'team-stats-guest-donation-edit';
+        var guestDonationDeleteClass = 'team-stats-guest-donation-delete';
+
         var state = {
             currentEventId: 0,
+            teamAdminUserId: 0,
             memberCandidates: [],
             selectedMemberId: 0,
             selectedIndex: -1,
             teamUid: 0,
-            teamAlias: config.initialTeamAlias || '',
+            teamAlias: '',
+            userRole: '',
             isCurrentEventClosed: false,
             settlementPreview: null
         };
+
+        function ensureModalElement() {
+            if (byId(config.modalId)) return;
+            var overlay = document.createElement('div');
+            overlay.id = config.modalId;
+            overlay.style.cssText = 'display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:100010; align-items:center; justify-content:center;';
+            overlay.innerHTML =
+                '<div style="position:relative; width:min(980px,96vw); height:90vh; max-height:90vh; background:#fff; border-radius:10px; box-shadow:0 10px 28px rgba(0,0,0,0.25); overflow:auto; padding:18px 16px 16px 16px;">'
+                + '<button type="button" data-close style="position:absolute;top:10px;right:12px;z-index:10;background:#eee;border:none;border-radius:50%;width:34px;height:34px;font-size:20px;cursor:pointer;">&times;</button>'
+                + '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin:2px 42px 12px 4px; flex-wrap:wrap;">'
+                + '<h2 id="' + config.titleId + '" style="margin:0; color:#1769aa;">Kostenübersicht</h2>'
+                + '<div id="' + config.balanceHeaderId + '" style="font-weight:bold; text-align:right; color:#333;">Gesamtsaldo Mannschaftskonto: -</div>'
+                + '</div>'
+                + '<div style="display:flex; align-items:center; gap:8px; margin:0 4px 12px 4px; flex-wrap:wrap;">'
+                + '<label for="' + config.selectId + '" style="color:#1769aa; font-weight:bold;">Spieltag:</label>'
+                + '<select id="' + config.selectId + '" style="font-size:1em; max-width:100%; min-width:220px; padding:4px 6px; border:1px solid #2196f3; border-radius:6px; color:#1769aa;"></select>'
+                + '</div>'
+                + '<div id="' + config.contentId + '" style="padding:2px 4px 8px 4px;"></div>'
+                + '</div>';
+            overlay.querySelector('[data-close]').addEventListener('click', close);
+            document.body.appendChild(overlay);
+        }
+
+        /**
+         * One option per Spieltag (value = team event id); the team name is shown when the
+         * Spieltage belong to more than one team.
+         */
+        function fillEventSelect(data, select) {
+            var events = Array.isArray(data.events) ? data.events : [];
+            var teams = {};
+            events.forEach(function(event) { teams[event.team_admin_user_id] = true; });
+            var showTeam = Object.keys(teams).length > 1;
+            select.innerHTML = '';
+            events.forEach(function(event) {
+                var option = document.createElement('option');
+                var alias = String(event.team_alias || '');
+                option.value = String(event.id);
+                option.textContent = (showTeam && alias ? alias + ' - ' : '') + event.label + (event.closed ? ' (abgeschlossen)' : ' (offen)');
+                option.selected = parseInt(event.id, 10) === parseInt(data.team_event_id || 0, 10);
+                select.appendChild(option);
+            });
+            select.disabled = events.length === 0;
+        }
 
         function refs() {
             return {
@@ -113,12 +196,16 @@
         }
 
         function setTitle() {
-            if (!config.titleId) return;
             var titleEl = byId(config.titleId);
             if (!titleEl) return;
-            if (typeof config.getTitle === 'function') {
-                titleEl.textContent = config.getTitle(state.teamAlias, state.userRole);
+            var title = 'Kostenübersicht';
+            if (state.teamAlias) {
+                title += ' - ' + state.teamAlias;
+                if (config.showRoleInTitle && state.userRole) {
+                    title += ' - ' + state.userRole;
+                }
             }
+            titleEl.textContent = title;
         }
 
         function resetBalanceHeader() {
@@ -231,14 +318,6 @@
             var canEditGuestDonations = canManageMembers && hasEndpoint('guestDonation') && hasEndpoint('updateGuestDonation') && hasEndpoint('deleteGuestDonation');
             // When canManageMembers is false (team member without teamlead role), show view-only mode
             // All editing elements will be hidden, settlement button will be disabled
-            var relevanceTriggerClass = config.orderRelevanceTriggerClass || 'team-stats-order-relevance-trigger';
-            var extraCostAddClass = config.extraCostAddClass || 'team-stats-extra-cost-add';
-            var extraCostEditClass = config.extraCostEditClass || 'team-stats-extra-cost-edit';
-            var extraCostDeleteClass = config.extraCostDeleteClass || 'team-stats-extra-cost-delete';
-            var extraCostRelevanceTriggerClass = config.extraCostRelevanceTriggerClass || 'team-stats-extra-cost-relevance-trigger';
-            var guestDonationAddClass = config.guestDonationAddClass || 'team-stats-guest-donation-add';
-            var guestDonationEditClass = config.guestDonationEditClass || 'team-stats-guest-donation-edit';
-            var guestDonationDeleteClass = config.guestDonationDeleteClass || 'team-stats-guest-donation-delete';
 
             var activeMembers = members.filter(function(member) {
                 return !!(member && member.is_member);
@@ -555,7 +634,7 @@
                         var restAmount = roundMoney(memberDue + memberNetPaid);
                         html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(memberDue) + ';">' + formatCurrency(memberDue) + '</td>';
                         html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(restAmount) + ';">' + formatCurrency(restAmount) + '</td>';
-                        if (restAmount > 0.00001 && memberUid !== state.teamUid) {
+                        if (restAmount > 0.00001 && memberUid !== state.teamAdminUserId) {
                             settlementRefunds.push({
                                 receiver_user_id: memberUid,
                                 name: String(member.name || ''),
@@ -607,7 +686,7 @@
             html += '<span style="color:' + amountColor(grandTotal) + ';">' + formatCurrency(grandTotal) + '</span>';
             html += '</div>';
             if (canManageMembers) {
-                var manageContainerStyle = config.manageContainerStyle || 'position:relative; display:flex; align-items:center; gap:6px; max-width:560px;';
+                var manageContainerStyle = 'position:relative; display:flex; align-items:center; gap:6px; margin-top:10px; max-width:560px;';
                 html += '<div style="' + manageContainerStyle + '">';
                 html += '<input type="text" id="' + config.memberInputId + '" autocomplete="off" placeholder="Teilnehmer suchen..." style="flex:1; min-width:0; padding:6px 10px; border:1px solid #ccc; border-radius:12px; font-size:13px; min-height:28px;">';
                 html += '<button type="button" id="' + config.memberClearBtnId + '" title="Feld leeren" style="background:none; border:none; padding:4px; font-size:18px; color:#aaa; cursor:pointer; line-height:1; min-height:28px; min-width:28px;">&times;</button>';
@@ -781,94 +860,73 @@
             await loadCurrentSelection();
         }
 
-        function ensureGuestDonationPopup() {
-            var popupId = config.guestDonationPopupId || 'team-stats-guest-donation-popup';
+        /**
+         * Dialog overlay with a title, the given body and Abbrechen / confirm buttons; created once
+         * per page. The returned object holds the overlay, title, cancelBtn, saveBtn (= okBtn) and
+         * every body element with an id "<popupId>-<name>" as popup[name].
+         */
+        function ensurePopup(popupId, options) {
             var overlay = byId(popupId);
-            if (overlay) {
-                return {
-                    overlay: overlay,
-                    title: byId(popupId + '-title'),
-                    receiver: byId(popupId + '-receiver'),
-                    amount: byId(popupId + '-amount'),
-                    comment: byId(popupId + '-comment'),
-                    saveBtn: byId(popupId + '-save'),
-                    cancelBtn: byId(popupId + '-cancel')
-                };
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = popupId;
+                overlay.style.cssText = 'display:none; position:fixed; inset:0; background:rgba(0,0,0,' + (options.shade || 0.38) + '); z-index:' + options.zIndex + '; align-items:center; justify-content:center; padding:16px;';
+                overlay.innerHTML =
+                    '<div style="width:min(' + options.width + ', 94vw); background:#fff; border-radius:12px; box-shadow:0 12px 32px rgba(0,0,0,0.22); overflow:hidden;">'
+                    + '<div style="padding:14px 16px; border-bottom:1px solid #e6edf5; font-weight:700; color:#1769aa;" id="' + popupId + '-title"></div>'
+                    + options.body
+                    + '<div style="padding:12px 16px; border-top:1px solid #e6edf5; display:flex; justify-content:flex-end; gap:8px;">'
+                    + '<button type="button" class="mini-button" id="' + popupId + '-cancel">Abbrechen</button>'
+                    + '<button type="button" class="default-button mini-button" id="' + popupId + '-confirm">' + (options.confirmLabel || 'Speichern') + '</button>'
+                    + '</div>'
+                    + '</div>';
+                document.body.appendChild(overlay);
+                overlay.addEventListener('click', function(e) {
+                    if (e.target === overlay) {
+                        overlay.style.display = 'none';
+                    }
+                });
             }
-
-            overlay = document.createElement('div');
-            overlay.id = popupId;
-            overlay.style.cssText = 'display:none; position:fixed; inset:0; background:rgba(0,0,0,0.38); z-index:100003; align-items:center; justify-content:center; padding:16px;';
-            overlay.innerHTML = '' +
-                '<div style="width:min(520px, 94vw); background:#fff; border-radius:12px; box-shadow:0 12px 32px rgba(0,0,0,0.22); overflow:hidden;">' +
-                '  <div style="padding:14px 16px; border-bottom:1px solid #e6edf5; font-weight:700; color:#1769aa;" id="' + popupId + '-title"></div>' +
-                '  <div style="padding:12px 16px; display:grid; gap:10px;">' +
-                '    <label style="display:grid; gap:4px;"><span>Empfänger</span><select id="' + popupId + '-receiver" style="padding:4px 8px; border:1px solid #c8d6e5; border-radius:6px;"></select></label>' +
-                '    <label style="display:grid; gap:4px;"><span>Kommentar</span><input id="' + popupId + '-comment" type="text" maxlength="255" style="padding:4px 8px; border:1px solid #c8d6e5; border-radius:6px;"></label>' +
-                '    <label style="display:grid; gap:4px;"><span>Betrag</span><input id="' + popupId + '-amount" type="number" step="0.01" min="0.01" style="padding:4px 8px; border:1px solid #c8d6e5; border-radius:6px;"></label>' +
-                '  </div>' +
-                '  <div style="padding:12px 16px; border-top:1px solid #e6edf5; display:flex; justify-content:flex-end; gap:8px;">' +
-                '    <button type="button" class="mini-button" id="' + popupId + '-cancel">Abbrechen</button>' +
-                '    <button type="button" class="default-button mini-button" id="' + popupId + '-save">Speichern</button>' +
-                '  </div>' +
-                '</div>';
-            document.body.appendChild(overlay);
-            overlay.addEventListener('click', function(e) {
-                if (e.target === overlay) {
-                    overlay.style.display = 'none';
-                }
+            var popup = { overlay: overlay };
+            overlay.querySelectorAll('[id^="' + popupId + '-"]').forEach(function(element) {
+                popup[element.id.slice(popupId.length + 1)] = element;
             });
+            popup.cancelBtn = popup.cancel;
+            popup.saveBtn = popup.okBtn = popup.confirm;
+            return popup;
+        }
 
-            return {
-                overlay: overlay,
-                title: byId(popupId + '-title'),
-                receiver: byId(popupId + '-receiver'),
-                amount: byId(popupId + '-amount'),
-                comment: byId(popupId + '-comment'),
-                saveBtn: byId(popupId + '-save'),
-                cancelBtn: byId(popupId + '-cancel')
-            };
+        function popupField(label, controlHtml) {
+            return '<label style="display:grid; gap:4px;"><span>' + label + '</span>' + controlHtml + '</label>';
+        }
+
+        function popupAllNoneButtons(popupId) {
+            return '<button type="button" class="mini-button" id="' + popupId + '-allBtn">Alle</button>'
+                + '<button type="button" class="mini-button" id="' + popupId + '-noneBtn">Niemand</button>';
+        }
+
+        function ensureGuestDonationPopup() {
+            var popupId = 'team-stats-guest-donation-popup';
+            return ensurePopup(popupId, {
+                width: '520px',
+                zIndex: 100003,
+                body: '<div style="padding:12px 16px; display:grid; gap:10px;">'
+                    + popupField('Empfänger', '<select id="' + popupId + '-receiver" style="padding:4px 8px; border:1px solid #c8d6e5; border-radius:6px;"></select>')
+                    + popupField('Kommentar', '<input id="' + popupId + '-comment" type="text" maxlength="255" style="padding:4px 8px; border:1px solid #c8d6e5; border-radius:6px;">')
+                    + popupField('Betrag', '<input id="' + popupId + '-amount" type="number" step="0.01" min="0.01" style="padding:4px 8px; border:1px solid #c8d6e5; border-radius:6px;">')
+                    + '</div>'
+            });
         }
 
         function ensureSettlementPopup() {
-            var popupId = config.settlementPopupId || 'team-stats-settlement-popup';
-            var overlay = byId(popupId);
-            if (overlay) {
-                return {
-                    overlay: overlay,
-                    title: byId(popupId + '-title'),
-                    body: byId(popupId + '-body'),
-                    okBtn: byId(popupId + '-ok'),
-                    cancelBtn: byId(popupId + '-cancel')
-                };
-            }
-
-            overlay = document.createElement('div');
-            overlay.id = popupId;
-            overlay.style.cssText = 'display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:100120; align-items:center; justify-content:center; padding:16px;';
-            overlay.innerHTML = '' +
-                '<div style="width:min(680px, 96vw); background:#fff; border-radius:12px; box-shadow:0 14px 36px rgba(0,0,0,0.24); overflow:hidden;">' +
-                '  <div style="padding:14px 16px; border-bottom:1px solid #e6edf5; font-weight:700; color:#1769aa;" id="' + popupId + '-title"></div>' +
-                '  <div id="' + popupId + '-body" style="padding:14px 16px; display:grid; gap:12px;"></div>' +
-                '  <div style="padding:12px 16px; border-top:1px solid #e6edf5; display:flex; justify-content:flex-end; gap:8px;">' +
-                '    <button type="button" class="mini-button" id="' + popupId + '-cancel">Abbrechen</button>' +
-                '    <button type="button" class="default-button mini-button" id="' + popupId + '-ok">Okay</button>' +
-                '  </div>' +
-                '</div>';
-            document.body.appendChild(overlay);
-            overlay.addEventListener('click', function(e) {
-                if (e.target === overlay) {
-                    overlay.style.display = 'none';
-                }
+            var popupId = 'team-stats-settlement-popup';
+            return ensurePopup(popupId, {
+                width: '680px',
+                zIndex: 100120,
+                shade: 0.45,
+                confirmLabel: 'Okay',
+                body: '<div id="' + popupId + '-body" style="padding:14px 16px; display:grid; gap:12px;"></div>'
             });
-
-            return {
-                overlay: overlay,
-                title: byId(popupId + '-title'),
-                body: byId(popupId + '-body'),
-                okBtn: byId(popupId + '-ok'),
-                cancelBtn: byId(popupId + '-cancel')
-            };
         }
 
         function openSettlementPopup(settlement) {
@@ -1190,64 +1248,19 @@
         }
 
         function ensureExtraCostPopup() {
-            var popupId = config.extraCostPopupId || 'team-stats-extra-cost-popup';
-            var overlay = byId(popupId);
-            if (overlay) {
-                return {
-                    overlay: overlay,
-                    title: byId(popupId + '-title'),
-                    payer: byId(popupId + '-payer'),
-                    amount: byId(popupId + '-amount'),
-                    comment: byId(popupId + '-comment'),
-                    members: byId(popupId + '-members'),
-                    saveBtn: byId(popupId + '-save'),
-                    cancelBtn: byId(popupId + '-cancel'),
-                    allBtn: byId(popupId + '-all'),
-                    noneBtn: byId(popupId + '-none')
-                };
-            }
-
-            overlay = document.createElement('div');
-            overlay.id = popupId;
-            overlay.style.cssText = 'display:none; position:fixed; inset:0; background:rgba(0,0,0,0.38); z-index:100002; align-items:center; justify-content:center; padding:16px;';
-            overlay.innerHTML = '' +
-                '<div style="width:min(520px, 94vw); background:#fff; border-radius:12px; box-shadow:0 12px 32px rgba(0,0,0,0.22); overflow:hidden;">' +
-                '  <div style="padding:14px 16px; border-bottom:1px solid #e6edf5; font-weight:700; color:#1769aa;" id="' + popupId + '-title"></div>' +
-                '  <div style="padding:12px 16px; display:grid; gap:10px;">' +
-                '    <label style="display:grid; gap:4px;"><span>Bezahler</span><select id="' + popupId + '-payer" style="padding:4px 8px; border:1px solid #c8d6e5; border-radius:6px;"></select></label>' +
-                '    <label style="display:grid; gap:4px;"><span>Kommentar</span><input id="' + popupId + '-comment" type="text" maxlength="255" style="padding:4px 8px; border:1px solid #c8d6e5; border-radius:6px;"></label>' +
-                '    <label style="display:grid; gap:4px;"><span>Betrag</span><input id="' + popupId + '-amount" type="number" step="0.01" min="0.01" style="padding:4px 8px; border:1px solid #c8d6e5; border-radius:6px;"></label>' +
-                '    <div style="font-weight:600; color:#1769aa; margin-top:2px;">Relevant für</div>' +
-                '    <div style="display:flex; gap:8px; margin-top:-4px;">' +
-                '      <button type="button" class="mini-button" id="' + popupId + '-all">Alle</button>' +
-                '      <button type="button" class="mini-button" id="' + popupId + '-none">Niemand</button>' +
-                '    </div>' +
-                '    <div id="' + popupId + '-members" style="max-height:180px; overflow:auto; border:1px solid #e6edf5; border-radius:8px; padding:8px;"></div>' +
-                '  </div>' +
-                '  <div style="padding:12px 16px; border-top:1px solid #e6edf5; display:flex; justify-content:flex-end; gap:8px;">' +
-                '    <button type="button" class="mini-button" id="' + popupId + '-cancel">Abbrechen</button>' +
-                '    <button type="button" class="default-button mini-button" id="' + popupId + '-save">Speichern</button>' +
-                '  </div>' +
-                '</div>';
-            document.body.appendChild(overlay);
-            overlay.addEventListener('click', function(e) {
-                if (e.target === overlay) {
-                    overlay.style.display = 'none';
-                }
+            var popupId = 'team-stats-extra-cost-popup';
+            return ensurePopup(popupId, {
+                width: '520px',
+                zIndex: 100002,
+                body: '<div style="padding:12px 16px; display:grid; gap:10px;">'
+                    + popupField('Bezahler', '<select id="' + popupId + '-payer" style="padding:4px 8px; border:1px solid #c8d6e5; border-radius:6px;"></select>')
+                    + popupField('Kommentar', '<input id="' + popupId + '-comment" type="text" maxlength="255" style="padding:4px 8px; border:1px solid #c8d6e5; border-radius:6px;">')
+                    + popupField('Betrag', '<input id="' + popupId + '-amount" type="number" step="0.01" min="0.01" style="padding:4px 8px; border:1px solid #c8d6e5; border-radius:6px;">')
+                    + '<div style="font-weight:600; color:#1769aa; margin-top:2px;">Relevant für</div>'
+                    + '<div style="display:flex; gap:8px; margin-top:-4px;">' + popupAllNoneButtons(popupId) + '</div>'
+                    + '<div id="' + popupId + '-members" style="max-height:180px; overflow:auto; border:1px solid #e6edf5; border-radius:8px; padding:8px;"></div>'
+                    + '</div>'
             });
-
-            return {
-                overlay: overlay,
-                title: byId(popupId + '-title'),
-                payer: byId(popupId + '-payer'),
-                amount: byId(popupId + '-amount'),
-                comment: byId(popupId + '-comment'),
-                members: byId(popupId + '-members'),
-                saveBtn: byId(popupId + '-save'),
-                cancelBtn: byId(popupId + '-cancel'),
-                allBtn: byId(popupId + '-all'),
-                noneBtn: byId(popupId + '-none')
-            };
         }
 
         function openExtraCostPopup(extraCostId) {
@@ -1303,52 +1316,13 @@
         }
 
         function ensureOrderRelevancePopup() {
-            var popupId = config.orderRelevancePopupId || 'team-stats-order-relevance-popup';
-            var overlay = byId(popupId);
-            if (overlay) {
-                return {
-                    overlay: overlay,
-                    title: byId(popupId + '-title'),
-                    list: byId(popupId + '-list'),
-                    saveBtn: byId(popupId + '-save'),
-                    cancelBtn: byId(popupId + '-cancel'),
-                    allBtn: byId(popupId + '-all'),
-                    noneBtn: byId(popupId + '-none')
-                };
-            }
-
-            overlay = document.createElement('div');
-            overlay.id = popupId;
-            overlay.style.cssText = 'display:none; position:fixed; inset:0; background:rgba(0,0,0,0.38); z-index:100001; align-items:center; justify-content:center; padding:16px;';
-            overlay.innerHTML = '' +
-                '<div style="width:min(420px, 94vw); background:#fff; border-radius:12px; box-shadow:0 12px 32px rgba(0,0,0,0.22); overflow:hidden;">' +
-                '  <div style="padding:14px 16px; border-bottom:1px solid #e6edf5; font-weight:700; color:#1769aa;" id="' + popupId + '-title"></div>' +
-                '  <div style="padding:12px 16px; display:flex; gap:8px;">' +
-                '    <button type="button" class="mini-button" id="' + popupId + '-all">Alle</button>' +
-                '    <button type="button" class="mini-button" id="' + popupId + '-none">Niemand</button>' +
-                '  </div>' +
-                '  <div id="' + popupId + '-list" style="padding:0 16px 12px 16px; max-height:280px; overflow:auto;"></div>' +
-                '  <div style="padding:12px 16px; border-top:1px solid #e6edf5; display:flex; justify-content:flex-end; gap:8px;">' +
-                '    <button type="button" class="mini-button" id="' + popupId + '-cancel">Abbrechen</button>' +
-                '    <button type="button" class="default-button mini-button" id="' + popupId + '-save">Speichern</button>' +
-                '  </div>' +
-                '</div>';
-            document.body.appendChild(overlay);
-            overlay.addEventListener('click', function(e) {
-                if (e.target === overlay) {
-                    overlay.style.display = 'none';
-                }
+            var popupId = 'team-stats-order-relevance-popup';
+            return ensurePopup(popupId, {
+                width: '420px',
+                zIndex: 100001,
+                body: '<div style="padding:12px 16px; display:flex; gap:8px;">' + popupAllNoneButtons(popupId) + '</div>'
+                    + '<div id="' + popupId + '-list" style="padding:0 16px 12px 16px; max-height:280px; overflow:auto;"></div>'
             });
-
-            return {
-                overlay: overlay,
-                title: byId(popupId + '-title'),
-                list: byId(popupId + '-list'),
-                saveBtn: byId(popupId + '-save'),
-                cancelBtn: byId(popupId + '-cancel'),
-                allBtn: byId(popupId + '-all'),
-                noneBtn: byId(popupId + '-none')
-            };
         }
 
         function openOrderRelevancePopup(rowKey) {
@@ -1510,7 +1484,6 @@
                     });
                 });
 
-                var relevanceTriggerClass = config.orderRelevanceTriggerClass || 'team-stats-order-relevance-trigger';
                 document.querySelectorAll('.' + relevanceTriggerClass).forEach(function(btn) {
                     btn.addEventListener('click', function() {
                         var rowKey = String(btn.getAttribute('data-row-key') || '');
@@ -1568,13 +1541,6 @@
                     };
                 }
 
-                var extraCostAddClass = config.extraCostAddClass || 'team-stats-extra-cost-add';
-                var extraCostEditClass = config.extraCostEditClass || 'team-stats-extra-cost-edit';
-                var extraCostDeleteClass = config.extraCostDeleteClass || 'team-stats-extra-cost-delete';
-                var extraCostRelevanceTriggerClass = config.extraCostRelevanceTriggerClass || 'team-stats-extra-cost-relevance-trigger';
-                var guestDonationAddClass = config.guestDonationAddClass || 'team-stats-guest-donation-add';
-                var guestDonationEditClass = config.guestDonationEditClass || 'team-stats-guest-donation-edit';
-                var guestDonationDeleteClass = config.guestDonationDeleteClass || 'team-stats-guest-donation-delete';
 
                 document.querySelectorAll('.' + extraCostAddClass).forEach(function(btn) {
                     btn.addEventListener('click', function() {
@@ -1798,17 +1764,15 @@
             }
         }
 
-        async function load(spieltag) {
+        /**
+         * Load the Kostenübersicht of a Spieltag (team event id, a label, or '' for the server default).
+         */
+        async function load(teamEvent) {
             var r = refs();
             if (!r.content) return;
             r.content.innerHTML = '<div style="color:#1769aa;">Lade Daten...</div>';
             try {
-                if (typeof config.beforeLoad === 'function') {
-                    config.beforeLoad(spieltag, state, r);
-                }
-
-                var url = config.buildStatsUrl(spieltag, state, r);
-                var resp = await fetch(url, {
+                var resp = await fetch(config.buildStatsUrl(String(teamEvent || ''), state), {
                     credentials: 'same-origin',
                     headers: { 'X-Requested-With': 'XMLHttpRequest' }
                 });
@@ -1817,30 +1781,24 @@
                     throw new Error((data && data.error) ? data.error : 'Fehler beim Laden der Statistik.');
                 }
 
+                var events = Array.isArray(data.events) ? data.events : [];
+                var selectedEvent = events.filter(function(event) {
+                    return parseInt(event.id, 10) === parseInt(data.team_event_id || 0, 10);
+                })[0] || null;
                 state.currentEventId = parseInt(data.team_event_id || 0, 10);
+                state.teamAdminUserId = selectedEvent ? parseInt(selectedEvent.team_admin_user_id || 0, 10) : 0;
+                state.teamAlias = selectedEvent ? String(selectedEvent.team_alias || '') : String(data.team_alias || '');
+                state.userRole = selectedEvent ? selectedEvent.role : '';
                 state.memberCandidates = Array.isArray(data.member_candidates) ? data.member_candidates : [];
                 state.selectedMemberId = 0;
                 state.selectedIndex = -1;
                 state.isCurrentEventClosed = !!data.team_event_closed;
 
-                if (typeof config.afterLoadData === 'function') {
-                    config.afterLoadData(data, state, r);
-                }
-
-                // After afterLoadData populates the dropdown, update title based on selected option
                 if (r.select) {
-                    var selectedOption = r.select.options[r.select.selectedIndex];
-                    if (selectedOption) {
-                        var selectedTeamAlias = selectedOption.getAttribute('data-team-alias') || '';
-                        if (selectedTeamAlias) {
-                            state.teamAlias = selectedTeamAlias;
-                        }
-                        // Also read data-user-role from the selected option to avoid title flashing
-                        var selectedUserRole = selectedOption.getAttribute('data-user-role') || '';
-                        if (selectedUserRole) {
-                            state.userRole = selectedUserRole;
-                        }
-                    }
+                    fillEventSelect(data, r.select);
+                }
+                if (typeof config.afterLoadData === 'function') {
+                    config.afterLoadData(data, state);
                 }
                 setTitle();
 
@@ -1849,54 +1807,10 @@
                     r.balanceHeader.innerHTML = 'Gesamtsaldo Mannschaftskonto: <span style="color:' + amountColor(accountBalance) + ';">' + formatCurrency(accountBalance) + '</span>';
                 }
 
-                // Use is_editable from API response (computed from can_manage_members flag)
-                // This single flag controls both the header role (Mitglied vs. Mannschaftsführer)
-                // and whether editing elements are shown
-                var isEditable = !!data.is_editable;
-                var userRole = data.user_role || 'Mitglied';
-                
-                // Find the per-event role for the currently selected event
-                var selectedEventForRole = null;
-                var eventsForRole = Array.isArray(data.events) ? data.events : [];
-                var selectedEventIdFromData = parseInt(data.team_event_id || 0, 10);
-                if (selectedEventIdFromData > 0) {
-                    for (var rix = 0; rix < eventsForRole.length; rix++) {
-                        if (parseInt(eventsForRole[rix].id || 0, 10) === selectedEventIdFromData) {
-                            selectedEventForRole = eventsForRole[rix];
-                            break;
-                        }
-                    }
-                }
-                for (var ri = 0; ri < eventsForRole.length; ri++) {
-                    if (selectedEventForRole) {
-                        break;
-                    }
-                    if (String(eventsForRole[ri].label || '') === (data.spieltag || '')) {
-                        selectedEventForRole = eventsForRole[ri];
-                        break;
-                    }
-                }
-                if (!selectedEventForRole && eventsForRole.length > 0) {
-                    selectedEventForRole = eventsForRole[0];
-                }
-                if (selectedEventForRole && selectedEventForRole.can_manage_members) {
-                    userRole = 'Mannschaftsführer';
-                } else if (selectedEventForRole) {
-                    userRole = 'Mitglied';
-                }
-                
-                // Update state.userRole for the popup title
-                state.userRole = userRole;
-                
-                // canManageMembers is based on per-event can_manage_members, not global is_editable
-                // This ensures team members see view-only mode for events they're only members of
-                var eventCanManageMembers = selectedEventForRole && selectedEventForRole.can_manage_members ? true : false;
-                if (!eventCanManageMembers) {
-                    eventCanManageMembers = !!(data.can_manage_members || data.is_editable);
-                }
-                var canManageMembers = eventCanManageMembers && !data.team_event_closed;
+                // Editing only for Spieltage the user manages, and only while they are open
+                var canManageMembers = !!(selectedEvent && selectedEvent.can_manage_members) && !data.team_event_closed;
                 r.content.innerHTML = buildStatsHtml(data, canManageMembers);
-                
+
                 bindCloseEventButton(r);
                 bindMemberControls(canManageMembers);
             } catch (err) {
@@ -1906,31 +1820,19 @@
 
         async function loadCurrentSelection() {
             var r = refs();
-            var selectedValue = r.select ? (r.select.value || '') : '';
-            await load(selectedValue);
+            await load(r.select ? (r.select.value || '') : '');
         }
 
         async function open() {
+            ensureModalElement();
             var r = refs();
-            if (!r.modal || !r.content) return;
-
             var args = Array.prototype.slice.call(arguments);
             r.modal.style.display = 'flex';
             resetBalanceHeader();
-
             if (typeof config.onOpen === 'function') {
-                config.onOpen(args, state, r);
+                config.onOpen(args, state);
             }
-
-            // Don't set title here - it will be set correctly in load() after the dropdown is populated
-
-            var selectedSpieltag = '';
-            if (typeof config.getInitialSpieltag === 'function') {
-                selectedSpieltag = config.getInitialSpieltag(args, state, r) || '';
-            } else if (r.select) {
-                selectedSpieltag = r.select.value || '';
-            }
-            await load(selectedSpieltag);
+            await load(typeof config.getInitialEventId === 'function' ? config.getInitialEventId(args, state) : '');
         }
 
         function close() {
@@ -1941,38 +1843,46 @@
         }
 
         function bind() {
-            var r = refs();
-            if (r.select) {
-                r.select.addEventListener('change', function() {
-                    // Update title based on selected option's data attributes
-                    var selectedOption = r.select.options[r.select.selectedIndex];
-                    if (selectedOption) {
-                        var teamAlias = selectedOption.getAttribute('data-team-alias') || '';
-                        var userRole = selectedOption.getAttribute('data-user-role') || '';
-                        if (teamAlias) {
-                            state.teamAlias = teamAlias;
-                        }
-                        if (userRole) {
-                            state.userRole = userRole;
-                        }
-                    }
-                    // setTitle() will use state.teamAlias and state.userRole
-                    setTitle();
-                    load(r.select.value || '');
-                });
-            }
+            ensureModalElement();
+            refs().select.addEventListener('change', loadCurrentSelection);
         }
 
-        bind();
+        if (document.body) {
+            bind();
+        } else {
+            document.addEventListener('DOMContentLoaded', bind);
+        }
 
         return {
             open: open,
             close: close,
             load: load,
-            state: state,
-            setTitle: setTitle
+            state: state
         };
     }
 
+    /**
+     * Admin pages: open(teamUid, teamEventId) shows the Kostenübersicht of any team account.
+     */
+    function createAdminTeamStatsModal(id) {
+        var urls = global.TEAM_STATS_URLS;
+        return createTeamStatsModal({
+            id: id,
+            endpoints: urls.endpoints,
+            onOpen: function(args, state) {
+                state.teamUid = parseInt(args[0] || 0, 10);
+                state.initialEventId = String(args[1] || '');
+            },
+            getInitialEventId: function(args, state) {
+                return state.initialEventId;
+            },
+            buildStatsUrl: function(teamEventId, state) {
+                return urls.adminStats + '?uid=' + encodeURIComponent(String(state.teamUid))
+                    + (teamEventId ? '&team_event_id=' + encodeURIComponent(teamEventId) : '');
+            }
+        });
+    }
+
     global.createTeamStatsModal = createTeamStatsModal;
+    global.createAdminTeamStatsModal = createAdminTeamStatsModal;
 })(window);

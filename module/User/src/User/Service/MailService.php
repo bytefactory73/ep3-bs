@@ -24,6 +24,11 @@ class MailService extends AbstractService
 
     public function sendTo($fromAddress, $fromName, $replyToAddress, $replyToName, User $recipient, $subject, $text, $optionsOrAttachments = array())
     {
+        // Requests of the live test suite (tests/drinks) send no mails; only on the test system
+        if (!empty($_SERVER['HTTP_X_EP3_SUPPRESS_MAIL']) && $this->isTestEnvironment()) {
+            return;
+        }
+
         $toAddress = $recipient->need('email');
         $toName = $recipient->get('alias') ?: $recipient->get('name') ?: '';
         $originalToAddress = $toAddress;

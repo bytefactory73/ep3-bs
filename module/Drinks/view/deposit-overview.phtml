@@ -229,6 +229,28 @@ $this->setup([
 </div>
 
 <script>
+/**
+ * POST form fields; calls onSuccess(data), or onFailure(error message, null if the answer is unreadable).
+ */
+function postForm(url, fields, onSuccess, onFailure) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', url, true);
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState !== 4) return;
+        var data = null;
+        try {
+            data = JSON.parse(xhr.responseText);
+        } catch (e) {}
+        if (data && xhr.status === 200 && data.success) {
+            onSuccess(data);
+        } else {
+            onFailure(data ? (data.error || '') : null);
+        }
+    };
+    xhr.send(new URLSearchParams(fields).toString());
+}
+
 (function(){
     var button = document.getElementById('paypal-fetch-button');
     var historyButton = document.getElementById('paypal-history-button');
@@ -401,36 +423,25 @@ $this->setup([
             status.style.color = '#444';
             status.textContent = loadingText;
         }
-        var xhr = new XMLHttpRequest();
-        xhr.open('POST', url, true);
-        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState !== 4) return;
+        var enableButtons = function() {
             [button, historyButton, emailsImportButton].forEach(function(b) { if (b) b.disabled = false; });
-            try {
-                var data = JSON.parse(xhr.responseText);
-                if (xhr.status === 200 && data.success) {
-                    if (status) {
-                        status.style.color = '#155724';
-                        status.textContent = data.message || '<?= $this->t('Erfolgreich.') ?>';
-                    }
-                    sessionStorage.setItem('paypalStatusMessage', data.message || '<?= $this->t('Erfolgreich.') ?>');
-                    sessionStorage.setItem('paypalStatusColor', '#155724');
-                    setTimeout(function() { location.reload(); }, 1200);
-                } else {
-                    if (status) {
-                        status.style.color = '#721c24';
-                        status.textContent = data.error || '<?= $this->t('Fehler.') ?>';
-                    }
-                }
-            } catch (e) {
-                if (status) {
-                    status.style.color = '#721c24';
-                    status.textContent = '<?= $this->t('Unerwartete Antwort vom Server.') ?>';
-                }
-            }
         };
-        xhr.send('');
+        postForm(url, {}, function(data) {
+            enableButtons();
+            if (status) {
+                status.style.color = '#155724';
+                status.textContent = data.message || '<?= $this->t('Erfolgreich.') ?>';
+            }
+            sessionStorage.setItem('paypalStatusMessage', data.message || '<?= $this->t('Erfolgreich.') ?>');
+            sessionStorage.setItem('paypalStatusColor', '#155724');
+            setTimeout(function() { location.reload(); }, 1200);
+        }, function(error) {
+            enableButtons();
+            if (status) {
+                status.style.color = '#721c24';
+                status.textContent = error === null ? '<?= $this->t('Unerwartete Antwort vom Server.') ?>' : (error || '<?= $this->t('Fehler.') ?>');
+            }
+        });
     }
 
     if (button) {
@@ -783,31 +794,14 @@ $this->setup([
     function doReassign(userId, userName) {
         statusEl.style.color = '#555';
         statusEl.textContent = 'Wird gespeichert...';
-        var xhr = new XMLHttpRequest();
-        xhr.open('POST', '<?= $this->url('user/reassign-paypal-transaction') ?>', true);
-        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState !== 4) return;
-            try {
-                var data = JSON.parse(xhr.responseText);
-                if (xhr.status === 200 && data.success) {
-                    statusEl.style.color = '#19692b';
-                    var msg = 'Zugeordnet an: ' + userName;
-                    if (data.deposit_linked) {
-                        msg += ' — Buchung automatisch verknüpft.';
-                    }
-                    statusEl.textContent = msg;
-                    setTimeout(function() { location.reload(); }, 900);
-                } else {
-                    statusEl.style.color = '#721c24';
-                    statusEl.textContent = data.error || 'Fehler beim Speichern.';
-                }
-            } catch(e) {
-                statusEl.style.color = '#721c24';
-                statusEl.textContent = 'Unerwartete Antwort.';
-            }
-        };
-        xhr.send('paypal_id=' + encodeURIComponent(currentPaypalId) + '&user_id=' + encodeURIComponent(userId));
+        postForm('<?= $this->url('user/reassign-paypal-transaction') ?>', { paypal_id: currentPaypalId, user_id: userId }, function(data) {
+            statusEl.style.color = '#19692b';
+            statusEl.textContent = 'Zugeordnet an: ' + userName + (data.deposit_linked ? ' — Buchung automatisch verknüpft.' : '');
+            setTimeout(function() { location.reload(); }, 900);
+        }, function(error) {
+            statusEl.style.color = '#721c24';
+            statusEl.textContent = error === null ? 'Unerwartete Antwort.' : (error || 'Fehler beim Speichern.');
+        });
     }
 
     function openModal(paypalId, payerEmail, paypalNote, preferredIds) {
@@ -852,27 +846,13 @@ $this->setup([
         if (!window.confirm('Einzahlung aus dieser PayPal-Transaktion anlegen?')) return;
         trigger.disabled = true;
         trigger.style.opacity = '0.6';
-        var xhr = new XMLHttpRequest();
-        xhr.open('POST', '<?= $this->url('user/create-deposit-from-paypal') ?>', true);
-        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState !== 4) return;
-            try {
-                var data = JSON.parse(xhr.responseText);
-                if (xhr.status === 200 && data.success) {
-                    location.reload();
-                } else {
-                    trigger.disabled = false;
-                    trigger.style.opacity = '';
-                    alert(data.error || 'Fehler beim Gutschreiben der Einzahlung.');
-                }
-            } catch (e) {
-                trigger.disabled = false;
-                trigger.style.opacity = '';
-                alert('Unerwartete Antwort vom Server.');
-            }
-        };
-        xhr.send('paypal_id=' + encodeURIComponent(paypalId) + '&user_id=' + encodeURIComponent(userId));
+        postForm('<?= $this->url('user/create-deposit-from-paypal') ?>', { paypal_id: paypalId, user_id: userId }, function() {
+            location.reload();
+        }, function(error) {
+            trigger.disabled = false;
+            trigger.style.opacity = '';
+            alert(error === null ? 'Unerwartete Antwort vom Server.' : (error || 'Fehler beim Gutschreiben der Einzahlung.'));
+        });
     }
 
     document.getElementById('paypal-reassign-close-x').addEventListener('click', closeModal);
@@ -887,25 +867,12 @@ $this->setup([
         if (!paypalId) return;
         btn.disabled = true;
         btn.textContent = '...';
-        var xhr = new XMLHttpRequest();
-        xhr.open('POST', '<?= $this->url('user/ignore-paypal-transaction') ?>', true);
-        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState !== 4) return;
-            try {
-                var data = JSON.parse(xhr.responseText);
-                if (xhr.status === 200 && data.success) {
-                    location.reload();
-                } else {
-                    btn.disabled = false;
-                    btn.textContent = '<?= $this->t('Ignorieren') ?>';
-                }
-            } catch (e) {
-                btn.disabled = false;
-                btn.textContent = '<?= $this->t('Ignorieren') ?>';
-            }
-        };
-        xhr.send('paypal_id=' + encodeURIComponent(paypalId));
+        postForm('<?= $this->url('user/ignore-paypal-transaction') ?>', { paypal_id: paypalId }, function() {
+            location.reload();
+        }, function() {
+            btn.disabled = false;
+            btn.textContent = '<?= $this->t('Ignorieren') ?>';
+        });
     });
 
     // Deposit anlegen buttons — AJAX instead of form POST

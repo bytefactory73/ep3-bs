@@ -10,7 +10,7 @@ $this->setup([
 ]);
 ?>
 
-<script src="<?= $this->basePath('js/team-stats-modal.js?v=20260608-13') ?>"></script>
+<?= $this->partial('team-stats-modal-script') ?>
 
 <h1><?= $this->t('Spieltage-Übersicht') ?></h1>
 <div class="separator-small"></div>
@@ -112,7 +112,6 @@ $this->setup([
                 class="spieltage-overview-item"
                 data-event-id="<?= $eventId ?>"
                 data-team-uid="<?= $teamUid ?>"
-                data-team-alias="<?= $teamAlias ?>"
                 data-closed="<?= $closed ? '1' : '0' ?>"
             >
                 <span>
@@ -134,99 +133,9 @@ $this->setup([
     </div>
 <?php endif; ?>
 
-<!-- Team stats modal -->
-<div id="spieltageTeamEventStatsModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:100010; align-items:center; justify-content:center;">
-    <div style="position:relative; width:min(980px,96vw); height:90vh; max-height:90vh; background:#fff; border-radius:10px; box-shadow:0 10px 28px rgba(0,0,0,0.25); overflow:auto; padding:18px 16px 16px 16px;">
-        <button type="button" onclick="closeSpieltageModal()" style="position:absolute;top:10px;right:12px;z-index:10;background:#eee;border:none;border-radius:50%;width:34px;height:34px;font-size:20px;cursor:pointer;">&times;</button>
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin:2px 42px 12px 4px; flex-wrap:wrap;">
-            <h2 id="spieltage-team-event-stats-title" style="margin:0; color:#1769aa;">Kostenübersicht</h2>
-            <div id="spieltage-team-event-stats-balance-header" style="font-weight:bold; text-align:right; color:#333;">Gesamtsaldo Mannschaftskonto: -</div>
-        </div>
-        <div style="display:flex; align-items:center; gap:8px; margin:0 4px 12px 4px; flex-wrap:wrap;">
-            <label for="spieltage-team-event-stats-select" style="color:#1769aa; font-weight:bold;">Spieltag:</label>
-            <select id="spieltage-team-event-stats-select" style="font-size:1em; max-width:100%; min-width:220px; padding:4px 6px; border:1px solid #2196f3; border-radius:6px; color:#1769aa;"></select>
-        </div>
-        <div id="spieltageTeamEventStatsContent" style="padding:2px 4px 8px 4px;"></div>
-    </div>
-</div>
-
 <script>
 (function() {
-    function closeSpieltageModal() {
-        var modal = document.getElementById('spieltageTeamEventStatsModal');
-        if (modal) {
-            modal.style.display = 'none';
-        }
-    }
-    window.closeSpieltageModal = closeSpieltageModal;
-
-    var statsModalController = null;
-
-    if (typeof createTeamStatsModal === 'function') {
-        statsModalController = createTeamStatsModal({
-            modalId: 'spieltageTeamEventStatsModal',
-            contentId: 'spieltageTeamEventStatsContent',
-            balanceHeaderId: 'spieltage-team-event-stats-balance-header',
-            selectId: 'spieltage-team-event-stats-select',
-            titleId: 'spieltage-team-event-stats-title',
-            getTitle: function(teamAlias) {
-                var alias = String(teamAlias || '').trim();
-                return alias ? ('Kostenübersicht - ' + alias) : 'Kostenübersicht';
-            },
-            onOpen: function(args, state) {
-                var uid = parseInt(args[0] || 0, 10);
-                var teamEventId = String(args[1] || '');
-                if (uid > 0) {
-                    state.teamUid = uid;
-                }
-                state.preferredTeamEventId = teamEventId;
-                state.teamAlias = String(args[2] || '');
-            },
-            getInitialSpieltag: function(args, state) {
-                return String(state.preferredTeamEventId || '');
-            },
-            buildStatsUrl: function(spieltag, state) {
-                var uid = parseInt(state.teamUid || 0, 10);
-                if (!uid) {
-                    throw new Error('Ungültiger Team-Account.');
-                }
-                var url = '<?= $this->url('user/get-user-team-event-stats-data') ?>?uid=' + encodeURIComponent(String(uid));
-                var teamEventId = String(spieltag || state.preferredTeamEventId || '').trim();
-                if (teamEventId !== '') {
-                    url += '&team_event_id=' + encodeURIComponent(teamEventId);
-                }
-                return url;
-            },
-            endpoints: {
-                members: '<?= $this->url('user/teamlead-team-members') ?>',
-                closeEvent: '<?= $this->url('user/teamlead-close-team-event') ?>'
-            },
-            afterLoadData: function(data, state, refs) {
-                state.preferredTeamEventId = String(data.team_event_id || '');
-                if (!refs.select) return;
-
-                while (refs.select.firstChild) {
-                    refs.select.removeChild(refs.select.firstChild);
-                }
-
-                var teamEvents = Array.isArray(data.events) ? data.events : [];
-                for (var i = 0; i < teamEvents.length; i++) {
-                    var eventRow = teamEvents[i] || {};
-                    var eventId = String(eventRow.id || '').trim();
-                    var label = String(eventRow.label || '').trim();
-                    if (!eventId || !label) continue;
-                    var option = document.createElement('option');
-                    option.value = eventId;
-                    option.textContent = label + (eventRow.closed ? ' (abgeschlossen)' : ' (offen)');
-                    refs.select.appendChild(option);
-                }
-
-                if (state.preferredTeamEventId) {
-                    refs.select.value = state.preferredTeamEventId;
-                }
-            }
-        });
-    }
+    var statsModalController = createAdminTeamStatsModal('spieltage-team-stats');
 
     var list = document.getElementById('spieltage-overview-list');
     var onlyOpenCheckbox = document.getElementById('spieltage-only-open');
@@ -250,11 +159,8 @@ $this->setup([
             if (!btn) return;
             var teamUid = String(btn.getAttribute('data-team-uid') || '').trim();
             var eventId = String(btn.getAttribute('data-event-id') || '').trim();
-            var teamAlias = String(btn.getAttribute('data-team-alias') || '').trim();
             if (!teamUid || !eventId) return;
-            if (statsModalController && typeof statsModalController.open === 'function') {
-                statsModalController.open(teamUid, eventId, teamAlias);
-            }
+            statsModalController.open(teamUid, eventId);
         });
     }
 })();

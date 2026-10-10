@@ -578,202 +578,92 @@ $this->setup([
             </thead>
             <tbody>
                 <?php
-                // Prepare column sums
+                // Cells arrive formatted for display ('3', '1.234,50'): parse them into numbers.
+                $isAmountMode = $this->mode === 'amount';
+                $cellValue = function ($cell) use ($isAmountMode) {
+                    $raw = is_array($cell) ? (string)($isAmountMode ? $cell['amount'] : $cell['count']) : '';
+                    $number = str_replace(['.', ','], ['', '.'], $raw);
+                    return ($raw !== '' && is_numeric($number)) ? (float)$number : 0.0;
+                };
+                $formatValue = function ($value) use ($isAmountMode) {
+                    return $value != 0 ? ($isAmountMode ? number_format($value, 2, ',', '.') : $value) : '';
+                };
+                $weekdayNames = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+                $showUsers = $this->show_users === '1';
+
+                // Rows: [label, user alias or null, [drink id => value]], newest date first
+                // (weekday grouping: Sunday to Saturday)
+                $groups = [];
+                $dates = array_keys($this->orders);
+                rsort($dates);
+                foreach ($dates as $date) {
+                    $dt = DateTime::createFromFormat('Y-m-d', substr($date, 0, 10));
+                    if ($this->group === 'weekday') {
+                        if (!$dt) {
+                            continue;
+                        }
+                        $key = (int)$dt->format('w');
+                        $label = $weekdayNames[$key];
+                    } else {
+                        $key = $date;
+                        $label = ($this->group === 'date' && $dt) ? $date . ' (' . $weekdayNames[(int)$dt->format('w')] . ')' : $date;
+                    }
+                    if (!isset($groups[$key])) {
+                        $groups[$key] = ['label' => $label, 'users' => []];
+                    }
+                    foreach ($this->orders[$date] as $uid => $drinks) {
+                        foreach ($activeDrinks as $drink) {
+                            $did = $drink['id'];
+                            $value = $cellValue(isset($drinks[$did]) ? $drinks[$did] : null);
+                            if ($value != 0) {
+                                $groups[$key]['users'][$uid][$did] = (isset($groups[$key]['users'][$uid][$did]) ? $groups[$key]['users'][$uid][$did] : 0) + $value;
+                            }
+                        }
+                    }
+                }
+                if ($this->group === 'weekday') {
+                    ksort($groups);
+                }
+
+                $rows = [];
+                foreach ($groups as $group) {
+                    if ($showUsers) {
+                        foreach ($this->users as $user) {
+                            $uid = $user->need('uid');
+                            if (!empty($group['users'][$uid])) {
+                                $rows[] = [$group['label'], $user->get('alias'), $group['users'][$uid]];
+                            }
+                        }
+                    } elseif (!empty($group['users'])) {
+                        $cells = [];
+                        foreach ($group['users'] as $userCells) {
+                            foreach ($userCells as $did => $value) {
+                                $cells[$did] = (isset($cells[$did]) ? $cells[$did] : 0) + $value;
+                            }
+                        }
+                        $rows[] = [$group['label'], null, $cells];
+                    }
+                }
+
                 $colSums = [];
                 foreach ($activeDrinks as $drink) {
                     $colSums[$drink['id']] = 0;
                 }
-                if ($this->group === 'weekday') {
-                    $weekdayOrders = array_fill(0, 7, []);
-                    // Aggregate all orders by weekday (0=So, 1=Mo, ...)
-                    foreach ($this->orders as $date => $userOrders) {
-                        $dt = DateTime::createFromFormat('Y-m-d', substr($date, 0, 10));
-                        if ($dt) {
-                            $w = (int)$dt->format('w');
-                            if (!isset($weekdayOrders[$w])) $weekdayOrders[$w] = [];
-                            foreach ($userOrders as $uid => $drinks) {
-                                if (!isset($weekdayOrders[$w][$uid])) $weekdayOrders[$w][$uid] = [];
-                                foreach ($drinks as $did => $cell) {
-                                    if (!isset($weekdayOrders[$w][$uid][$did])) $weekdayOrders[$w][$uid][$did] = ['count' => 0.0, 'amount' => 0.0];
-                                    // Only sum if value is not empty and numeric
-                                    $countVal = $cell['count'];
-                                    $amountVal = $cell['amount'];
-                                    if ($countVal !== '' && is_numeric(str_replace([',', '.'], ['', '.'], $countVal))) {
-                                        $weekdayOrders[$w][$uid][$did]['count'] += (float)str_replace([',', '.'], ['', '.'], $countVal);
-                                    }
-                                    if ($amountVal !== '' && is_numeric(str_replace([',', '.'], ['', '.'], $amountVal))) {
-                                        $weekdayOrders[$w][$uid][$did]['amount'] += str_replace([',', '.'], ['', '.'], $amountVal);
-                                    }
-                                }
-                            }
-                        }
+                $cellStyle = 'border-right: 1.5px solid #555; padding: 2px 2px;';
+                foreach ($rows as $row) {
+                    list($label, $alias, $cells) = $row;
+                    echo '<tr style="border-bottom: 1px solid #eee;">';
+                    echo '<td class="date-col" style="' . ($showUsers ? 'border-right: 1px solid #eee; padding: 2px 2px;' : $cellStyle) . '">' . $this->escapeHtml($label) . '</td>';
+                    if ($showUsers) {
+                        echo '<td class="user-col" style="' . $cellStyle . '">' . $this->escapeHtml($alias) . '</td>';
                     }
-                    $weekdayNames = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
-                    for ($w = 0; $w < 7; ++$w) {
-                        $userOrders = $weekdayOrders[$w];
-                        if ($this->show_users === '1') {
-                            foreach ($this->users as $user) {
-                                $uid = $user->need('uid');
-                                $hasOrder = false;
-                                $rowSum = 0;
-                                foreach ($activeDrinks as $drink) {
-                                    $did = $drink['id'];
-                                    if (!empty($userOrders[$uid][$did]['count'])) {
-                                        $hasOrder = true;
-                                        break;
-                                    }
-                                }
-                                if (!$hasOrder) continue;
-                                echo '<tr style="border-bottom: 1px solid #eee;">';
-                                echo '<td class="date-col" style="border-right: 1px solid #eee; padding: 2px 2px;">' . $this->escapeHtml($weekdayNames[$w]) . '</td>';
-                                echo '<td class="user-col" style="border-right: 1.5px solid #555; padding: 2px 2px;">' . $this->escapeHtml($user->get('alias')) . '</td>';
-                                foreach ($activeDrinks as $drink) {
-                                    $did = $drink['id'];
-                                    $cell = isset($userOrders[$uid][$did]) ? $userOrders[$uid][$did] : ['count' => '', 'amount' => ''];
-                                    $qty = $this->mode === 'amount' ? $cell['amount'] : $cell['count'];
-                                    $val = (float)str_replace(['.', ','], ['', '.'], $qty);
-                                    if ($this->mode === 'amount')
-                                        $val = $val / 100.0;
-                                    if ($qty !== '' && is_numeric($val)) {
-                                        $rowSum += (float)$val;
-                                        $colSums[$did] += (float)$val;
-                                    }
-                                    echo '<td style="text-align: right; border-right: 1.5px solid #555; padding: 2px 2px;">' . ($qty !== '' ? $qty : '') . '</td>';
-                                }
-                                echo '<td class="sum-col" style="border-left: 2px solid #555; padding: 2px 2px;">' . ($rowSum !== 0 ? ($this->mode === 'amount' ? number_format($rowSum, 2, ',', '.') : $rowSum) : '') . '</td>';
-                                echo '</tr>';
-                            }
-                        } else {
-                            $rowSum = 0;
-                            $drinkSums = [];
-                            foreach ($activeDrinks as $drink) {
-                                $did = $drink['id'];
-                                $drinkSums[$did] = 0;
-                            }
-                            foreach ($userOrders as $uid => $drinks) {
-                                foreach ($drinks as $did => $cell) {
-                                    $qty = $this->mode === 'amount' ? $cell['amount'] : $cell['count'];
-                                    $val = str_replace(['.', ','], ['', '.'], $qty);
-                                    if ($this->mode === 'amount')
-                                        $val = $val / 100.0;
-                                    if ($qty !== '' && is_numeric($val)) {
-                                        $drinkSums[$did] += (float)$val;
-                                        $colSums[$did] += (float)$val;
-                                        $rowSum += (float)$val;
-                                    }
-                                }
-                            }
-                            // Only show row if there is at least one value
-                            $hasAny = array_sum($drinkSums) > 0;
-                            if (!$hasAny) continue;
-                            echo '<tr style="border-bottom: 1px solid #eee;">';
-                            echo '<td class="date-col" style="border-right: 1.5px solid #555; padding: 2px 2px;">' . $this->escapeHtml($weekdayNames[$w]) . '</td>';
-                            foreach ($activeDrinks as $drink) {
-                                $did = $drink['id'];
-                                $qty = $drinkSums[$did];
-                                echo '<td style="text-align: right; border-right: 1.5px solid #555; padding: 2px 2px;">' . ($qty !== 0 ? ($this->mode === 'amount' ? number_format($qty, 2, ',', '.') : $qty) : '') . '</td>';
-                            }
-                            echo '<td class="sum-col" style="border-left: 2px solid #555; padding: 2px 2px;">' . ($rowSum !== 0 ? ($this->mode === 'amount' ? number_format($rowSum, 2, ',', '.') : $rowSum) : '') . '</td>';
-                            echo '</tr>';
-                        }
+                    foreach ($activeDrinks as $drink) {
+                        $value = isset($cells[$drink['id']]) ? $cells[$drink['id']] : 0;
+                        $colSums[$drink['id']] += $value;
+                        echo '<td style="text-align: right; ' . $cellStyle . '">' . $formatValue($value) . '</td>';
                     }
-                } else {
-                    if ($this->show_users === '1') {
-                        // Show per user
-                        // Sort dates descending (newest to oldest)
-                        $dates = array_keys($this->orders);
-                        rsort($dates);
-                        foreach ($dates as $date) {
-                            $userOrders = $this->orders[$date];
-                            foreach ($this->users as $user) {
-                                $uid = $user->need('uid');
-                                $hasOrder = false;
-                                $rowSum = 0;
-                        foreach ($activeDrinks as $drink) {
-                            $did = $drink['id'];
-                            if (!empty($userOrders[$uid][$did]['count'])) {
-                                $hasOrder = true;
-                                break;
-                            }
-                        }
-                        if (!$hasOrder) continue;
-                        // Add week day for day grouping
-                        $dateLabel = $date;
-                        if ($this->group === 'date') {
-                            $dt = DateTime::createFromFormat('Y-m-d', substr($date, 0, 10));
-                            if ($dt) {
-                                $weekdays = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
-                                $dateLabel .= ' (' . $weekdays[(int)$dt->format('w')] . ')';
-                            }
-                        }
-                        echo '<tr style="border-bottom: 1px solid #eee;">';
-                        echo '<td class="date-col" style="border-right: 1px solid #eee; padding: 2px 2px;">' . $this->escapeHtml($dateLabel) . '</td>';
-                        echo '<td class="user-col" style="border-right: 1.5px solid #555; padding: 2px 2px;">' . $this->escapeHtml($user->get('alias')) . '</td>';
-                        foreach ($activeDrinks as $drink) {
-                            $did = $drink['id'];
-                            $cell = isset($userOrders[$uid][$did]) ? $userOrders[$uid][$did] : ['count' => '', 'amount' => ''];
-                            $qty = $this->mode === 'amount' ? $cell['amount'] : $cell['count'];
-                            $val = str_replace(['.', ','], ['', '.'], $qty); // for sum, convert to float
-                            if ($qty !== '' && is_numeric($val)) {
-                                $rowSum += (float)$val;
-                                $colSums[$did] += (float)$val;
-                            }
-                            echo '<td style="text-align: right; border-right: 1.5px solid #555; padding: 2px 2px;">' . ($qty !== '' ? $qty : '') . '</td>';
-                        }
-                                // Row sum
-                                echo '<td class="sum-col" style="border-left: 2px solid #555; padding: 2px 2px;">' . ($rowSum !== 0 ? ($this->mode === 'amount' ? number_format($rowSum, 2, ',', '.') : $rowSum) : '') . '</td>';
-                                echo '</tr>';
-                            }
-                        }
-                    } else {
-                        // Sum up all users per date
-                        // Sort dates descending (newest to oldest)
-                        $dates = array_keys($this->orders);
-                        rsort($dates);
-                        foreach ($dates as $date) {
-                            $userOrders = $this->orders[$date];
-                            $rowSum = 0;
-                            $drinkSums = [];
-                        foreach ($activeDrinks as $drink) {
-                            $did = $drink['id'];
-                            $drinkSums[$did] = 0;
-                        }
-                            foreach ($userOrders as $uid => $drinks) {
-                        foreach ($activeDrinks as $drink) {
-                            $did = $drink['id'];
-                            $cell = (isset($drinks[$did]) && is_array($drinks[$did])) ? $drinks[$did] : ['count' => '', 'amount' => ''];
-                            $qty = $this->mode === 'amount' ? ($cell['amount'] ?? '') : ($cell['count'] ?? '');
-                            $val = str_replace(['.', ','], ['', '.'], $qty);
-                            if ($qty !== '' && is_numeric($val)) {
-                                if (!isset($drinkSums[$did])) $drinkSums[$did] = 0;
-                                if (!isset($colSums[$did])) $colSums[$did] = 0;
-                                $drinkSums[$did] += (float)$val;
-                                $colSums[$did] += (float)$val;
-                                $rowSum += (float)$val;
-                            }
-                        }
-                            }
-                            // Add week day for day grouping
-                            $dateLabel = $date;
-                            if ($this->group === 'date') {
-                                $dt = DateTime::createFromFormat('Y-m-d', substr($date, 0, 10));
-                                if ($dt) {
-                                    $weekdays = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
-                                    $dateLabel .= ' (' . $weekdays[(int)$dt->format('w')] . ')';
-                                }
-                            }
-                            echo '<tr style="border-bottom: 1px solid #eee;">';
-                            echo '<td class="date-col" style="border-right: 1.5px solid #555; padding: 2px 2px;">' . $this->escapeHtml($dateLabel) . '</td>';
-                            // no user column
-                            foreach ($activeDrinks as $drink) {
-                                $did = $drink['id'];
-                                $qty = isset($drinkSums[$did]) ? $drinkSums[$did] : 0;
-                                echo '<td style="text-align: right; border-right: 1.5px solid #555; padding: 2px 2px;">' . ($qty !== 0 ? ($this->mode === 'amount' ? number_format($qty, 2, ',', '.') : $qty) : '') . '</td>';
-                            }
-                            echo '<td class="sum-col" style="border-left: 2px solid #555; padding: 2px 2px;">' . ($rowSum !== 0 ? ($this->mode === 'amount' ? number_format($rowSum, 2, ',', '.') : $rowSum) : '') . '</td>';
-                            echo '</tr>';
-                        }
-                    }
+                    echo '<td class="sum-col" style="border-left: 2px solid #555; padding: 2px 2px;">' . $formatValue(array_sum($cells)) . '</td>';
+                    echo '</tr>';
                 }
                 ?>
             </tbody>
@@ -782,14 +672,11 @@ $this->setup([
                     <th colspan="<?= $this->show_users === '1' ? 2 : 1 ?>" style="text-align: right; font-weight: bold; border-top: 2px solid #555;">Summe</th>
                     <?php foreach ($activeDrinks as $drink): ?>
                         <th style="text-align: right; font-weight: bold; border-top: 2px solid #555;">
-                            <?= $colSums[$drink['id']] !== 0 ? ($this->mode === 'amount' ? number_format($colSums[$drink['id']], 2, ',', '.') : $colSums[$drink['id']]) : '' ?>
+                            <?= $formatValue($colSums[$drink['id']]) ?>
                         </th>
                     <?php endforeach; ?>
                     <th class="sum-col" style="text-align: right; font-weight: bold; border-top: 2px solid #555;">
-                        <?php
-                        $totalSum = array_sum($colSums);
-                        echo $totalSum !== 0 ? ($this->mode === 'amount' ? number_format($totalSum, 2, ',', '.') : $totalSum) : '';
-                        ?>
+                        <?= $formatValue(array_sum($colSums)) ?>
                     </th>
                 </tr>
             </tfoot>
