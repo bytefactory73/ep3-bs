@@ -23,23 +23,10 @@ $drinksEnabled = isset($this->drinksEnabled) ? (bool)$this->drinksEnabled : true
 $showFullBalanceInSimple = (!$simpleOrderMode && !empty($this->thekenadmin)); // Show balance in title bar only for non-simple-mode thekenadmin users
 $showBalanceColumn = (!$simpleOrderMode || $showFullBalanceInSimple || $isTeamAccount);
 
-// Party Mode early block (with timeframe gating) - uses option() helper per key
-$__partyModeEnabled = false; $__partyModeMessage = ''; $__partyModeStart=''; $__partyModeEnd='';
-try {
-    try { $__partyModeEnabledRaw = $this->option('party_mode.enabled', false); } catch (RuntimeException $e) { $__partyModeEnabledRaw = false; }
-    $__partyModeEnabledBase = ($__partyModeEnabledRaw === '1' || $__partyModeEnabledRaw === 1 || $__partyModeEnabledRaw === true);
-    try { $__partyModeMessage = (string)$this->option('party_mode.message', ''); } catch (RuntimeException $e) {}
-    try { $__partyModeStart = (string)$this->option('party_mode.start', ''); } catch (RuntimeException $e) {}
-    try { $__partyModeEnd = (string)$this->option('party_mode.end', ''); } catch (RuntimeException $e) {}
-    $now = time(); $activeWithin = true;
-    $sTs = $__partyModeStart && ($ts=strtotime($__partyModeStart))!==false ? $ts : null;
-    $eTs = $__partyModeEnd && ($ts=strtotime($__partyModeEnd))!==false ? $ts : null;
-    if ($sTs && $now < $sTs) $activeWithin = false;
-    if ($eTs && $now > $eTs) $activeWithin = false;
-    $__partyModeEnabled = $__partyModeEnabledBase && $activeWithin;
-} catch (Exception $e) { $__partyModeEnabled = false; }
-if ($__partyModeEnabled) {
-    echo '<div class="party-mode-block" style="margin:20px 0;font-size:1.2em;line-height:1.4;">' . nl2br($this->escapeHtml($__partyModeMessage ?: $this->t('Ordering is currently disabled.'))) . '</div>';
+// Party mode: ordering is disabled, only the message is shown
+$partyMode = isset($this->partyMode) ? $this->partyMode : ['active' => false];
+if ($partyMode['active']) {
+    echo '<div class="party-mode-block" style="margin:20px 0;font-size:1.2em;line-height:1.4;">' . nl2br($this->escapeHtml($partyMode['message'] ?: $this->t('Ordering is currently disabled.'))) . '</div>';
     return;
 }
 ?>
@@ -454,10 +441,6 @@ if ($__partyModeEnabled) {
                     return value;
                 }
 
-                function formatMoneySendCurrency(amount) {
-                    return Number(amount || 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
-                }
-
                 function resetMoneySendTeamEvents() {
                     selectedRecipientTeamEventId = '';
                     if (moneySendTeamEventSelect) {
@@ -496,7 +479,7 @@ if ($__partyModeEnabled) {
                             if (!moneySendTeamEventSelect) return;
                             var option = document.createElement('option');
                             option.value = String(teamEvent.id || '');
-                            option.textContent = String(teamEvent.label || '') + ' (' + formatMoneySendCurrency(teamEvent.balance || 0) + ')';
+                            option.textContent = String(teamEvent.label || '');
                             if (idx === 0) {
                                 option.selected = true;
                                 selectedRecipientTeamEventId = option.value;

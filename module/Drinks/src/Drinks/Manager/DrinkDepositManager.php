@@ -1,34 +1,17 @@
 <?php
 namespace Drinks\Manager;
 
-use RuntimeException;
+use Drinks\Service\DbSchema;
 use Zend\Db\Adapter\Adapter;
 
 class DrinkDepositManager
 {
     protected $dbAdapter;
 
-    /** @var bool */
-    private $connectionUtf8mb4Initialized = false;
-
     public function __construct(Adapter $dbAdapter)
     {
         $this->dbAdapter = $dbAdapter;
-        $this->ensureUtf8mb4Connection();
-    }
-
-    private function ensureUtf8mb4Connection()
-    {
-        if ($this->connectionUtf8mb4Initialized) {
-            return;
-        }
-
-        try {
-            $this->dbAdapter->query('SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci', []);
-            $this->connectionUtf8mb4Initialized = true;
-        } catch (\Throwable $e) {
-            $this->connectionUtf8mb4Initialized = false;
-        }
+        DbSchema::ensureUtf8mb4($dbAdapter);
     }
 
     public function getByUser($userId, $includeDeleted = false)
@@ -46,24 +29,18 @@ class DrinkDepositManager
 
     public function addDeposit($userId, $amount, $comment = null, $createdByUserId = null, $userIdDeleted = null, $teamEventId = null, $depositTime = null)
     {
-        // Both deleted and user_id_deleted are optional/nullable
-        if ($userIdDeleted === null) {
-            if ($depositTime !== null) {
-                $sql = 'INSERT INTO drink_deposits (user_id, amount, comment, teamevent_id, createdbyuserid, deposit_time) VALUES (?, ?, ?, ?, ?, ?)';
-                $params = [$userId, $amount, $comment, $teamEventId, $createdByUserId, $depositTime];
-            } else {
-                $sql = 'INSERT INTO drink_deposits (user_id, amount, comment, teamevent_id, createdbyuserid) VALUES (?, ?, ?, ?, ?)';
-                $params = [$userId, $amount, $comment, $teamEventId, $createdByUserId];
-            }
-        } else {
-            if ($depositTime !== null) {
-                $sql = 'INSERT INTO drink_deposits (user_id, amount, comment, teamevent_id, createdbyuserid, user_id_deleted, deposit_time) VALUES (?, ?, ?, ?, ?, ?, ?)';
-                $params = [$userId, $amount, $comment, $teamEventId, $createdByUserId, $userIdDeleted, $depositTime];
-            } else {
-                $sql = 'INSERT INTO drink_deposits (user_id, amount, comment, teamevent_id, createdbyuserid, user_id_deleted) VALUES (?, ?, ?, ?, ?, ?)';
-                $params = [$userId, $amount, $comment, $teamEventId, $createdByUserId, $userIdDeleted];
-            }
+        $columns = ['user_id', 'amount', 'comment', 'teamevent_id', 'createdbyuserid'];
+        $params = [$userId, $amount, $comment, $teamEventId, $createdByUserId];
+        // user_id_deleted and deposit_time keep their column defaults unless given
+        if ($userIdDeleted !== null) {
+            $columns[] = 'user_id_deleted';
+            $params[] = $userIdDeleted;
         }
+        if ($depositTime !== null) {
+            $columns[] = 'deposit_time';
+            $params[] = $depositTime;
+        }
+        $sql = 'INSERT INTO drink_deposits (' . implode(', ', $columns) . ') VALUES (' . implode(', ', array_fill(0, count($columns), '?')) . ')';
         $statement = $this->dbAdapter->createStatement($sql, $params);
         return $statement->execute();
     }

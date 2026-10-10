@@ -1,13 +1,13 @@
 <?php
 namespace Drinks\Manager;
 
+use Drinks\Service\DbSchema;
 use Zend\Db\Adapter\Adapter;
 
 class DrinkOrderManager
 {
     const CANCEL_WINDOW_SECONDS = 600; // 10 minutes
     protected $dbAdapter;
-    protected $hasTransferReferenceColumns = null;
 
     public function __construct(Adapter $dbAdapter)
     {
@@ -23,7 +23,7 @@ class DrinkOrderManager
 
     public function addOrder($userId, $drinkId, $quantity, $addedByUserId = null, $isAutoOrder = 0, $comment = null, $customPrice = null, $teamEventId = null)
     {
-        if ((int)$drinkId === 1 || (int)$drinkId === -1) {
+        if (DrinkManager::isCustomPriceDrink($drinkId)) {
             // For "Sonstiges" (1) and money transfer (-1), use provided custom price.
             $price = ($customPrice !== null) ? (float)$customPrice : 0.0;
         } else {
@@ -41,32 +41,15 @@ class DrinkOrderManager
                 $addedByUserId = $_SESSION['user_id'];
             }
         }
+        $columns = ['user_id', 'drink_id', 'quantity', 'price', 'comment', 'teamevent_id', 'is_auto_order'];
+        $params = [$userId, $drinkId, $quantity, $price, $comment, $teamEventId, $isAutoOrder];
         if ($addedByUserId !== null) {
-            $sql = 'INSERT INTO drink_orders (user_id, drink_id, quantity, price, comment, teamevent_id, user_id_added, is_auto_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
-            $params = [$userId, $drinkId, $quantity, $price, $comment, $teamEventId, $addedByUserId, $isAutoOrder];
-        } else {
-            $sql = 'INSERT INTO drink_orders (user_id, drink_id, quantity, price, comment, teamevent_id, is_auto_order) VALUES (?, ?, ?, ?, ?, ?, ?)';
-            $params = [$userId, $drinkId, $quantity, $price, $comment, $teamEventId, $isAutoOrder];
+            $columns[] = 'user_id_added';
+            $params[] = $addedByUserId;
         }
+        $sql = 'INSERT INTO drink_orders (' . implode(', ', $columns) . ') VALUES (' . implode(', ', array_fill(0, count($columns), '?')) . ')';
         $statement = $this->dbAdapter->createStatement($sql, $params);
         return $statement->execute();
-    }
-
-    protected function canUseTransferReferenceColumns()
-    {
-        if ($this->hasTransferReferenceColumns !== null) {
-            return $this->hasTransferReferenceColumns;
-        }
-
-        try {
-            $orderCol = $this->dbAdapter->query("SHOW COLUMNS FROM drink_orders LIKE 'transfer_reference'", [])->current();
-            $depositCol = $this->dbAdapter->query("SHOW COLUMNS FROM drink_deposits LIKE 'transfer_reference'", [])->current();
-            $this->hasTransferReferenceColumns = (bool)$orderCol && (bool)$depositCol;
-        } catch (\Exception $e) {
-            $this->hasTransferReferenceColumns = false;
-        }
-
-        return $this->hasTransferReferenceColumns;
     }
 
     /**
@@ -128,7 +111,7 @@ class DrinkOrderManager
         $result = $statement->execute();
 
         // Keep transfer counterpart (deposit) in sync when a transfer order is cancelled.
-        if ($result->getAffectedRows() > 0 && $this->canUseTransferReferenceColumns()) {
+        if ($result->getAffectedRows() > 0 && DbSchema::hasTransferReferenceColumns($this->dbAdapter)) {
             try {
                 $transferRow = $this->dbAdapter->query('SELECT transfer_reference FROM drink_orders WHERE id = ?', [$orderId])->current();
                 $transferReference = $transferRow && isset($transferRow['transfer_reference'])

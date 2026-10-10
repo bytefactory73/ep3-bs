@@ -19,62 +19,20 @@ class IndexController extends AbstractActionController
         $user = $calendarViewModel->getVariable('user');
 
         $teamLeadTeams = [];
-        $teamLeadTeamUserId = 0;
-        $teamLeadTeamAlias = '';
         $isTeamMember = false;
-
         if ($user) {
-            $email = trim((string)$user->get('email'));
-            if ($email !== '') {
-                try {
-                    $dbAdapter = $this->getServiceLocator()->get('Zend\\Db\\Adapter\\Adapter');
-
-                    // Get ALL teams where the user is teamlead
-                    $teamLeadRows = $dbAdapter->query(
-                        'SELECT da.user_id, u.alias
-                         FROM drink_aliases da
-                         LEFT JOIN bs_users u ON u.uid = da.user_id
-                         WHERE da.is_team = 1
-                             AND FIND_IN_SET(LOWER(TRIM(?)), REPLACE(REPLACE(LOWER(COALESCE(da.teamlead_email, "")), " ", ""), ";", ",")) > 0
-                         ORDER BY da.user_id ASC',
-                        [$email]
-                    )->toArray();
-
-                    foreach ($teamLeadRows as $teamLeadRow) {
-                        if (!empty($teamLeadRow['user_id'])) {
-                            $teamLeadTeams[] = [
-                                'user_id' => (int)$teamLeadRow['user_id'],
-                                'alias' => isset($teamLeadRow['alias']) ? trim((string)$teamLeadRow['alias']) : '',
-                            ];
-                        }
-                    }
-
-                    // Use the first team for backward compatibility (button display)
-                    if (!empty($teamLeadTeams)) {
-                        $teamLeadTeamUserId = $teamLeadTeams[0]['user_id'];
-                        $teamLeadTeamAlias = $teamLeadTeams[0]['alias'];
-                    }
-
-                    // Check if user is a team member of any team event
-                    $userUid = (int)$user->get('uid');
-                    if ($userUid > 0) {
-                        $memberRow = $dbAdapter->query(
-                            'SELECT COUNT(DISTINCT tm.team_event_id) AS cnt
-                             FROM drinks_teamevent_members tm
-                             INNER JOIN drinks_teamevents te ON tm.team_event_id = te.id
-                             WHERE tm.user_id = ?
-                             LIMIT 1',
-                            [$userUid]
-                        )->current();
-                        $isTeamMember = ($memberRow && (int)$memberRow['cnt'] > 0);
-                    }
-                } catch (\Exception $e) {
-                    $teamLeadTeamUserId = 0;
-                    $teamLeadTeamAlias = '';
-                    $isTeamMember = false;
-                }
+            try {
+                $drinkManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkManager');
+                $teamLeadTeams = $drinkManager->getLedTeams($user->get('email'));
+                $isTeamMember = $drinkManager->isTeamEventMember($user->get('uid'));
+            } catch (\Exception $e) {
+                $teamLeadTeams = [];
+                $isTeamMember = false;
             }
         }
+        // The first led team drives the button for backward compatibility
+        $teamLeadTeamUserId = !empty($teamLeadTeams) ? $teamLeadTeams[0]['user_id'] : 0;
+        $teamLeadTeamAlias = !empty($teamLeadTeams) ? $teamLeadTeams[0]['alias'] : '';
 
         $this->redirectBack()->setOrigin('frontend');
 

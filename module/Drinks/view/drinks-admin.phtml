@@ -105,24 +105,15 @@ $this->setup([
     </div>
 
     <?php
-    // Party-Mode values: prefer controller-provided variables, fallback to options defensively
-    if (!isset($partyModeEnabled) || !isset($partyModeMessage)) {
-        $partyModeEnabled = false;
-        $partyModeMessage = '';
-        try {
-            $rawEnabled = $this->option('party_mode.enabled', false); // may throw if key missing
-            $partyModeEnabled = ($rawEnabled === '1' || $rawEnabled === 1 || $rawEnabled === true);
-        } catch (\RuntimeException $e) {}
-        try {
-            $partyModeMessage = (string)$this->option('party_mode.message', '');
-        } catch (\RuntimeException $e) {}
-    }
+    $partyModeEnabled = $this->partyMode['enabled'];
+    $partyModeActive = $this->partyMode['active'];
+    $partyModeMessage = $this->partyMode['message'];
     ?>
 
     <div style="margin: 0 0 24px 0; padding:16px; border:1px solid #ddd; border-radius:8px; background:#fafafa;">
         <div style="display:flex; align-items:center; gap:12px; margin:0 0 12px 0; flex-wrap:nowrap;">
             <h2 style="margin:0; flex:0 0 auto; display:inline-flex; align-items:center;">System Nachricht</h2>
-            <?php if (isset($partyModeActive) && $partyModeEnabled): ?>
+            <?php if ($partyModeEnabled): ?>
                 <?php if ($partyModeActive): ?>
                     <span style="display:inline-block; padding:4px 8px; background:#d4edda; color:#155724; border:1px solid #c3e6cb; border-radius:4px; font-size:0.85em;">Aktiv (innerhalb Zeitfenster)</span>
                 <?php else: ?>
@@ -140,10 +131,8 @@ $this->setup([
             </label>
             <?php
             // Pre-fill start/end (YYYY-MM-DDTHH:MM for datetime-local)
-            $partyModeStartOpt = '';
-            $partyModeEndOpt = '';
-            try { $partyModeStartOpt = $this->option('party_mode.start', ''); } catch (\RuntimeException $e) {}
-            try { $partyModeEndOpt = $this->option('party_mode.end', ''); } catch (\RuntimeException $e) {}
+            $partyModeStartOpt = $this->partyMode['start'];
+            $partyModeEndOpt = $this->partyMode['end'];
             // Expect stored format ISO 8601 (Y-m-d H:i:s). Convert to datetime-local value.
             $toLocalValue = function($val) {
                 if (!$val) return '';

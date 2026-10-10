@@ -39,33 +39,15 @@ if (PHP_SAPI !== 'cli' && !headers_sent()) {
     header('Content-Type: text/plain; charset=utf-8');
 }
 
-$loadOption = function ($key) use ($optionManager) {
-    try {
-        $value = (string)$optionManager->get('paypal.' . $key, '');
-        if ($value === '' && strpos($key, '_') !== false) {
-            $value = (string)$optionManager->get('paypal.' . str_replace('_', '.', $key), '');
-        }
-        return trim($value);
-    } catch (\Throwable $e) {
-        return '';
-    }
-};
-
-$imapHost = $loadOption('imap_host');
-$imapPort = $loadOption('imap_port');
-$imapUser = $loadOption('imap_user');
-$imapPassword = $loadOption('imap_password');
-$imapSsl = $loadOption('imap_ssl');
-$clientId = $loadOption('paypal_client_id');
-$clientSecret = $loadOption('paypal_client_secret');
-
-if ($imapHost === '' || $imapPort === '' || $imapUser === '' || $imapPassword === '') {
+$settings = \Drinks\Manager\PaypalTransactionManager::loadSettings($optionManager);
+if (!\Drinks\Manager\PaypalTransactionManager::hasImapSettings($settings)) {
     $fail('PayPal IMAP settings are incomplete.');
 }
-
-if ($clientId === '' || $clientSecret === '') {
+if (!\Drinks\Manager\PaypalTransactionManager::hasApiCredentials($settings)) {
     $fail('PayPal API credentials are missing.');
 }
+$clientId = $settings['paypal_client_id'];
+$clientSecret = $settings['paypal_client_secret'];
 
 $hadErrors = false;
 $report = function ($label, array $result, array $fields) use (&$hadErrors) {
@@ -86,7 +68,7 @@ $report = function ($label, array $result, array $fields) use (&$hadErrors) {
 };
 
 echo "Starting PayPal IMAP fetch...\n";
-$fetchResult = $paypalManager->importFromImap($imapHost, $imapPort, $imapUser, $imapPassword, $imapSsl === '1');
+$fetchResult = $paypalManager->importFromImap($settings);
 $report('IMAP import', $fetchResult, ['imported', 'skipped']);
 
 echo "Syncing newly received PayPal emails...\n";

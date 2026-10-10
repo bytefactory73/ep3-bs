@@ -2,27 +2,31 @@
 
 namespace Drinks\Controller\Traits;
 
+use Drinks\Service\DbSchema;
+
+/**
+ * Money transfers between drink accounts. Requires TeamEventTrait and JsonResponseTrait.
+ */
 trait MoneyTransferTrait
 {
     use ThekeMailTrait;
 
-    protected $moneyTransferHasReferenceColumns = null;
-
-    protected function canUseTransferReferenceColumns($dbAdapter)
+    /**
+     * JSON response for a transfer from $senderUserId to the POSTed receiver_user_id
+     * (team_event_id for a team receiver, amount, optional transfer_key).
+     */
+    protected function moneyTransferFromPost($senderUserId)
     {
-        if ($this->moneyTransferHasReferenceColumns !== null) {
-            return $this->moneyTransferHasReferenceColumns;
-        }
-
-        try {
-            $orderCol = $dbAdapter->query("SHOW COLUMNS FROM drink_orders LIKE 'transfer_reference'", [])->current();
-            $depositCol = $dbAdapter->query("SHOW COLUMNS FROM drink_deposits LIKE 'transfer_reference'", [])->current();
-            $this->moneyTransferHasReferenceColumns = (bool)$orderCol && (bool)$depositCol;
-        } catch (\Exception $e) {
-            $this->moneyTransferHasReferenceColumns = false;
-        }
-
-        return $this->moneyTransferHasReferenceColumns;
+        $amount = round((float)str_replace(',', '.', trim((string)$this->params()->fromPost('amount', ''))), 2);
+        $transferResult = $this->executeMoneyTransfer(
+            $senderUserId,
+            (int)$this->params()->fromPost('receiver_user_id', 0),
+            $amount,
+            (int)$this->params()->fromPost('team_event_id', 0),
+            false,
+            (string)$this->params()->fromPost('transfer_key', '')
+        );
+        return $this->jsonResponse($transferResult['payload'], $transferResult['statusCode']);
     }
 
     protected function createMoneyTransferReference()
@@ -74,7 +78,7 @@ trait MoneyTransferTrait
             $transferKey = '';
         }
         $dbAdapter = $this->getServiceLocator()->get('Zend\\Db\\Adapter\\Adapter');
-        if ($transferKey === '' || !$this->canUseTransferReferenceColumns($dbAdapter)) {
+        if ($transferKey === '' || !DbSchema::hasTransferReferenceColumns($dbAdapter)) {
             return $this->runMoneyTransfer($senderUserId, $receiverUserId, $amount, $receiverTeamEventId, $allowClosedReceiverTeamEvent, null);
         }
 
@@ -173,8 +177,7 @@ trait MoneyTransferTrait
                 'payload' => ['success' => false, 'error' => 'Kein Geld senden möglich bis Guthaben aufgeladen ist'],
             ];
         }
-        $receiverAliasRow = $dbAdapter->query('SELECT is_team FROM drink_aliases WHERE user_id = ?', [$receiverUserId])->current();
-        $receiverIsTeam = ($receiverAliasRow && !empty($receiverAliasRow['is_team'])) ? true : false;
+        $receiverIsTeam = $drinkManager->isTeamAccount($receiverUserId);
         $transferTeamEventId = ($receiverTeamEventId > 0) ? $receiverTeamEventId : null;
         if ($receiverIsTeam) {
             if ($receiverTeamEventId <= 0) {
@@ -183,15 +186,8 @@ trait MoneyTransferTrait
                     'payload' => ['success' => false, 'error' => 'Bitte Spieltag auswählen.'],
                 ];
             }
-            if (!method_exists($this, 'resolveTeamEventForSelection')) {
-                return [
-                    'statusCode' => 500,
-                    'payload' => ['success' => false, 'error' => 'Spieltag konnte nicht geprüft werden.'],
-                ];
-            }
-
             $receiverTeamEvent = null;
-            if ($allowClosedReceiverTeamEvent && method_exists($this, 'getTeamEventById')) {
+            if ($allowClosedReceiverTeamEvent) {
                 $receiverTeamEvent = $this->getTeamEventById($receiverUserId, $receiverTeamEventId);
             }
             if (!$receiverTeamEvent) {
@@ -206,7 +202,7 @@ trait MoneyTransferTrait
             $transferTeamEventId = (int)$receiverTeamEvent['id'];
         }
         $transferReference = $transferKey !== null ? $transferKey : $this->createMoneyTransferReference();
-        $canUseTransferReference = $this->canUseTransferReferenceColumns($dbAdapter);
+        $canUseTransferReference = DbSchema::hasTransferReferenceColumns($dbAdapter);
 
         // Order (sender) and deposit (receiver) are written atomically: either both or neither.
         $connection = $dbAdapter->getDriver()->getConnection();

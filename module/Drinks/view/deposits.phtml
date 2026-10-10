@@ -382,27 +382,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 return url;
             },
-            buildMemberUpdateRequest: function(operation, memberUserId, state) {
-                return {
-                    url: '<?= $this->url('user/teamlead-team-members') ?>',
-                    body: new URLSearchParams({
-                        operation: String(operation || ''),
-                        team_event_id: String(state.currentEventId || 0),
-                        member_user_id: String(memberUserId || 0)
-                    })
-                };
-            },
-            buildCloseEventRequest: function(state, settlement) {
-                var body = new URLSearchParams({
-                    team_event_id: String(state.currentEventId || 0)
-                });
-                if (settlement && Array.isArray(settlement.refunds) && settlement.refunds.length > 0) {
-                    body.set('settlement_refunds', JSON.stringify(settlement.refunds));
-                }
-                return {
-                    url: '<?= $this->url('user/teamlead-close-team-event') ?>',
-                    body: body
-                };
+            endpoints: {
+                members: '<?= $this->url('user/teamlead-team-members') ?>',
+                closeEvent: '<?= $this->url('user/teamlead-close-team-event') ?>'
             },
             afterLoadData: function(data, state, refs) {
                 state.preferredTeamEventId = String(data.team_event_id || '');
@@ -412,7 +394,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     refs.select.removeChild(refs.select.firstChild);
                 }
 
-                var teamEvents = Array.isArray(data.team_events) ? data.team_events : [];
+                var teamEvents = Array.isArray(data.events) ? data.events : [];
                 for (var i = 0; i < teamEvents.length; i++) {
                     var eventRow = teamEvents[i] || {};
                     var eventId = String(eventRow.id || '').trim();

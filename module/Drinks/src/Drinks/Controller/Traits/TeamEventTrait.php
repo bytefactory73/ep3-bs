@@ -3,64 +3,42 @@
 namespace Drinks\Controller\Traits;
 
 use Base\Service\MoneyCalculator;
+use Drinks\Service\DbSchema;
 
+/**
+ * Spieltage (team events) of team accounts: members, costs, settlement. Requires MoneyTransferTrait.
+ */
 trait TeamEventTrait
 {
+
     protected function getTeamEventSelectColumnsSql()
     {
-        return $this->canUseTeamEventClosedColumn() ? 'id, comment, closed' : 'id, comment';
+        return $this->hasTeamEventClosedColumn() ? 'id, comment, closed' : 'id, comment';
     }
 
     protected function getTeamEventOpenFilterSql($includeClosed = false)
     {
-        return ($this->canUseTeamEventClosedColumn() && !(bool)$includeClosed)
+        return ($this->hasTeamEventClosedColumn() && !(bool)$includeClosed)
             ? ' AND (closed IS NULL OR closed = 0)'
             : '';
     }
 
-    protected function canUseTeamEventClosedColumn()
+    protected function hasTeamEventClosedColumn()
     {
-        static $hasClosedColumn = null;
-        if ($hasClosedColumn !== null) {
-            return $hasClosedColumn;
-        }
-
-        try {
-            $column = $this->getTeamEventDbAdapter()->query(
-                "SHOW COLUMNS FROM drinks_teamevents LIKE 'closed'",
-                []
-            )->current();
-            $hasClosedColumn = (bool)$column;
-        } catch (\Exception $e) {
-            $hasClosedColumn = false;
-        }
-
-        return $hasClosedColumn;
+        return DbSchema::hasTeamEventClosedColumn($this->getTeamEventDbAdapter());
     }
 
-    protected function canUseTeamEventOrderRelevanceTable()
+    /**
+     * Optional Spieltag tables (relevance, Zusatzkosten, Gastspenden) may be missing on older installations.
+     */
+    protected function hasTeamEventTable($table)
     {
-        static $hasTable = null;
-        if ($hasTable !== null) {
-            return $hasTable;
-        }
-
-        try {
-            $tableRow = $this->getTeamEventDbAdapter()->query(
-                "SHOW TABLES LIKE 'drinks_teamevent_order_relevance'",
-                []
-            )->current();
-            $hasTable = (bool)$tableRow;
-        } catch (\Exception $e) {
-            $hasTable = false;
-        }
-
-        return $hasTable;
+        return DbSchema::hasTable($this->getTeamEventDbAdapter(), $table);
     }
 
     protected function isTeamEventClosedRow($teamEventRow)
     {
-        if (!$this->canUseTeamEventClosedColumn()) {
+        if (!$this->hasTeamEventClosedColumn()) {
             return false;
         }
         if (!is_array($teamEventRow) && !($teamEventRow instanceof \ArrayAccess)) {
@@ -121,32 +99,18 @@ trait TeamEventTrait
         )->current();
     }
 
+    /**
+     * Returns ['success' => true, 'already_closed' => bool, 'event' => row] or
+     * ['success' => false, 'error' => 'invalid_input'|'feature_unavailable'|'not_found'].
+     */
     protected function closeTeamEvent($teamAdminUserId, $teamEventId)
-    {
-        $teamAdminUserId = (int)$teamAdminUserId;
-        $teamEventId = (int)$teamEventId;
-        if ($teamAdminUserId <= 0 || $teamEventId <= 0) {
-            return false;
-        }
-        if (!$this->canUseTeamEventClosedColumn()) {
-            return false;
-        }
-
-        $this->getTeamEventDbAdapter()->query(
-            'UPDATE drinks_teamevents SET closed = 1 WHERE team_admin_user_id = ? AND id = ?',
-            [$teamAdminUserId, $teamEventId]
-        );
-        return true;
-    }
-
-    protected function closeTeamEventWithStatus($teamAdminUserId, $teamEventId)
     {
         $teamAdminUserId = (int)$teamAdminUserId;
         $teamEventId = (int)$teamEventId;
         if ($teamAdminUserId <= 0 || $teamEventId <= 0) {
             return ['success' => false, 'error' => 'invalid_input'];
         }
-        if (!$this->canUseTeamEventClosedColumn()) {
+        if (!$this->hasTeamEventClosedColumn()) {
             return ['success' => false, 'error' => 'feature_unavailable'];
         }
 
@@ -158,7 +122,10 @@ trait TeamEventTrait
             return ['success' => true, 'already_closed' => true, 'event' => $eventRow];
         }
 
-        $this->closeTeamEvent($teamAdminUserId, $teamEventId);
+        $this->getTeamEventDbAdapter()->query(
+            'UPDATE drinks_teamevents SET closed = 1 WHERE team_admin_user_id = ? AND id = ?',
+            [$teamAdminUserId, $teamEventId]
+        );
         return ['success' => true, 'already_closed' => false, 'event' => $eventRow];
     }
 
@@ -264,7 +231,7 @@ trait TeamEventTrait
     protected function getTeamEventOrderRelevanceMap($teamEventId)
     {
         $teamEventId = (int)$teamEventId;
-        if ($teamEventId <= 0 || !$this->canUseTeamEventOrderRelevanceTable()) {
+        if ($teamEventId <= 0 || !$this->hasTeamEventTable('drinks_teamevent_order_relevance')) {
             return [];
         }
 
@@ -311,7 +278,7 @@ trait TeamEventTrait
         if ($teamAdminUserId <= 0 || $teamEventId <= 0 || $drinkId <= 0 || $unitPrice <= 0) {
             throw new \RuntimeException('Invalid relevance input');
         }
-        if (!$this->canUseTeamEventOrderRelevanceTable()) {
+        if (!$this->hasTeamEventTable('drinks_teamevent_order_relevance')) {
             throw new \RuntimeException('Relevance table not available');
         }
 
@@ -378,56 +345,39 @@ trait TeamEventTrait
         }
     }
 
-        protected function getTeamEventMemberCandidates($excludeUserId = 0, $teamEventId = 0)
-        {
-            $excludeUserId = (int)$excludeUserId;
-            $teamEventId = (int)$teamEventId;
-        
-            // Get all enabled users
-            $rows = $this->getTeamEventDbAdapter()->query(
-                'SELECT uid, alias, email
-                 FROM bs_users
-                 WHERE status IN ("enabled", "admin", "assist")
-                 ORDER BY alias ASC, uid ASC',
-                []
-            )->toArray();
+    protected function getTeamEventMemberCandidates($excludeUserId = 0, $teamEventId = 0)
+    {
+        $excludeUserId = (int)$excludeUserId;
+        $teamEventId = (int)$teamEventId;
 
-            // Exclude only users who are already active members in this event.
-            // Users with deposits but without membership must stay selectable.
-            $usedUids = [];
-            if ($teamEventId > 0) {
-                $memberRows = $this->getTeamEventDbAdapter()->query(
-                    'SELECT DISTINCT user_id AS uid
-                     FROM drinks_teamevent_members
-                     WHERE team_event_id = ?',
-                    [$teamEventId]
-                )->toArray();
-            
-                foreach ($memberRows as $row) {
-                    $uid = isset($row['uid']) ? (int)$row['uid'] : 0;
-                    if ($uid > 0) {
-                        $usedUids[] = $uid;
-                    }
-                }
-            }
+        // Get all enabled users
+        $rows = $this->getTeamEventDbAdapter()->query(
+            'SELECT uid, alias, email
+             FROM bs_users
+             WHERE status IN ("enabled", "admin", "assist")
+             ORDER BY alias ASC, uid ASC',
+            []
+        )->toArray();
 
-            $result = [];
-            foreach ($rows as $row) {
-                $uid = isset($row['uid']) ? (int)$row['uid'] : 0;
-                if ($uid <= 0 || ($excludeUserId > 0 && $uid === $excludeUserId) || in_array($uid, $usedUids, true)) {
-                    continue;
-                }
-                $alias = isset($row['alias']) ? trim((string)$row['alias']) : '';
-                $email = isset($row['email']) ? trim((string)$row['email']) : '';
-                $name = $alias !== '' ? $alias : ('User ' . $uid);
-                $result[] = [
-                    'uid' => $uid,
-                    'name' => $name,
-                    'email' => $email,
-                ];
+        // Exclude only users who are already active members in this event.
+        // Users with deposits but without membership must stay selectable.
+        $usedUids = $teamEventId > 0 ? array_flip($this->getTeamEventMemberUserIds($teamEventId)) : [];
+
+        $result = [];
+        foreach ($rows as $row) {
+            $uid = isset($row['uid']) ? (int)$row['uid'] : 0;
+            if ($uid <= 0 || ($excludeUserId > 0 && $uid === $excludeUserId) || isset($usedUids[$uid])) {
+                continue;
             }
-            return $result;
+            $alias = isset($row['alias']) ? trim((string)$row['alias']) : '';
+            $result[] = [
+                'uid' => $uid,
+                'name' => $alias !== '' ? $alias : ('User ' . $uid),
+                'email' => isset($row['email']) ? trim((string)$row['email']) : '',
+            ];
         }
+        return $result;
+    }
 
     protected function getTeamEventMembersWithContribution($teamAdminUserId, $teamEventId, $teamEventLabel)
     {
@@ -495,7 +445,6 @@ trait TeamEventTrait
             // Optional table/column differences should not break stats.
         }
 
-        $depositRows = [];
         $eventTransferRefs = [];
         try {
             $eventTransferRows = $dbAdapter->query(
@@ -505,10 +454,7 @@ trait TeamEventTrait
                    AND drink_id = -1
                    AND transfer_reference IS NOT NULL
                    AND transfer_reference <> ""
-                   AND (
-                        teamevent_id = ?
-                        OR (teamevent_id IS NULL AND TRIM(COALESCE(comment, "")) = ?)
-                   )',
+                   AND ' . $this->teamEventRowConditionSql(),
                 [$teamEventId, $teamEventLabel]
             )->toArray();
             foreach ($eventTransferRows as $etr) {
@@ -521,32 +467,15 @@ trait TeamEventTrait
             $eventTransferRefs = [];
         }
 
-        if (!empty($eventTransferRefs)) {
-            $refValues = array_keys($eventTransferRefs);
-            $refPlaceholders = implode(',', array_fill(0, count($refValues), '?'));
-            $depositRows = $dbAdapter->query(
-                'SELECT id, user_id, createdbyuserid, amount, comment, transfer_reference
-                 FROM drink_deposits
-                 WHERE (deleted IS NULL OR deleted = 0)
-                   AND (
-                        teamevent_id = ?
-                        OR (teamevent_id IS NULL AND TRIM(COALESCE(comment, "")) = ?)
-                        OR transfer_reference IN (' . $refPlaceholders . ')
-                   )',
-                array_merge([$teamEventId, $teamEventLabel], $refValues)
-            )->toArray();
-        } else {
-            $depositRows = $dbAdapter->query(
-                'SELECT id, user_id, createdbyuserid, amount, comment, transfer_reference
-                 FROM drink_deposits
-                 WHERE (deleted IS NULL OR deleted = 0)
-                   AND (
-                        teamevent_id = ?
-                        OR (teamevent_id IS NULL AND TRIM(COALESCE(comment, "")) = ?)
-                   )',
-                [$teamEventId, $teamEventLabel]
-            )->toArray();
-        }
+        $refValues = array_keys($eventTransferRefs);
+        $refCondition = empty($refValues) ? '' : ' OR transfer_reference IN (' . implode(',', array_fill(0, count($refValues), '?')) . ')';
+        $depositRows = $dbAdapter->query(
+            'SELECT id, user_id, createdbyuserid, amount, comment, transfer_reference
+             FROM drink_deposits
+             WHERE (deleted IS NULL OR deleted = 0)
+               AND (' . $this->teamEventRowConditionSql() . $refCondition . ')',
+            array_merge([$teamEventId, $teamEventLabel], $refValues)
+        )->toArray();
 
         $transferRefs = [];
         foreach ($depositRows as $dr) {
@@ -798,10 +727,7 @@ trait TeamEventTrait
                            AND o.user_id = ?
                            AND o.drink_id = -1
                            AND (o.deleted IS NULL OR o.deleted = 0)
-                           AND (
-                                o.teamevent_id = ?
-                                OR (o.teamevent_id IS NULL AND TRIM(COALESCE(o.comment, "")) = ?)
-                           )
+                           AND ' . $this->teamEventRowConditionSql('o') . '
                          GROUP BY d.user_id',
                         array_merge($memberUids, [$teamAdminUserId, $teamAdminUserId, $teamEventId, $teamEventLabel])
                     )->toArray();
@@ -813,10 +739,7 @@ trait TeamEventTrait
                          WHERE d.user_id IN (' . $placeholders . ')
                            AND d.createdbyuserid = ?
                            AND (d.deleted IS NULL OR d.deleted = 0)
-                           AND (
-                                d.teamevent_id = ?
-                                OR (d.teamevent_id IS NULL AND TRIM(COALESCE(d.comment, "")) = ?)
-                           )
+                           AND ' . $this->teamEventRowConditionSql('d') . '
                            AND LOWER(TRIM(COALESCE(d.comment, ""))) LIKE ?
                          GROUP BY d.user_id',
                         array_merge($memberUids, [$teamAdminUserId, $teamEventId, $teamEventLabel, 'geld empfangen von %'])
@@ -842,6 +765,56 @@ trait TeamEventTrait
         return $result;
     }
 
+    /**
+     * SQL condition for rows of a Spieltag: its teamevent_id, or legacy rows without one whose
+     * comment is the Spieltag label. Binds [teamEventId, teamEventLabel].
+     */
+    protected function teamEventRowConditionSql($tableAlias = '')
+    {
+        $p = $tableAlias !== '' ? $tableAlias . '.' : '';
+        return '(' . $p . 'teamevent_id = ? OR (' . $p . 'teamevent_id IS NULL AND TRIM(COALESCE(' . $p . 'comment, "")) = ?))';
+    }
+
+    /**
+     * The Spieltag by id (it may belong to another team for member-only views), else by label
+     * within the team.
+     */
+    protected function findTeamEventRow($teamAdminUserId, $teamEventId, $teamEventLabel)
+    {
+        $row = null;
+        if ((int)$teamEventId > 0) {
+            $row = $this->getTeamEventDbAdapter()->query(
+                'SELECT ' . $this->getTeamEventSelectColumnsSql() . ' FROM drinks_teamevents WHERE id = ? LIMIT 1',
+                [(int)$teamEventId]
+            )->current();
+        }
+        return $row ?: $this->getTeamEventByLabel($teamAdminUserId, $teamEventLabel);
+    }
+
+    /**
+     * Members a cost row is split between: the stored selection as far as it names active
+     * members, otherwise all active members. Returns [memberIds, [['uid', 'name'], ...]].
+     */
+    private function resolveRelevantMembers($storedMemberIds, array $activeMemberNamesById)
+    {
+        $memberIds = [];
+        foreach ((array)$storedMemberIds as $memberId) {
+            $memberId = (int)$memberId;
+            if ($memberId > 0 && isset($activeMemberNamesById[$memberId])) {
+                $memberIds[] = $memberId;
+            }
+        }
+        $memberIds = array_values(array_unique($memberIds));
+        if (empty($memberIds)) {
+            $memberIds = array_keys($activeMemberNamesById);
+        }
+        $members = [];
+        foreach ($memberIds as $memberId) {
+            $members[] = ['uid' => $memberId, 'name' => $activeMemberNamesById[$memberId]];
+        }
+        return [$memberIds, $members];
+    }
+
     protected function getTeamEventOrderRowsAndTotal($teamAdminUserId, $teamEventLabel, $memberUserIds = null, $teamEventId = 0)
     {
         $teamAdminUserId = (int)$teamAdminUserId;
@@ -850,68 +823,33 @@ trait TeamEventTrait
             return ['rows' => [], 'total_sum' => 0.0, 'guest_donation_due_total' => 0.0, 'settlement_total_sum' => 0.0, 'extra_costs' => [], 'guest_donations' => []];
         }
 
-        // Use provided teamEventId if available (for member-only events from different teams)
-        $selectedTeamEventId = $teamEventId > 0 ? (int)$teamEventId : 0;
-        $selectedTeamEvent = null;
-        if ($selectedTeamEventId > 0) {
-            $serviceManager = @$this->getServiceLocator();
-            if (is_object($serviceManager) && method_exists($serviceManager, 'get')) {
-                $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
-                $selectedTeamEvent = $dbAdapter->query(
-                    'SELECT id, comment, closed FROM drinks_teamevents WHERE id = ? LIMIT 1',
-                    [$selectedTeamEventId]
-                )->current();
-            }
-        }
-        if (!$selectedTeamEvent || !isset($selectedTeamEvent['id']) || $selectedTeamEvent['id'] <= 0) {
-            $selectedTeamEvent = $this->getTeamEventByLabel($teamAdminUserId, $teamEventLabel);
-            $selectedTeamEventId = $selectedTeamEvent && isset($selectedTeamEvent['id']) ? (int)$selectedTeamEvent['id'] : 0;
-        }
-        $activeMembers = $selectedTeamEventId > 0
-            ? $this->getTeamEventMembersWithContribution($teamAdminUserId, $selectedTeamEventId, $teamEventLabel)
-            : [];
-        $storedRelevanceByRowKey = $selectedTeamEventId > 0
-            ? $this->getTeamEventOrderRelevanceMap($selectedTeamEventId)
-            : [];
-        $relevantMembers = [];
-        $activeMemberNamesById = [];
-        foreach ($activeMembers as $memberRow) {
-            if (empty($memberRow['is_member'])) {
-                continue;
-            }
-            $memberUid = isset($memberRow['uid']) ? (int)$memberRow['uid'] : 0;
-            if ($memberUid <= 0) {
-                continue;
-            }
-            $memberName = isset($memberRow['name']) ? (string)$memberRow['name'] : ('User ' . $memberUid);
-            $relevantMembers[] = [
-                'uid' => $memberUid,
-                'name' => $memberName,
-            ];
-            $activeMemberNamesById[$memberUid] = $memberName;
-        }
+        $selectedTeamEvent = $this->findTeamEventRow($teamAdminUserId, $teamEventId, $teamEventLabel);
+        $selectedTeamEventId = $selectedTeamEvent ? (int)$selectedTeamEvent['id'] : 0;
 
-        // Build list of user IDs to query orders from: team admin + all members
-        $orderUserIds = [$teamAdminUserId];
-        if ($memberUserIds !== null && is_array($memberUserIds)) {
-            foreach ($memberUserIds as $mid) {
-                $midInt = (int)$mid;
-                if ($midInt > 0 && !in_array($midInt, $orderUserIds)) {
-                    $orderUserIds[] = $midInt;
+        $activeMemberNamesById = [];
+        if ($selectedTeamEventId > 0) {
+            foreach ($this->getTeamEventMembersWithContribution($teamAdminUserId, $selectedTeamEventId, $teamEventLabel) as $memberRow) {
+                $memberUid = isset($memberRow['uid']) ? (int)$memberRow['uid'] : 0;
+                if (!empty($memberRow['is_member']) && $memberUid > 0) {
+                    $activeMemberNamesById[$memberUid] = isset($memberRow['name']) ? (string)$memberRow['name'] : ('User ' . $memberUid);
                 }
             }
         }
+        $storedRelevanceByRowKey = $selectedTeamEventId > 0 ? $this->getTeamEventOrderRelevanceMap($selectedTeamEventId) : [];
 
+        // Orders of the team account and of all members
+        $orderUserIds = [$teamAdminUserId];
+        foreach ((array)$memberUserIds as $mid) {
+            $midInt = (int)$mid;
+            if ($midInt > 0 && !in_array($midInt, $orderUserIds, true)) {
+                $orderUserIds[] = $midInt;
+            }
+        }
         $userIdsPlaceholder = implode(', ', array_fill(0, count($orderUserIds), '?'));
-        
-        // Build the teamevent filter condition
-        // If a specific teamEventId is provided, use it directly for accurate results
-        // Otherwise, look up events by team_admin_user_id and label
-        $teameventFilter = '';
-        $teameventParams = [];
+
         if ($selectedTeamEventId > 0) {
             $teameventFilter = 'o.teamevent_id = ?';
-            $teameventParams[] = $selectedTeamEventId;
+            $teameventParams = [$selectedTeamEventId];
         } else {
             $teameventFilter = 'o.teamevent_id IN (
                 SELECT e.id
@@ -921,7 +859,7 @@ trait TeamEventTrait
             )';
             $teameventParams = [$teamAdminUserId, $teamEventLabel];
         }
-        
+
         $orderRows = $this->getTeamEventDbAdapter()->query(
             'SELECT
                 o.drink_id,
@@ -953,30 +891,10 @@ trait TeamEventTrait
             $drinkId = isset($orderRow['drink_id']) ? (int)$orderRow['drink_id'] : 0;
             $unitPrice = isset($orderRow['unit_price']) ? round((float)$orderRow['unit_price'], 2) : 0.0;
             $rowKey = $drinkId . '|' . number_format($unitPrice, 2, '.', '');
-
-            $selectedRelevantIds = [];
-            if (isset($storedRelevanceByRowKey[$rowKey]) && is_array($storedRelevanceByRowKey[$rowKey])) {
-                foreach ($storedRelevanceByRowKey[$rowKey] as $memberId) {
-                    $memberId = (int)$memberId;
-                    if ($memberId > 0 && isset($activeMemberNamesById[$memberId])) {
-                        $selectedRelevantIds[] = $memberId;
-                    }
-                }
-                $selectedRelevantIds = array_values(array_unique($selectedRelevantIds));
-            }
-
-            $rowRelevantMembers = [];
-            if (!empty($selectedRelevantIds)) {
-                foreach ($selectedRelevantIds as $memberId) {
-                    $rowRelevantMembers[] = [
-                        'uid' => $memberId,
-                        'name' => $activeMemberNamesById[$memberId],
-                    ];
-                }
-            } else {
-                $rowRelevantMembers = $relevantMembers;
-            }
-
+            list(, $rowRelevantMembers) = $this->resolveRelevantMembers(
+                isset($storedRelevanceByRowKey[$rowKey]) ? $storedRelevanceByRowKey[$rowKey] : [],
+                $activeMemberNamesById
+            );
             $rowRelevantMemberCount = count($rowRelevantMembers);
             $rows[] = [
                 'row_type' => 'order',
@@ -994,114 +912,74 @@ trait TeamEventTrait
         }
 
         $extraCosts = [];
-        if ($selectedTeamEventId > 0) {
-            $rawExtraCosts = $this->getTeamEventExtraCosts($selectedTeamEventId);
-            foreach ($rawExtraCosts as $extraCost) {
-                $extraCostId = isset($extraCost['id']) ? (int)$extraCost['id'] : 0;
-                $amount = isset($extraCost['amount']) ? (float)$extraCost['amount'] : 0.0;
-                if ($extraCostId <= 0 || $amount <= 0) {
-                    continue;
-                }
-                $signedAmount = MoneyCalculator::roundMoney(0.0 - abs($amount));
-
-                $selectedRelevantIds = [];
-                if (!empty($extraCost['relevant_member_ids']) && is_array($extraCost['relevant_member_ids'])) {
-                    foreach ($extraCost['relevant_member_ids'] as $memberId) {
-                        $memberId = (int)$memberId;
-                        if ($memberId > 0 && isset($activeMemberNamesById[$memberId])) {
-                            $selectedRelevantIds[] = $memberId;
-                        }
-                    }
-                    $selectedRelevantIds = array_values(array_unique($selectedRelevantIds));
-                }
-
-                $rowRelevantMembers = [];
-                if (!empty($selectedRelevantIds)) {
-                    foreach ($selectedRelevantIds as $memberId) {
-                        $rowRelevantMembers[] = [
-                            'uid' => $memberId,
-                            'name' => $activeMemberNamesById[$memberId],
-                        ];
-                    }
-                } else {
-                    $rowRelevantMembers = $relevantMembers;
-                    $selectedRelevantIds = array_keys($activeMemberNamesById);
-                }
-
-                $rowRelevantMemberCount = count($rowRelevantMembers);
-                $articleLabel = 'Extrakosten';
-                $comment = isset($extraCost['comment']) ? trim((string)$extraCost['comment']) : '';
-                $payerName = isset($extraCost['payer_name']) ? trim((string)$extraCost['payer_name']) : '';
-                if ($comment !== '') {
-                    $articleLabel .= ': ' . $comment;
-                }
-                if ($payerName !== '') {
-                    $articleLabel .= ' (' . $payerName . ')';
-                }
-
-                $extraRowsEntry = [
-                    'id' => $extraCostId,
-                    'row_type' => 'extra_cost',
-                    'extra_cost_id' => $extraCostId,
-                    'payer_user_id' => isset($extraCost['payer_user_id']) ? (int)$extraCost['payer_user_id'] : 0,
-                    'payer_name' => $payerName,
-                    'comment' => $comment,
-                    'amount' => MoneyCalculator::roundMoney($amount),
-                    'total_price' => $signedAmount,
-                    'relevant_member_ids' => $selectedRelevantIds,
-                    'relevant_members' => $rowRelevantMembers,
-                    'relevant_member_count' => $rowRelevantMemberCount,
-                    'share_per_member' => $rowRelevantMemberCount > 0 ? ((float)$signedAmount / (float)$rowRelevantMemberCount) : 0.0,
-                ];
-                $extraCosts[] = $extraRowsEntry;
-
-                $rows[] = [
-                    'row_type' => 'extra_cost',
-                    'extra_cost_id' => $extraCostId,
-                    'drink_id' => 0,
-                    'unit_price' => $signedAmount,
-                    'category' => 'Extrakosten',
-                    'article' => $articleLabel,
-                    'quantity' => 1,
-                    'single_price' => $signedAmount,
-                    'total_price' => $signedAmount,
-                    'relevant_members' => $rowRelevantMembers,
-                    'relevant_member_count' => $rowRelevantMemberCount,
-                    'share_per_member' => $rowRelevantMemberCount > 0 ? ((float)$signedAmount / (float)$rowRelevantMemberCount) : 0.0,
-                ];
+        foreach ($selectedTeamEventId > 0 ? $this->getTeamEventExtraCosts($selectedTeamEventId) : [] as $extraCost) {
+            $extraCostId = isset($extraCost['id']) ? (int)$extraCost['id'] : 0;
+            $amount = isset($extraCost['amount']) ? (float)$extraCost['amount'] : 0.0;
+            if ($extraCostId <= 0 || $amount <= 0) {
+                continue;
             }
+            $signedAmount = MoneyCalculator::roundMoney(0.0 - abs($amount));
+            list($selectedRelevantIds, $rowRelevantMembers) = $this->resolveRelevantMembers(
+                isset($extraCost['relevant_member_ids']) ? $extraCost['relevant_member_ids'] : [],
+                $activeMemberNamesById
+            );
+            $rowRelevantMemberCount = count($rowRelevantMembers);
+            $sharePerMember = $rowRelevantMemberCount > 0 ? ((float)$signedAmount / (float)$rowRelevantMemberCount) : 0.0;
+            $comment = isset($extraCost['comment']) ? trim((string)$extraCost['comment']) : '';
+            $payerName = isset($extraCost['payer_name']) ? trim((string)$extraCost['payer_name']) : '';
+            $articleLabel = 'Extrakosten' . ($comment !== '' ? ': ' . $comment : '') . ($payerName !== '' ? ' (' . $payerName . ')' : '');
+
+            $extraCosts[] = [
+                'id' => $extraCostId,
+                'row_type' => 'extra_cost',
+                'extra_cost_id' => $extraCostId,
+                'payer_user_id' => isset($extraCost['payer_user_id']) ? (int)$extraCost['payer_user_id'] : 0,
+                'payer_name' => $payerName,
+                'comment' => $comment,
+                'amount' => MoneyCalculator::roundMoney($amount),
+                'total_price' => $signedAmount,
+                'relevant_member_ids' => $selectedRelevantIds,
+                'relevant_members' => $rowRelevantMembers,
+                'relevant_member_count' => $rowRelevantMemberCount,
+                'share_per_member' => $sharePerMember,
+            ];
+            $rows[] = [
+                'row_type' => 'extra_cost',
+                'extra_cost_id' => $extraCostId,
+                'drink_id' => 0,
+                'unit_price' => $signedAmount,
+                'category' => 'Extrakosten',
+                'article' => $articleLabel,
+                'quantity' => 1,
+                'single_price' => $signedAmount,
+                'total_price' => $signedAmount,
+                'relevant_members' => $rowRelevantMembers,
+                'relevant_member_count' => $rowRelevantMemberCount,
+                'share_per_member' => $sharePerMember,
+            ];
         }
 
         $guestDonations = [];
         $guestDonationDueTotal = 0.0;
-        if ($selectedTeamEventId > 0) {
-            $rawGuestDonations = $this->getTeamEventGuestDonations($selectedTeamEventId);
-            foreach ($rawGuestDonations as $guestDonation) {
-                $guestDonationId = isset($guestDonation['id']) ? (int)$guestDonation['id'] : 0;
-                $amount = isset($guestDonation['amount']) ? (float)$guestDonation['amount'] : 0.0;
-                if ($guestDonationId <= 0 || $amount <= 0) {
-                    continue;
-                }
-                $receiverUserId = isset($guestDonation['receiver_user_id']) ? (int)$guestDonation['receiver_user_id'] : 0;
-                if ($receiverUserId <= 0 || !isset($activeMemberNamesById[$receiverUserId])) {
-                    continue;
-                }
-
-                $comment = isset($guestDonation['comment']) ? trim((string)$guestDonation['comment']) : '';
-                $receiverName = isset($guestDonation['receiver_name']) ? trim((string)$guestDonation['receiver_name']) : '';
-
-                $guestDonations[] = [
-                    'id' => $guestDonationId,
-                    'team_event_id' => $selectedTeamEventId,
-                    'receiver_user_id' => $receiverUserId,
-                    'receiver_name' => $receiverName !== '' ? $receiverName : $activeMemberNamesById[$receiverUserId],
-                    'comment' => $comment,
-                    'amount' => MoneyCalculator::roundMoney(abs($amount)),
-                    // Receiver has to transfer this amount additionally to the account.
-                    'due_amount' => MoneyCalculator::roundMoney(0.0 - abs($amount)),
-                ];
-                $guestDonationDueTotal = MoneyCalculator::add($guestDonationDueTotal, 0.0 - abs($amount));
+        foreach ($selectedTeamEventId > 0 ? $this->getTeamEventGuestDonations($selectedTeamEventId) : [] as $guestDonation) {
+            $guestDonationId = isset($guestDonation['id']) ? (int)$guestDonation['id'] : 0;
+            $amount = isset($guestDonation['amount']) ? (float)$guestDonation['amount'] : 0.0;
+            $receiverUserId = isset($guestDonation['receiver_user_id']) ? (int)$guestDonation['receiver_user_id'] : 0;
+            if ($guestDonationId <= 0 || $amount <= 0 || !isset($activeMemberNamesById[$receiverUserId])) {
+                continue;
             }
+            $receiverName = isset($guestDonation['receiver_name']) ? trim((string)$guestDonation['receiver_name']) : '';
+            $guestDonations[] = [
+                'id' => $guestDonationId,
+                'team_event_id' => $selectedTeamEventId,
+                'receiver_user_id' => $receiverUserId,
+                'receiver_name' => $receiverName !== '' ? $receiverName : $activeMemberNamesById[$receiverUserId],
+                'comment' => isset($guestDonation['comment']) ? trim((string)$guestDonation['comment']) : '',
+                'amount' => MoneyCalculator::roundMoney(abs($amount)),
+                // Receiver has to transfer this amount additionally to the account.
+                'due_amount' => MoneyCalculator::roundMoney(0.0 - abs($amount)),
+            ];
+            $guestDonationDueTotal = MoneyCalculator::add($guestDonationDueTotal, 0.0 - abs($amount));
         }
 
         $totalSum = 0.0;
@@ -1118,7 +996,6 @@ trait TeamEventTrait
             'guest_donations' => $guestDonations,
         ];
     }
-
 
     protected function processTeamEventMemberOperation($teamAdminUserId, $teamEventId, $memberUserId, $operation, $actorUserId = null)
     {
@@ -1147,21 +1024,6 @@ trait TeamEventTrait
         }
 
         return [true, null, $teamEvent];
-    }
-
-    protected function buildMemberOperationJsonResponse($teamAdminUserId, $teamEventId, $memberUserId, $operation, $actorUserId = null)
-    {
-        list($success, $error, $teamEvent) = $this->processTeamEventMemberOperation($teamAdminUserId, $teamEventId, $memberUserId, $operation, $actorUserId);
-        if (!$success) {
-            return ['success' => false, 'error' => $error];
-        }
-
-        $teamEventLabel = isset($teamEvent['comment']) ? trim((string)$teamEvent['comment']) : '';
-        return [
-            'success' => true,
-            'team_event_id' => $teamEventId,
-            'members' => $this->getTeamEventMembersWithContribution($teamAdminUserId, $teamEventId, $teamEventLabel),
-        ];
     }
 
     protected function addTeamEventMember($teamEventId, $memberUserId, $actorUserId = null)
@@ -1294,10 +1156,7 @@ trait TeamEventTrait
              FROM drink_deposits
              WHERE user_id = ?
                AND (deleted IS NULL OR deleted = 0)
-               AND (
-                    teamevent_id = ?
-                    OR (teamevent_id IS NULL AND TRIM(COALESCE(comment, "")) = ?)
-               )',
+               AND ' . $this->teamEventRowConditionSql(),
             [$teamAdminUserId, $teamEventId, $teamEventLabel]
         )->current();
 
@@ -1310,10 +1169,7 @@ trait TeamEventTrait
             $orderSql .= ' AND drink_id <> -1';
         }
         $orderSql .=
-            ' AND (
-                    teamevent_id = ?
-                    OR (teamevent_id IS NULL AND TRIM(COALESCE(comment, "")) = ?)
-               )';
+            ' AND ' . $this->teamEventRowConditionSql();
 
         $orderRow = $dbAdapter->query(
             $orderSql,
@@ -1339,9 +1195,6 @@ trait TeamEventTrait
         }
         if ($this->isTeamEventClosedRow($teamEvent) && !$allowClosed) {
             return ['success' => false, 'error' => 'already_closed'];
-        }
-        if (!method_exists($this, 'executeMoneyTransfer')) {
-            return ['success' => false, 'error' => 'transfer_unavailable'];
         }
 
         $allowedMemberIds = array_fill_keys($this->getTeamEventMemberUserIds($teamEventId), true);
@@ -1484,76 +1337,16 @@ trait TeamEventTrait
                 'id' => $teamEventId,
                 'label' => $teamEventLabel,
                 'balance' => $balance,
-                'closed' => $this->canUseTeamEventClosedColumn() ? ((isset($row['closed']) && (int)$row['closed'] === 1) ? 1 : 0) : 0,
+                'closed' => $this->hasTeamEventClosedColumn() ? ((isset($row['closed']) && (int)$row['closed'] === 1) ? 1 : 0) : 0,
             ];
         }
 
         return $result;
     }
 
-    protected function canUseTeamEventExtraCostsTable()
-    {
-        static $hasTable = null;
-        if ($hasTable !== null) {
-            return $hasTable;
-        }
-
-        try {
-            $tableRow = $this->getTeamEventDbAdapter()->query(
-                "SHOW TABLES LIKE 'drinks_teamevent_extra_costs'",
-                []
-            )->current();
-            $hasTable = (bool)$tableRow;
-        } catch (\Exception $e) {
-            $hasTable = false;
-        }
-
-        return $hasTable;
-    }
-
-    protected function canUseTeamEventExtraCostRelevanceTable()
-    {
-        static $hasTable = null;
-        if ($hasTable !== null) {
-            return $hasTable;
-        }
-
-        try {
-            $tableRow = $this->getTeamEventDbAdapter()->query(
-                "SHOW TABLES LIKE 'drinks_teamevent_extra_cost_relevance'",
-                []
-            )->current();
-            $hasTable = (bool)$tableRow;
-        } catch (\Exception $e) {
-            $hasTable = false;
-        }
-
-        return $hasTable;
-    }
-
-    protected function canUseTeamEventGuestDonationsTable()
-    {
-        static $hasTable = null;
-        if ($hasTable !== null) {
-            return $hasTable;
-        }
-
-        try {
-            $tableRow = $this->getTeamEventDbAdapter()->query(
-                "SHOW TABLES LIKE 'drinks_teamevent_guest_donations'",
-                []
-            )->current();
-            $hasTable = (bool)$tableRow;
-        } catch (\Exception $e) {
-            $hasTable = false;
-        }
-
-        return $hasTable;
-    }
-
     protected function getTeamEventExtraCosts($teamEventId, $includeSoftDeleted = false)
     {
-        if (!$this->canUseTeamEventExtraCostsTable()) {
+        if (!$this->hasTeamEventTable('drinks_teamevent_extra_costs')) {
             return [];
         }
 
@@ -1609,7 +1402,7 @@ trait TeamEventTrait
 
     protected function getTeamEventExtraCostRelevance($extraCostId)
     {
-        if (!$this->canUseTeamEventExtraCostsTable() || !$this->canUseTeamEventExtraCostRelevanceTable()) {
+        if (!$this->hasTeamEventTable('drinks_teamevent_extra_costs') || !$this->hasTeamEventTable('drinks_teamevent_extra_cost_relevance')) {
             return [];
         }
 
@@ -1628,7 +1421,7 @@ trait TeamEventTrait
 
     protected function saveTeamEventExtraCost($teamEventId, $payerUserId, $amount, $comment = '', $relevantMemberIds = [])
     {
-        if (!$this->canUseTeamEventExtraCostsTable()) {
+        if (!$this->hasTeamEventTable('drinks_teamevent_extra_costs')) {
             throw new \Exception('Extra costs table not available');
         }
 
@@ -1666,7 +1459,7 @@ trait TeamEventTrait
 
     protected function updateTeamEventExtraCost($extraCostId, $teamEventId, $payerUserId, $amount, $comment = '', $relevantMemberIds = [])
     {
-        if (!$this->canUseTeamEventExtraCostsTable()) {
+        if (!$this->hasTeamEventTable('drinks_teamevent_extra_costs')) {
             throw new \Exception('Extra costs table not available');
         }
 
@@ -1693,7 +1486,7 @@ trait TeamEventTrait
 
     protected function saveTeamEventExtraCostRelevance($extraCostId, $relevantMemberIds = [])
     {
-        if (!$this->canUseTeamEventExtraCostsTable() || !$this->canUseTeamEventExtraCostRelevanceTable()) {
+        if (!$this->hasTeamEventTable('drinks_teamevent_extra_costs') || !$this->hasTeamEventTable('drinks_teamevent_extra_cost_relevance')) {
             return;
         }
 
@@ -1730,7 +1523,7 @@ trait TeamEventTrait
 
     protected function deleteTeamEventExtraCost($extraCostId, $softDelete = true, $teamEventId = 0)
     {
-        if (!$this->canUseTeamEventExtraCostsTable()) {
+        if (!$this->hasTeamEventTable('drinks_teamevent_extra_costs')) {
             throw new \Exception('Extra costs table not available');
         }
 
@@ -1769,7 +1562,7 @@ trait TeamEventTrait
 
     protected function getTeamEventGuestDonations($teamEventId, $includeSoftDeleted = false)
     {
-        if (!$this->canUseTeamEventGuestDonationsTable()) {
+        if (!$this->hasTeamEventTable('drinks_teamevent_guest_donations')) {
             return [];
         }
 
@@ -1815,7 +1608,7 @@ trait TeamEventTrait
 
     protected function saveTeamEventGuestDonation($teamEventId, $receiverUserId, $amount, $comment = '')
     {
-        if (!$this->canUseTeamEventGuestDonationsTable()) {
+        if (!$this->hasTeamEventTable('drinks_teamevent_guest_donations')) {
             throw new \Exception('Guest donations table not available');
         }
 
@@ -1851,7 +1644,7 @@ trait TeamEventTrait
 
     protected function updateTeamEventGuestDonation($guestDonationId, $teamEventId, $receiverUserId, $amount, $comment = '')
     {
-        if (!$this->canUseTeamEventGuestDonationsTable()) {
+        if (!$this->hasTeamEventTable('drinks_teamevent_guest_donations')) {
             throw new \Exception('Guest donations table not available');
         }
 
@@ -1875,7 +1668,7 @@ trait TeamEventTrait
 
     protected function deleteTeamEventGuestDonation($guestDonationId, $softDelete = true, $teamEventId = 0)
     {
-        if (!$this->canUseTeamEventGuestDonationsTable()) {
+        if (!$this->hasTeamEventTable('drinks_teamevent_guest_donations')) {
             throw new \Exception('Guest donations table not available');
         }
 
@@ -1909,117 +1702,6 @@ trait TeamEventTrait
     }
 
     /**
-     * Get full data for a specific team event including orders, members, extra costs, guest donations
-     * Returns data compatible with buildTeamStatsPayload output format
-     */
-    protected function getTeamEventData($teamAdminUserId, $teamEventId, $userId = null)
-    {
-        $teamAdminUserId = (int)$teamAdminUserId;
-        $teamEventId = (int)$teamEventId;
-        if ($teamAdminUserId <= 0 || $teamEventId <= 0) {
-            return null;
-        }
-
-        try {
-            // Get team event row
-            $teamEvent = $this->getTeamEventById($teamAdminUserId, $teamEventId);
-            if (!$teamEvent) {
-                return null;
-            }
-
-            $eventLabel = isset($teamEvent['comment']) ? trim((string)$teamEvent['comment']) : '';
-            if ($eventLabel === '') {
-                return null;
-            }
-
-            // Get team alias
-            $teamDisplayNames = $this->getTeamDisplayNames([$teamAdminUserId]);
-            $teamAlias = isset($teamDisplayNames[(int)$teamAdminUserId]) ? $teamDisplayNames[(int)$teamAdminUserId] : '';
-
-            // Get order data
-            $orderData = $this->getTeamEventOrderRowsAndTotal($teamAdminUserId, $eventLabel, null, $teamEventId);
-
-            // Get account balance
-            $drinkManager = $this->getServiceLocator()->get('Drinks\Manager\DrinkManager');
-            $accountBalance = $drinkManager->calculateUserDrinkBalance($teamAdminUserId, $this->getServiceLocator());
-
-            // Get member candidates
-            $memberCandidates = [];
-            $activeMembers = $this->getTeamEventMembersWithContribution($teamAdminUserId, $teamEventId, $eventLabel);
-            foreach ($activeMembers as $member) {
-                if (!empty($member['is_member'])) {
-                    $memberCandidates[] = [
-                        'uid' => (int)$member['uid'],
-                        'name' => (string)$member['name'],
-                        'contribution' => isset($member['contribution']) ? (float)$member['contribution'] : 0.0,
-                    ];
-                }
-            }
-
-            // Get guest donations
-            $guestDonations = [];
-            if ($this->canUseTeamEventGuestDonationsTable()) {
-                $guestDonations = $this->getTeamEventGuestDonations($teamEventId, false);
-            }
-
-            return [
-                'team_event' => [
-                    'id' => (int)$teamEvent['id'],
-                    'label' => $eventLabel,
-                    'team_alias' => $teamAlias,
-                    'team_admin_user_id' => $teamAdminUserId,
-                    'closed' => $this->isTeamEventClosed($teamEvent) ? 1 : 0,
-                ],
-                'orders' => $orderData['rows'],
-                'total_sum' => $orderData['total_sum'],
-                'guest_donation_due_total' => $orderData['guest_donation_due_total'],
-                'settlement_total_sum' => $orderData['settlement_total_sum'],
-                'extra_costs' => $orderData['extra_costs'],
-                'member_candidates' => $memberCandidates,
-                'guest_donations' => $guestDonations,
-                'account_balance' => $accountBalance,
-            ];
-        } catch (\Throwable $e) {
-            error_log('getTeamEventData error: ' . $e->getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * Check if a column exists in a table
-     */
-    protected function hasClosedColumn($db, $tableName)
-    {
-        try {
-            $col = $db->query("SHOW COLUMNS FROM " . $tableName . " LIKE 'closed'", [])->current();
-            return (bool)$col;
-        } catch (\Throwable $e) {
-            return false;
-        }
-    }
-
-     /**
-      * Check if a team event is closed
-      */
-    protected function isTeamEventClosed($teamEvent)
-    {
-        if (!$teamEvent) {
-            return false;
-        }
-        return isset($teamEvent['closed']) && (int)$teamEvent['closed'] !== 0;
-    }
-
-    /**
-     * Get team events for a user (both admin-owned and member-assigned events).
-     * Returns an array with:
-     *   - 'events': array of event rows with id, label, team_alias, team_admin_user_id, closed
-     *   - 'teamAdminUserIds': unique list of team admin user IDs
-     *   - 'adminEventIds': list of event IDs the user owns
-     *   - 'memberEventIds': list of event IDs the user is a member of (but doesn't own)
-     *   - 'isTeamLead': whether the user is a team lead for any event
-     *   - 'isTeamMember': whether the user is a member of any event (but doesn't own)
-     */
-    /**
      * Display names (bs_users.alias) of team accounts, keyed by user id. Never expose
      * drink_aliases.alias for a team: that is its Theken-ID, the account's login credential.
      */
@@ -2051,99 +1733,127 @@ trait TeamEventTrait
         return $names;
     }
 
-    protected function getTeamEventsForUser($userId, $isTeamAccount = false)
+    /**
+     * Spieltage shown in the Kostenübersicht: all of the teams in $managedTeamUids (editable)
+     * plus those $memberUserId takes part in (read-only), newest first.
+     */
+    protected function getVisibleTeamEvents(array $managedTeamUids, $memberUserId)
     {
-        $userId = (int)$userId;
         $dbAdapter = $this->getTeamEventDbAdapter();
+        $columns = 'te.id, te.comment, te.team_admin_user_id' . ($this->hasTeamEventClosedColumn() ? ', te.closed' : '');
+        $managedTeamUids = array_values(array_unique(array_filter(array_map('intval', $managedTeamUids))));
 
-        // Get admin-owned events (events where user is the team lead)
-        $adminEventRows = $dbAdapter->query(
-            'SELECT id, comment, team_admin_user_id, closed FROM drinks_teamevents WHERE team_admin_user_id = ? ORDER BY id DESC',
-            [$userId]
-        )->toArray();
-
-        $adminEventIds = [];
-        foreach ($adminEventRows as $er) {
-            $adminEventIds[] = (int)$er['id'];
-        }
-
-        // Get member-assigned events (events where user is a member but doesn't own)
-        $memberEventRows = $dbAdapter->query(
-            'SELECT DISTINCT dte.id, dte.comment, dte.team_admin_user_id, dte.closed FROM drinks_teamevents dte
-             INNER JOIN drinks_teamevent_members dtm ON dte.id = dtm.team_event_id
-             WHERE dtm.user_id = ?
-             ORDER BY dte.id DESC',
-            [$userId]
-        )->toArray();
-
-        $memberEventIds = [];
-        $memberTeamAdminUserIds = [];
-        foreach ($memberEventRows as $mr) {
-            $eventId = (int)$mr['id'];
-            if (!in_array($eventId, $adminEventIds)) {
-                $memberEventIds[] = $eventId;
-                $memberTeamAdminUserIds[] = (int)$mr['team_admin_user_id'];
+        $rowsById = [];
+        $managedEventIds = [];
+        if (!empty($managedTeamUids)) {
+            $rows = $dbAdapter->query(
+                'SELECT ' . $columns . ' FROM drinks_teamevents te WHERE te.team_admin_user_id IN (' . implode(', ', array_fill(0, count($managedTeamUids), '?')) . ')',
+                $managedTeamUids
+            )->toArray();
+            foreach ($rows as $row) {
+                $rowsById[(int)$row['id']] = $row;
+                $managedEventIds[(int)$row['id']] = true;
             }
         }
+        if ((int)$memberUserId > 0) {
+            $rows = $dbAdapter->query(
+                'SELECT DISTINCT ' . $columns . '
+                 FROM drinks_teamevents te
+                 JOIN drinks_teamevent_members tm ON tm.team_event_id = te.id
+                 WHERE tm.user_id = ?',
+                [(int)$memberUserId]
+            )->toArray();
+            foreach ($rows as $row) {
+                if (!isset($rowsById[(int)$row['id']])) {
+                    $rowsById[(int)$row['id']] = $row;
+                }
+            }
+        }
+        krsort($rowsById);
 
-        // Merge all event IDs
-        $allEventIds = array_unique(array_merge($adminEventIds, $memberEventIds));
-
-        // Get team aliases for all unique team_admin_user_ids
-        $allTeamAdminUserIds = array_values(array_unique(array_merge(
-            array_column($adminEventRows, 'team_admin_user_id'),
-            $memberTeamAdminUserIds
-        )));
-
-        $teamAliasMap = $this->getTeamDisplayNames($allTeamAdminUserIds);
-
-        // Build combined events array
+        $teamNames = $this->getTeamDisplayNames(array_column($rowsById, 'team_admin_user_id'));
         $events = [];
-        $seenEventIds = [];
-        foreach ($adminEventRows as $er) {
-            $eventId = (int)$er['id'];
-            if (!isset($seenEventIds[$eventId])) {
-                $seenEventIds[$eventId] = true;
-                $adminUserId = (int)$er['team_admin_user_id'];
-                $events[] = [
-                    'id' => $eventId,
-                    'label' => isset($er['comment']) ? trim((string)$er['comment']) : '',
-                    'team_admin_user_id' => $adminUserId,
-                    'team_alias' => isset($teamAliasMap[$adminUserId]) ? $teamAliasMap[$adminUserId] : '',
-                    'closed' => isset($er['closed']) ? (int)$er['closed'] : 0,
-                ];
+        foreach ($rowsById as $eventId => $row) {
+            $label = trim((string)$row['comment']);
+            if ($label === '') {
+                continue;
             }
+            $adminUserId = (int)$row['team_admin_user_id'];
+            $canManage = isset($managedEventIds[$eventId]);
+            $events[] = [
+                'id' => $eventId,
+                'label' => $label,
+                'team_alias' => isset($teamNames[$adminUserId]) ? $teamNames[$adminUserId] : '',
+                'team_admin_user_id' => $adminUserId,
+                'can_manage_members' => $canManage ? 1 : 0,
+                'role' => $canManage ? 'Mannschaftsführer' : 'Mitglied',
+                'closed' => isset($row['closed']) ? (int)$row['closed'] : 0,
+            ];
         }
-        foreach ($memberEventRows as $mr) {
-            $eventId = (int)$mr['id'];
-            if (!isset($seenEventIds[$eventId]) && !in_array($eventId, $adminEventIds)) {
-                $seenEventIds[$eventId] = true;
-                $adminUserId = (int)$mr['team_admin_user_id'];
-                $events[] = [
-                    'id' => $eventId,
-                    'label' => isset($mr['comment']) ? trim((string)$mr['comment']) : '',
-                    'team_admin_user_id' => $adminUserId,
-                    'team_alias' => isset($teamAliasMap[$adminUserId]) ? $teamAliasMap[$adminUserId] : '',
-                    'closed' => isset($mr['closed']) ? (int)$mr['closed'] : 0,
-                ];
-            }
-        }
-
-        $isTeamLead = !empty($adminEventIds);
-        $isTeamMember = !empty($memberEventIds);
-
-        return [
-            'events' => $events,
-            'teamAdminUserIds' => array_values(array_unique(array_column($adminEventRows, 'team_admin_user_id'))),
-            'adminEventIds' => $adminEventIds,
-            'memberEventIds' => $memberEventIds,
-            'isTeamLead' => $isTeamLead,
-            'isTeamMember' => $isTeamMember,
-        ];
+        return $events;
     }
 
     /**
-     * Build team stats payload for the team stats modal.
+     * Full Kostenübersicht payload for a list of Spieltage from getVisibleTeamEvents(): selects
+     * the requested one (by id, else by label, else the newest) and adds its stats.
+     */
+    protected function buildTeamStatsModalPayload(array $events, $requestedEventId, $requestedLabel)
+    {
+        $selected = null;
+        foreach ($events as $event) {
+            if ((int)$requestedEventId > 0 && $event['id'] === (int)$requestedEventId) {
+                $selected = $event;
+                break;
+            }
+        }
+        if (!$selected && trim((string)$requestedLabel) !== '') {
+            foreach ($events as $event) {
+                if ($event['label'] === trim((string)$requestedLabel)) {
+                    $selected = $event;
+                    break;
+                }
+            }
+        }
+        if (!$selected && !empty($events)) {
+            $selected = $events[0];
+        }
+
+        $openSpieltage = [];
+        foreach ($events as $event) {
+            if (empty($event['closed'])) {
+                $openSpieltage[] = $event['label'];
+            }
+        }
+        $isEditable = in_array(1, array_column($events, 'can_manage_members'), true) ? 1 : 0;
+        $payload = [
+            'spieltage' => array_column($events, 'label'),
+            'open_spieltage' => $openSpieltage,
+            'events' => $events,
+            'is_editable' => $isEditable,
+            'user_role' => $isEditable ? 'Mannschaftsführer' : 'Mitglied',
+            'team_alias' => $selected ? $selected['team_alias'] : '',
+            'member_candidates' => [],
+            'account_balance' => 0.0,
+        ];
+        if (!$selected) {
+            return array_merge($payload, $this->buildTeamStatsPayload(0, ''));
+        }
+
+        $teamAdminUserId = $selected['team_admin_user_id'];
+        $serviceManager = $this->getServiceLocator();
+        $payload['account_balance'] = (float)$serviceManager->get('Drinks\Manager\DrinkManager')->calculateUserDrinkBalance($teamAdminUserId, $serviceManager);
+        try {
+            $payload['member_candidates'] = $this->getTeamEventMemberCandidates($teamAdminUserId, $selected['id']);
+        } catch (\Throwable $e) {
+            // Member search stays empty
+        }
+        $stats = $this->buildTeamStatsPayload($teamAdminUserId, $selected['label'], ['team_event_id' => $selected['id']]);
+        $stats['members'] = $stats['active_members'];
+        return array_merge($payload, $stats);
+    }
+
+    /**
+     * Stats of one Spieltag for the Kostenübersicht modal.
      */
     protected function buildTeamStatsPayload($teamAdminUserId, $teamEventLabel, array $extra = [])
     {
@@ -2164,67 +1874,27 @@ trait TeamEventTrait
             ];
         }
 
-        $dbAdapter = $this->getTeamEventDbAdapter();
+        $selectedTeamEvent = $this->findTeamEventRow($teamAdminUserId, isset($extra['team_event_id']) ? $extra['team_event_id'] : 0, $teamEventLabel);
+        $selectedTeamEventId = $selectedTeamEvent ? (int)$selectedTeamEvent['id'] : 0;
 
-        // Get selected team event ID from extra params first
-        $selectedTeamEventId = isset($extra['team_event_id']) && $extra['team_event_id'] > 0
-            ? (int)$extra['team_event_id']
-            : 0;
-
-        // Look up the team event
-        $selectedTeamEvent = null;
-        if ($selectedTeamEventId > 0) {
-            $selectedTeamEvent = $dbAdapter->query(
-                'SELECT id, comment, closed FROM drinks_teamevents WHERE id = ? LIMIT 1',
-                [$selectedTeamEventId]
-            )->current();
-        }
-
-        // Fallback: try to find by label
-        if (!$selectedTeamEvent || !isset($selectedTeamEvent['id']) || $selectedTeamEvent['id'] <= 0) {
-            $selectedTeamEvent = $this->getTeamEventByLabel($teamAdminUserId, $teamEventLabel);
-            $selectedTeamEventId = $selectedTeamEvent && isset($selectedTeamEvent['id']) ? (int)$selectedTeamEvent['id'] : 0;
-        }
-
-        $isClosed = $this->isTeamEventClosedRow($selectedTeamEvent);
-
-        // Get member user IDs from extra params or from the database
         $memberUserIds = isset($extra['member_user_ids']) && is_array($extra['member_user_ids'])
             ? $extra['member_user_ids']
             : ($selectedTeamEventId > 0 ? $this->getTeamEventMemberUserIds($selectedTeamEventId) : []);
-
-        // Get order rows and total
         $stats = $this->getTeamEventOrderRowsAndTotal($teamAdminUserId, $teamEventLabel, $memberUserIds, $selectedTeamEventId);
-
-        // Get active members with contributions
-        $activeMembers = $selectedTeamEventId > 0
-            ? $this->getTeamEventMembersWithContribution($teamAdminUserId, $selectedTeamEventId, $teamEventLabel)
-            : [];
-
-        // Use enriched rows from stats (contains relevant_members/share_per_member),
-        // fall back to direct table reads only when stats did not populate them.
-        $guestDonations = isset($stats['guest_donations']) && is_array($stats['guest_donations'])
-            ? $stats['guest_donations']
-            : ($selectedTeamEventId > 0 ? $this->getTeamEventGuestDonations($selectedTeamEventId) : []);
-
-        $extraCosts = isset($stats['extra_costs']) && is_array($stats['extra_costs'])
-            ? $stats['extra_costs']
-            : ($selectedTeamEventId > 0 ? $this->getTeamEventExtraCosts($selectedTeamEventId) : []);
-
-        // Get member candidates for management
-        $canManageMembers = $selectedTeamEventId > 0;
 
         return array_merge([
             'spieltag' => $teamEventLabel,
             'team_event_id' => $selectedTeamEventId,
-            'team_event_closed' => $isClosed,
+            'team_event_closed' => $this->isTeamEventClosedRow($selectedTeamEvent),
             'can_close_team_event' => true,
             'rows' => $stats['rows'],
             'total_sum' => $stats['total_sum'],
-            'active_members' => $activeMembers,
-            'guest_donations' => $guestDonations,
-            'extra_costs' => $extraCosts,
-            'can_manage_members' => $canManageMembers,
+            'active_members' => $selectedTeamEventId > 0
+                ? $this->getTeamEventMembersWithContribution($teamAdminUserId, $selectedTeamEventId, $teamEventLabel)
+                : [],
+            'guest_donations' => $stats['guest_donations'],
+            'extra_costs' => $stats['extra_costs'],
+            'can_manage_members' => $selectedTeamEventId > 0,
         ], $extra);
     }
 }

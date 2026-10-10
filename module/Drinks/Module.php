@@ -16,12 +16,6 @@ class Module
 
     public function getConfig()
     {
-        $config = include __DIR__ . '/config/module.config.php';
-        $config['view_manager'] = array(
-            'template_path_stack' => array(
-                __DIR__ . '/../view',
-            ),
-        );
-        return $config;
+        return include __DIR__ . '/config/module.config.php';
     }
 }

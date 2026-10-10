@@ -2,13 +2,17 @@
 
 namespace Drinks\Manager;
 
-use RuntimeException;
 use Drinks\Controller\Traits\ThekeMailTrait;
 use Zend\Db\Adapter\Adapter;
 
 class DrinkManager
 {
     use ThekeMailTrait;
+
+    /**
+     * Drink ids priced per order: 1 = "Sonstiges", -1 = money transfer.
+     */
+    const CUSTOM_PRICE_DRINK_IDS = [1, -1];
 
     protected $dbAdapter;
 
@@ -44,9 +48,14 @@ class DrinkManager
 
     public function getMinimumAccountBalance($serviceManager)
     {
+        return $this->getMoneyOption($serviceManager, 'drinks.minimum_account_balance');
+    }
+
+    private function getMoneyOption($serviceManager, $key)
+    {
         try {
             $optionManager = $serviceManager->get('Base\\Manager\\OptionManager');
-            $value = str_replace(',', '.', trim((string)$optionManager->get('drinks.minimum_account_balance', '0')));
+            $value = str_replace(',', '.', trim((string)$optionManager->get($key, '0')));
             return round((float)$value, 2);
         } catch (\Exception $e) {
             return 0.0;
@@ -77,6 +86,176 @@ class DrinkManager
         } catch (\Exception $e) {
             return false;
         }
+    }
+
+    public function isThekenadmin($userId)
+    {
+        $row = $this->dbAdapter->query('SELECT thekenadmin FROM drink_aliases WHERE user_id = ?', [(int)$userId])->current();
+        return $row && isset($row['thekenadmin']) && (int)$row['thekenadmin'] === 1;
+    }
+
+    /**
+     * Team accounts whose teamlead_email list contains $email: [['user_id' => int, 'alias' => string], ...].
+     * The alias is the team's display name (bs_users.alias), never its Theken-ID.
+     */
+    public function getLedTeams($email)
+    {
+        $email = trim((string)$email);
+        if ($email === '') {
+            return [];
+        }
+        $rows = $this->dbAdapter->query(
+            'SELECT da.user_id, u.alias
+             FROM drink_aliases da
+             LEFT JOIN bs_users u ON u.uid = da.user_id
+             WHERE da.is_team = 1
+                 AND FIND_IN_SET(LOWER(TRIM(?)), REPLACE(REPLACE(LOWER(COALESCE(da.teamlead_email, "")), " ", ""), ";", ",")) > 0
+             ORDER BY da.user_id ASC',
+            [$email]
+        )->toArray();
+        $teams = [];
+        foreach ($rows as $row) {
+            if (!empty($row['user_id'])) {
+                $teams[] = [
+                    'user_id' => (int)$row['user_id'],
+                    'alias' => isset($row['alias']) ? trim((string)$row['alias']) : '',
+                ];
+            }
+        }
+        return $teams;
+    }
+
+    public function getLedTeamUids($email)
+    {
+        return array_column($this->getLedTeams($email), 'user_id');
+    }
+
+    /**
+     * True if the user takes part in at least one Spieltag.
+     */
+    public function isTeamEventMember($userId)
+    {
+        $row = $this->dbAdapter->query(
+            'SELECT COUNT(*) AS cnt FROM drinks_teamevent_members WHERE user_id = ?',
+            [(int)$userId]
+        )->current();
+        return $row && (int)$row['cnt'] > 0;
+    }
+
+    /**
+     * Per-order confirmation mails follow drink_aliases.order_email_option:
+     * 'order' always, 'negative' only at a balance of zero or below.
+     */
+    public function shouldSendOrderEmail($userId, $balance)
+    {
+        $row = $this->dbAdapter->query('SELECT order_email_option FROM drink_aliases WHERE user_id = ?', [(int)$userId])->current();
+        $option = $row && isset($row['order_email_option']) ? $row['order_email_option'] : null;
+        return $option === 'order' || ($option === 'negative' && $balance <= 0);
+    }
+
+    public static function isCustomPriceDrink($drinkId)
+    {
+        return in_array((int)$drinkId, self::CUSTOM_PRICE_DRINK_IDS, true);
+    }
+
+    /**
+     * Label of a "Sonstiges" / transfer entry: "3x comment", falling back to the drink name.
+     */
+    public static function formatCustomEntryLabel($quantity, $comment, $fallbackName)
+    {
+        $comment = trim((string)$comment);
+        return ((int)$quantity > 1 ? $quantity . 'x ' : '') . ($comment !== '' ? $comment : $fallbackName);
+    }
+
+    public function negativeBalanceWarningHtml($tCallback)
+    {
+        return '<span style="color:#d32f2f;font-weight:bold;">'
+            . call_user_func($tCallback, 'Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das Paypal-Konto "kneipe@stc-butzbach.de" oder wirf Geld in den weißen Briefkasten ein.')
+            . '</span>';
+    }
+
+    /**
+     * Mail the user about a new deposit and the resulting balance. Never throws.
+     */
+    public function notifyDeposit($userId, $amount, $comment, $serviceManager)
+    {
+        try {
+            $recipient = $serviceManager->get('User\Manager\UserManager')->get($userId);
+            if (!$recipient) {
+                return;
+            }
+            $balance = $this->calculateUserDrinkBalance($userId, $serviceManager);
+            $body =
+                '<p>Es wurde soeben eine Einzahlung auf Dein Getränkekonto vorgenommen:</p>' .
+                '<ul>' .
+                ($comment ? '<li><strong>Bemerkung:</strong> ' . htmlspecialchars($comment) . '</li>' : '') .
+                '<li><strong>Einzahlungsbetrag:</strong> ' . number_format($amount, 2, ',', '.') . ' €</li>' .
+                '<li><strong>Neuer Kontostand:</strong> ' . number_format($balance, 2, ',', '.') . ' €</li>' .
+                '</ul>' .
+                '<p>Viele Grüße<br>Dein Theken-Team</p>';
+            $mailService = $serviceManager->get('User\Service\MailService');
+            $this->sendFromTheke($mailService, $this->dbAdapter, $recipient, 'Neue Einzahlung auf Ihr Getränkekonto', $body, ['isHtml' => true]);
+        } catch (\Throwable $e) {
+            error_log('Fehler beim Senden der Einzahlungsbenachrichtigung: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Active users a money transfer can be sent to: [['uid', 'name', 'email'], ...].
+     */
+    public function getMoneyRecipients($userManager, $excludeUserId)
+    {
+        $recipients = [];
+        foreach ($userManager->getAll('alias ASC') as $candidateUser) {
+            if (!in_array($candidateUser->get('status'), ['enabled', 'admin', 'assist'], true)) {
+                continue;
+            }
+            $candidateUid = (int)$candidateUser->get('uid');
+            if ($candidateUid <= 0 || $candidateUid === (int)$excludeUserId) {
+                continue;
+            }
+            $candidateAlias = trim((string)$candidateUser->get('alias'));
+            $candidateName = trim((string)$candidateUser->get('name'));
+            $recipients[] = [
+                'uid' => $candidateUid,
+                'name' => $candidateAlias !== '' ? $candidateAlias : ($candidateName !== '' ? $candidateName : ('User ' . $candidateUid)),
+                'email' => trim((string)$candidateUser->get('email')),
+            ];
+        }
+        return $recipients;
+    }
+
+    /**
+     * Party mode options: 'enabled' is the stored switch, 'active' additionally respects the
+     * optional start/end window.
+     */
+    public function getPartyMode($serviceManager)
+    {
+        $optionManager = $serviceManager->get('Base\Manager\OptionManager');
+        $read = function ($key, $default) use ($optionManager) {
+            try {
+                return $optionManager->get($key, $default);
+            } catch (\RuntimeException $e) {
+                return $default;
+            }
+        };
+        $rawEnabled = $read('party_mode.enabled', false);
+        $enabled = ($rawEnabled === '1' || $rawEnabled === 1 || $rawEnabled === true);
+        $start = (string)$read('party_mode.start', '');
+        $end = (string)$read('party_mode.end', '');
+
+        $now = time();
+        $startTs = $start !== '' ? strtotime($start) : false;
+        $endTs = $end !== '' ? strtotime($end) : false;
+        $withinWindow = !($startTs && $now < $startTs) && !($endTs && $now > $endTs);
+
+        return [
+            'enabled' => $enabled,
+            'active' => $enabled && $withinWindow,
+            'message' => (string)$read('party_mode.message', ''),
+            'start' => $start,
+            'end' => $end,
+        ];
     }
 
     public function isOrderAllowed($userId, $orderTotal, $serviceManager, $allowBelowMinimum = false)
@@ -147,16 +326,10 @@ class DrinkManager
                 ? call_user_func($tCallback, 'Stornierung Deiner Geldüberweisung')
                 : call_user_func($tCallback, 'Stornierung Deiner Getränkebestellung');
             $lines = [];
-            if ((int)$order['drink_id'] === 1 || (int)$order['drink_id'] === -1) {
-                // Special case for Sonstiges (1) and money transfers (-1): only show comment
-                // Fallback to drink name if comment is empty
+            if (self::isCustomPriceDrink($order['drink_id'])) {
+                // Sonstiges (1) and money transfers (-1): only show the comment
                 $drinkName = isset($order['drink_name']) ? $order['drink_name'] : ('ID ' . $order['drink_id']);
-                $label = '';
-                if ((int)$order['quantity'] > 1) {
-                    $label = $order['quantity'] . 'x ';
-                }
-                $comment = isset($order['comment']) ? trim((string)$order['comment']) : '';
-                $label .= ($comment !== '') ? $comment : $drinkName;
+                $label = self::formatCustomEntryLabel($order['quantity'], isset($order['comment']) ? $order['comment'] : '', $drinkName);
                 $lines[] = sprintf('%s = %.2f EUR', $label, $order['quantity'] * $order['price']);
             } else {
                 $lines[] = sprintf('%s x %d = %.2f EUR', $order['drink_name'], $order['quantity'], $order['quantity'] * $order['price']);
@@ -170,8 +343,7 @@ class DrinkManager
                 : call_user_func($tCallback, 'Deine Getränkebestellung wurde erfolgreich storniert.'))
                 . "<br><br>" . implode("<br>", $lines);
             if ($balance < 0) {
-                $text .= "<br><br>";
-                $text .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func($tCallback, 'Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das Paypal-Konto "kneipe@stc-butzbach.de" oder wirf Geld in den weißen Briefkasten ein.') . '</span>';
+                $text .= '<br><br>' . $this->negativeBalanceWarningHtml($tCallback);
             }
             $userMailService = $serviceManager->get('User\Service\MailService');
             $this->sendFromTheke($userMailService, $this->dbAdapter, $user, $subject, $text, ['isHtml' => true]);
@@ -257,30 +429,13 @@ class DrinkManager
         }
         if ($anyOrdered) {
             $balance = $this->calculateUserDrinkBalance($user->need('uid'), $serviceManager);
-            // Fetch order_email_option from drink_aliases
-            $dbAdapter = $serviceManager->get('Zend\Db\Adapter\Adapter');
-            $aliasRow = $dbAdapter->query('SELECT order_email_option FROM drink_aliases WHERE user_id = ?', [$user->need('uid')])->current();
-            $orderEmailOption = $aliasRow && isset($aliasRow['order_email_option']) ? $aliasRow['order_email_option'] : null;
-            $shouldSend = false;
-            if ($orderEmailOption === 'order') {
-                $shouldSend = true;
-            } elseif ($orderEmailOption === 'negative' && $balance <= 0) {
-                $shouldSend = true;
-            }
-            if ($shouldSend) {
+            if ($this->shouldSendOrderEmail($user->need('uid'), $balance)) {
                 $subject = call_user_func($tCallback, 'Bestätigung Deiner Getränkebestellung');
                 $lines = [];
                 $totalSum = 0;
                 foreach ($orderedDrinks as $item) {
                     if ((int)$item['id'] === 1) {
-                        // Fallback to drink name if comment is empty
-                        $drinkName = isset($item['name']) ? $item['name'] : $item['id'];
-                        $label = '';
-                        if ((int)$item['quantity'] > 1) {
-                            $label = $item['quantity'] . 'x ';
-                        }
-                        $comment = isset($item['comment']) ? trim((string)$item['comment']) : '';
-                        $label .= ($comment !== '') ? $comment : $drinkName;
+                        $label = self::formatCustomEntryLabel($item['quantity'], isset($item['comment']) ? $item['comment'] : '', $item['name']);
                         $lines[] = sprintf('%s = %.2f EUR', $label, $item['total']);
                     } else {
                         $lines[] = sprintf('%s x %d = %.2f EUR', $item['name'], $item['quantity'], $item['total']);
@@ -293,8 +448,7 @@ class DrinkManager
                 $lines[] = sprintf(call_user_func($tCallback, 'Kontostand nach Bestellung:') . '<b> %.2f EUR </b>', $balance);
                 $text = call_user_func($tCallback, 'Vielen Dank für Deine Getränkebestellung!') . "<br><br>" . implode("<br>", $lines);
                 if ($balance < 0) {
-                    $text .= "<br><br>";
-                    $text .= '<span style="color:#d32f2f;font-weight:bold;">' . call_user_func($tCallback, 'Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das Paypal-Konto "kneipe@stc-butzbach.de" oder wirf Geld in den weißen Briefkasten ein.') . '</span>';
+                    $text .= '<br><br>' . $this->negativeBalanceWarningHtml($tCallback);
                 }
                 $userMailService = $serviceManager->get('User\Service\MailService');
                 $this->sendFromTheke($userMailService, $this->dbAdapter, $user, $subject, $text, ['isHtml' => true]);
@@ -345,10 +499,9 @@ class DrinkManager
         foreach ($ordersByDay as $date => $ordersForDay) {
             $lines[] = '<b>' . htmlspecialchars($date) . '</b>';
             $drinkSums = [];
-            $commentSums = [];
             foreach ($ordersForDay as $order) {
-                if ((int)$order['drink_id'] === 1 || (int)$order['drink_id'] === -1) {
-                    // Special handling for Sonstiges (1) and money transfers (-1): group by comment
+                if (self::isCustomPriceDrink($order['drink_id'])) {
+                    // Sonstiges (1) and money transfers (-1): group by comment
                     $key = $order['comment'];
                     if (!isset($drinkSums[$key])) {
                         $drinkSums[$key] = ['quantity' => 0, 'total' => 0.0, 'comment' => $order['comment']];
@@ -367,14 +520,7 @@ class DrinkManager
             }
             foreach ($drinkSums as $key => $sum) {
                 if (isset($sum['comment'])) {
-                    // Fallback to drink name if comment is empty
-                    $drinkName = $key;
-                    $label = '';
-                    if ((int)$sum['quantity'] > 1) {
-                        $label = $sum['quantity'] . 'x ';
-                    }
-                    $comment = isset($sum['comment']) ? trim((string)$sum['comment']) : '';
-                    $label .= ($comment !== '') ? $comment : $drinkName;
+                    $label = self::formatCustomEntryLabel($sum['quantity'], $sum['comment'], $key);
                     $lines[] = sprintf('%s = %.2f EUR', $label, $sum['total']);
                 } else {
                     $lines[] = sprintf('%s x %d = %.2f EUR', $key, $sum['quantity'], $sum['total']);
@@ -392,8 +538,7 @@ class DrinkManager
         $lines[] = sprintf($tCallback('Kontostand:') . '<b> %.2f EUR </b>', $balance);
         $text = $tCallback('Deine Getränkebestellungen im Überblick:') . "<br><br>" . implode("<br>", $lines);
         if ($balance < 0) {
-            $text .= "<br><br>";
-            $text .= '<span style="color:#d32f2f;font-weight:bold;">' . $tCallback('Warnung: Dein Kontostand ist negativ! Bitte überweise Geld auf das Paypal-Konto "kneipe@stc-butzbach.de" oder wirf Geld in den weißen Briefkasten ein.') . '</span>';
+            $text .= '<br><br>' . $this->negativeBalanceWarningHtml($tCallback);
         }
         $subject = $tCallback('Deine Getränkebestellungen (Zusammenfassung)');
 
@@ -411,14 +556,7 @@ class DrinkManager
         }
 
         $balance = round($this->calculateUserDrinkBalance($userId, $serviceManager), 2);
-        try {
-            $optionManager = $serviceManager->get('Base\\Manager\\OptionManager');
-            $threshold = str_replace(',', '.', trim((string)$optionManager->get('drinks.account_balance_reminder_threshold', '0')));
-            $threshold = round((float)$threshold, 2);
-        } catch (\Exception $e) {
-            $threshold = 0.0;
-        }
-        if ($balance >= $threshold) {
+        if ($balance >= $this->getMoneyOption($serviceManager, 'drinks.account_balance_reminder_threshold')) {
             return false;
         }
 

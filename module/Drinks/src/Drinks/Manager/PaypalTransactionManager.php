@@ -2,15 +2,23 @@
 
 namespace Drinks\Manager;
 
+use Drinks\Service\DbSchema;
 use Zend\Db\Adapter\AdapterInterface;
 
 class PaypalTransactionManager
 {
+    const SETTING_KEYS = [
+        'imap_host',
+        'imap_port',
+        'imap_user',
+        'imap_password',
+        'imap_ssl',
+        'paypal_client_id',
+        'paypal_client_secret',
+    ];
+
     /** @var AdapterInterface */
     private $dbAdapter;
-
-    /** @var bool */
-    private $connectionUtf8mb4Initialized = false;
 
     /** @var object|null */
     private $userManager;
@@ -23,22 +31,38 @@ class PaypalTransactionManager
         $this->dbAdapter = $dbAdapter;
         $this->userManager = $userManager;
         $this->mailService = $mailService;
-        $this->ensureUtf8mb4Connection();
+        DbSchema::ensureUtf8mb4($dbAdapter);
     }
 
-    private function ensureUtf8mb4Connection()
+    /**
+     * PayPal / IMAP settings (SETTING_KEYS) from the options 'paypal.<key>', falling back to
+     * the legacy dotted keys ('paypal.imap.host').
+     */
+    public static function loadSettings($optionManager)
     {
-        if ($this->connectionUtf8mb4Initialized) {
-            return;
+        $settings = [];
+        foreach (self::SETTING_KEYS as $key) {
+            try {
+                $value = (string)$optionManager->get('paypal.' . $key, '');
+                if ($value === '' && strpos($key, '_') !== false) {
+                    $value = (string)$optionManager->get('paypal.' . str_replace('_', '.', $key), '');
+                }
+            } catch (\Throwable $e) {
+                $value = '';
+            }
+            $settings[$key] = trim($value);
         }
+        return $settings;
+    }
 
-        try {
-            $this->dbAdapter->query('SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci', []);
-            $this->connectionUtf8mb4Initialized = true;
-        } catch (\Throwable $e) {
-            // Keep legacy behavior if the DB user cannot run SET NAMES explicitly.
-            $this->connectionUtf8mb4Initialized = false;
-        }
+    public static function hasImapSettings(array $settings)
+    {
+        return $settings['imap_host'] !== '' && $settings['imap_port'] !== '' && $settings['imap_user'] !== '' && $settings['imap_password'] !== '';
+    }
+
+    public static function hasApiCredentials(array $settings)
+    {
+        return $settings['paypal_client_id'] !== '' && $settings['paypal_client_secret'] !== '';
     }
 
     /**
@@ -165,13 +189,6 @@ class PaypalTransactionManager
     }
 
     /**
-     * Create and link a deposit for a PayPal transaction exactly once.
-     * A per-transaction MySQL named lock serialises concurrent attempts (double click,
-     * manual credit racing the cron auto-assign); the row is re-read under the lock.
-     * Returns ['success' => bool, 'deposit_id', 'amount', 'comment', 'deposit_time', 'error'];
-     * error 'already_linked' means the transaction was credited before (no new deposit).
-     */
-    /**
      * Map a PayPal status (Reporting API S/P/V/D/F, Orders/Captures API, German email text)
      * to 'completed', 'pending', 'failed', 'reversed' or 'unknown'.
      */
@@ -208,6 +225,12 @@ class PaypalTransactionManager
     }
 
     /**
+     * Create and link a deposit for a PayPal transaction exactly once.
+     * A per-transaction MySQL named lock serialises concurrent attempts (double click,
+     * manual credit racing the cron auto-assign); the row is re-read under the lock.
+     * Returns ['success' => bool, 'deposit_id', 'amount', 'comment', 'deposit_time', 'error'];
+     * error 'already_linked' means the transaction was credited before (no new deposit).
+     *
      * $requireCompleted: auto-assign passes true (only confirmed completed payments);
      * a manual admin credit passes false and is only blocked for known pending/failed/reversed
      * statuses, so email-only rows with an unrecognised status can still be credited by hand.
@@ -438,8 +461,9 @@ class PaypalTransactionManager
                     $txId = isset($info['transaction_id']) ? trim($info['transaction_id']) : '';
                     if ($txId === '') continue;
 
-                    $amountRaw = isset($info['transaction_amount']['value']) ? (float)$info['transaction_amount']['value'] : 0.0;
-                    $reportedStatus = isset($info['transaction_status']) ? (string)$info['transaction_status'] : '';
+                    $fields = $this->extractReportingFields($detail);
+                    $amountRaw = (float)$fields['gross'];
+                    $reportedStatus = (string)$fields['transaction_status'];
 
                     // Negative amounts (refunds, chargebacks) reverse the original transaction they reference.
                     if ($amountRaw < 0) {
@@ -454,10 +478,6 @@ class PaypalTransactionManager
                         $result['skipped']++;
                         continue;
                     }
-
-                    // Subtract fee (fee_amount is negative, e.g. -0.54, so adding it reduces the amount)
-                    $feeRaw = isset($info['fee_amount']['value']) ? (float)$info['fee_amount']['value'] : 0.0;
-                    $amount = round($amountRaw + $feeRaw, 2);
 
                     // Already imported: only refresh the status (pending -> completed, or reversed)
                     $existing = $this->dbAdapter->query('SELECT id, transaction_status FROM drinks_paypal WHERE paypal_transaction_id = ? LIMIT 1', [$txId])->current();
@@ -474,19 +494,8 @@ class PaypalTransactionManager
                         continue;
                     }
 
-                    $payer = isset($detail['payer_info']) ? $detail['payer_info'] : [];
-                    $payerEmail = isset($payer['email_address']) ? strtolower(trim($payer['email_address'])) : null;
-                    $payerName = isset($payer['name']['alternate_full_name']) ? trim($payer['name']['alternate_full_name'])
-                        : (isset($payer['name']['full_name']) ? trim($payer['name']['full_name']) : null);
-                    $transactionNote = isset($info['transaction_note']) ? trim($info['transaction_note']) : (isset($info['transaction_subject']) ? trim($info['transaction_subject']) : null);
-                    $transactionNote = $this->normalizeTransactionNoteForStorage($transactionNote);
-                    $transactionNote = $this->appendFeeNote($transactionNote, $feeRaw);
-                    $transactionStatus = isset($info['transaction_status']) ? $info['transaction_status'] : null;
-                    $accountId = isset($info['paypal_reference_id']) ? $info['paypal_reference_id']
-                        : (isset($info['paypal_account_id']) ? $info['paypal_account_id'] : null);
-
-                    $receivedAtRaw = isset($info['transaction_initiation_date']) ? trim($info['transaction_initiation_date']) : null;
-                    $receivedAt = $receivedAtRaw !== null ? $this->normalizePaypalDate($receivedAtRaw) : null;
+                    $transactionNote = $this->appendFeeNote($this->normalizeTransactionNoteForStorage($fields['transaction_note']), $fields['fee']);
+                    $receivedAt = $fields['received_at'] !== null ? $this->normalizePaypalDate($fields['received_at']) : null;
 
                     $sql = 'INSERT INTO drinks_paypal
                         (paypal_transaction_id, state, account_id, payer_name, payer_email, amount, transaction_status, transaction_note, transaction_json, received_at)
@@ -494,11 +503,11 @@ class PaypalTransactionManager
                     $params = [
                         $txId,
                         'apifoundsynced',
-                        $accountId,
-                        $payerName,
-                        $payerEmail,
-                        $amount,
-                        $transactionStatus,
+                        $fields['account_id'],
+                        $fields['payer_name'],
+                        $fields['payer_email'],
+                        $fields['amount'],
+                        $fields['transaction_status'],
                         $transactionNote,
                         json_encode(['api_import' => $detail], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                         $receivedAt,
@@ -629,16 +638,9 @@ class PaypalTransactionManager
                     $result['skipped']++;
                     continue;
                 }
-                $amount = $creditResult['amount'];
-                $comment = $creditResult['comment'];
-                $depositTime = $creditResult['deposit_time'];
-
                 if ($serviceManager !== null) {
-                    try {
-                        $this->sendDepositNotification($serviceManager, $matchedUserId, $amount, $comment, $depositTime);
-                    } catch (\Throwable $e) {
-                        $result['errors'][] = sprintf('PayPal #%d: deposit notification failed: %s', $paypalId, $e->getMessage());
-                    }
+                    $serviceManager->get('Drinks\Manager\DrinkManager')
+                        ->notifyDeposit($matchedUserId, $creditResult['amount'], $creditResult['comment'], $serviceManager);
                 }
 
                 $result['created']++;
@@ -665,31 +667,6 @@ class PaypalTransactionManager
         } catch (\Throwable $e) {
             // Never fail auto-assignment because metadata update failed.
         }
-    }
-
-    private function sendDepositNotification($serviceManager, $userId, $amount, $comment, $depositTime = null)
-    {
-        $userManager = $serviceManager->get('User\Manager\UserManager');
-        $mailService = $serviceManager->get('User\Service\MailService');
-        $drinkManager = $serviceManager->get('Drinks\Manager\DrinkManager');
-
-        $recipient = $userManager->get($userId);
-        if (!$recipient) {
-            return;
-        }
-
-        $balance = $drinkManager->calculateUserDrinkBalance($userId, $serviceManager);
-        $subject = 'Neue Einzahlung auf Ihr Getränkekonto';
-        $body =
-            '<p>Es wurde soeben eine Einzahlung auf Dein Getränkekonto vorgenommen:</p>' .
-            '<ul>' .
-            ($comment ? '<li><strong>Bemerkung:</strong> ' . htmlspecialchars($comment) . '</li>' : '') .
-            '<li><strong>Einzahlungsbetrag:</strong> ' . number_format($amount, 2, ',', '.') . ' €</li>' .
-            '<li><strong>Neuer Kontostand:</strong> ' . number_format($balance, 2, ',', '.') . ' €</li>' .
-            '</ul>' .
-            '<p>Viele Grüße<br>Dein Theken-Team</p>';
-
-        $mailService->sendFromTheke($recipient, $subject, $body, ['isHtml' => true]);
     }
 
     private function resolveTemporaryUserForPayerName($payerName)
@@ -851,24 +828,13 @@ class PaypalTransactionManager
         }
     }
 
-    public function importFromImap($imapHost, $imapPort, $imapUser, $imapPassword, $imapSsl = false)
+    /**
+     * Import unseen PayPal emails from the INBOX. $settings as returned by loadSettings().
+     */
+    public function importFromImap(array $settings)
     {
-        if (!function_exists('imap_open')) {
-            throw new \RuntimeException('IMAP PHP extension is not available.');
-        }
-
-        $imapHost = trim((string)$imapHost);
-        $imapPort = (int)$imapPort;
-        $imapUser = trim((string)$imapUser);
-        $imapPassword = trim((string)$imapPassword);
-        $imapSsl = ($imapSsl === true || $imapSsl === '1' || $imapSsl === 1);
-
-        if ($imapHost === '' || $imapPort <= 0 || $imapUser === '' || $imapPassword === '') {
-            throw new \RuntimeException('PayPal IMAP settings are incomplete.');
-        }
-
-        $mailbox = $this->buildImapConnectionPrefix($imapHost, $imapPort, $imapSsl) . 'INBOX';
-        $inbox = @imap_open($mailbox, $imapUser, $imapPassword);
+        list($connPrefix, $imapUser, $imapPassword) = $this->getImapConnection($settings);
+        $inbox = @imap_open($connPrefix . 'INBOX', $imapUser, $imapPassword);
 
         if ($inbox === false) {
             $error = imap_last_error();
@@ -1058,23 +1024,24 @@ class PaypalTransactionManager
         $endDate = $rowDate ? clone $rowDate : clone $now;
         $endDate->setTime(23, 59, 59);
 
-        $url = 'https://api-m.paypal.com/v1/reporting/transactions?' . http_build_query([
-            'start_date' => $startDate->format('Y-m-d\TH:i:s\Z'),
-            'end_date' => $endDate->format('Y-m-d\TH:i:s\Z'),
-            'page_size' => 100,
-        ]);
-        $response = $this->paypalApiRequest($url, 'GET', $accessToken);
-
-        if ($this->isReportingResult($response) && $this->reportingContainsTransaction($response, $transactionId)) {
-            $apiData = ['type' => 'reporting', 'data' => $response];
+        // First the default fields, then 'all' (payer details are only in the full set for some transactions)
+        foreach ([[], ['fields' => 'all']] as $extraQuery) {
+            $url = 'https://api-m.paypal.com/v1/reporting/transactions?' . http_build_query(array_merge([
+                'start_date' => $startDate->format('Y-m-d\TH:i:s\Z'),
+                'end_date' => $endDate->format('Y-m-d\TH:i:s\Z'),
+                'page_size' => 100,
+            ], $extraQuery));
+            $response = $this->paypalApiRequest($url, 'GET', $accessToken);
             $detail = $this->getMatchingReportingTransactionDetail($response, $transactionId);
-            if ($detail !== null) {
-                $captureId = $this->extractAccountIdFromTransactionInfo($detail['transaction_info'] ?? []);
-                if ($captureId !== '') {
-                    $payeeEmail = $this->fetchCapturePayeeEmail($captureId, $accessToken);
-                    if ($payeeEmail !== null) {
-                        $apiData['capture_payee_email'] = $payeeEmail;
-                    }
+            if ($detail === null) {
+                continue;
+            }
+            $apiData = ['type' => 'reporting', 'data' => $response];
+            $captureId = $this->extractAccountIdFromTransactionInfo($detail['transaction_info']);
+            if ($captureId !== '') {
+                $payeeEmail = $this->fetchCapturePayeeEmail($captureId, $accessToken);
+                if ($payeeEmail !== null) {
+                    $apiData['capture_payee_email'] = $payeeEmail;
                 }
             }
             if ($this->isValidPaypalApiResult($apiData, $row)) {
@@ -1082,31 +1049,6 @@ class PaypalTransactionManager
             }
         }
 
-        $url = 'https://api-m.paypal.com/v1/reporting/transactions?' . http_build_query([
-            'start_date' => $startDate->format('Y-m-d\TH:i:s\Z'),
-            'end_date' => $endDate->format('Y-m-d\TH:i:s\Z'),
-            'page_size' => 100,
-            'fields' => 'all',
-        ]);
-        $response = $this->paypalApiRequest($url, 'GET', $accessToken);
-        if ($this->isReportingResult($response) && $this->reportingContainsTransaction($response, $transactionId)) {
-            $apiData = ['type' => 'reporting', 'data' => $response];
-            $detail = $this->getMatchingReportingTransactionDetail($response, $transactionId);
-            if ($detail !== null) {
-                $captureId = $this->extractAccountIdFromTransactionInfo($detail['transaction_info'] ?? []);
-                if ($captureId !== '') {
-                    $payeeEmail = $this->fetchCapturePayeeEmail($captureId, $accessToken);
-                    if ($payeeEmail !== null) {
-                        $apiData['capture_payee_email'] = $payeeEmail;
-                    }
-                }
-            }
-            if ($this->isValidPaypalApiResult($apiData, $row)) {
-                return $apiData;
-            }
-        }
-
-        // Only reporting results are considered valid matches.
         return null;
     }
 
@@ -1233,118 +1175,66 @@ class PaypalTransactionManager
      */
     private function parsePaypalApiResponse(array $apiResult, array $row)
     {
-        $fee = 0.0;
         $parsed = [
             'account_id' => null,
             'payer_name' => null,
             'payer_email' => null,
             'amount' => null,
-            'transaction_status' => null,
-            'transaction_note' => null,
+            'transaction_status' => 'unknown',
+            'transaction_note' => '',
             'received_at' => null,
+            'fee' => 0.0,
         ];
 
-        $type = isset($apiResult['type']) ? $apiResult['type'] : null;
-        $data = isset($apiResult['data']) ? $apiResult['data'] : [];
-
-        if ($type === 'reporting' && isset($data['transaction_details'][0])) {
-            $transactionId = trim((string)$row['paypal_transaction_id']);
-            foreach ($data['transaction_details'] as $detail) {
-                if (!is_array($detail) || !isset($detail['transaction_info'])) {
-                    continue;
-                }
-                $info = isset($detail['transaction_info']) ? $detail['transaction_info'] : [];
-                $reportedId = null;
-                if (isset($info['transaction_id'])) {
-                    $reportedId = trim($info['transaction_id']);
-                }
-                if ($reportedId === '' && isset($info['paypal_reference_id'])) {
-                    $reportedId = trim($info['paypal_reference_id']);
-                }
-                if ($reportedId === '' && isset($info['paypal_account_id'])) {
-                    $reportedId = trim($info['paypal_account_id']);
-                }
-                if ($reportedId !== $transactionId) {
-                    continue;
-                }
-
-                $payer = isset($detail['payer_info']) ? $detail['payer_info'] : [];
-                $parsed['transaction_status'] = isset($info['transaction_status']) ? $info['transaction_status'] : null;
-                $parsed['account_id'] = isset($info['paypal_reference_id']) ? $info['paypal_reference_id'] : (isset($info['paypal_account_id']) ? $info['paypal_account_id'] : null);
-                $parsed['amount'] = isset($info['transaction_amount']['value']) ? (float)$info['transaction_amount']['value'] : null;
-                if ($parsed['amount'] !== null && isset($info['fee_amount']['value'])) {
-                    $fee = (float)$info['fee_amount']['value'];
-                    $parsed['amount'] = round($parsed['amount'] + $fee, 2);
-                }
-                $parsed['payer_email'] = isset($payer['email_address']) ? strtolower(trim($payer['email_address'])) : null;
-                if ($parsed['payer_email'] === null && isset($apiResult['capture_payee_email']) && trim($apiResult['capture_payee_email']) !== '') {
-                    $parsed['payer_email'] = strtolower(trim($apiResult['capture_payee_email']));
-                }
-                $parsed['payer_name'] = isset($payer['name']['alternate_full_name']) ? trim($payer['name']['alternate_full_name']) : (isset($payer['name']['full_name']) ? trim($payer['name']['full_name']) : null);
-                $parsed['transaction_note'] = isset($info['transaction_note']) ? trim($info['transaction_note']) : (isset($info['transaction_subject']) ? trim($info['transaction_subject']) : null);
-                if ($parsed['transaction_note'] === null && isset($detail['transaction_item_details'][0]['item_details']['name'])) {
-                    $parsed['transaction_note'] = trim($detail['transaction_item_details'][0]['item_details']['name']);
-                }
-                $parsed['received_at'] = isset($info['transaction_initiation_date']) ? trim($info['transaction_initiation_date']) : null;
-                break;
-            }
-        } elseif ($type === 'capture') {
-            $parsed['transaction_status'] = isset($data['status']) ? $data['status'] : null;
-            $parsed['amount'] = isset($data['amount']['value']) ? (float)$data['amount']['value'] : null;
-            $parsed['transaction_note'] = isset($data['invoice_id']) ? trim($data['invoice_id']) : null;
-            if ($parsed['transaction_note'] === null && isset($data['supplementary_data']['related_ids']['order_id'])) {
-                $parsed['transaction_note'] = trim($data['supplementary_data']['related_ids']['order_id']);
-            }
-            $breakdown = isset($data['seller_receivable_breakdown']) ? $data['seller_receivable_breakdown'] : [];
-            if (isset($breakdown['gross_amount']['value'])) {
-                $parsed['amount'] = (float)$breakdown['gross_amount']['value'];
-            }
-            if (isset($breakdown['paypal_fee']['value'])) {
-                $fee = -abs((float)$breakdown['paypal_fee']['value']);
-            }
-            if (isset($breakdown['net_amount']['value'])) {
-                $parsed['amount'] = (float)$breakdown['net_amount']['value'];
-            } elseif ($parsed['amount'] !== null) {
-                $parsed['amount'] = round($parsed['amount'] + $fee, 2);
-            }
-            $parsed['payer_name'] = isset($data['payer']['name']['full_name']) ? trim($data['payer']['name']['full_name']) : null;
-            $parsed['payer_email'] = isset($data['payer']['email_address']) ? strtolower(trim($data['payer']['email_address'])) : null;
-        } elseif ($type === 'order') {
-            $parsed['transaction_status'] = isset($data['status']) ? $data['status'] : null;
-            if (isset($data['purchase_units'][0]['amount']['value'])) {
-                $parsed['amount'] = (float)$data['purchase_units'][0]['amount']['value'];
-            }
-            $orderBreakdown = isset($data['purchase_units'][0]['payments']['captures'][0]['seller_receivable_breakdown'])
-                ? $data['purchase_units'][0]['payments']['captures'][0]['seller_receivable_breakdown'] : [];
-            if (isset($orderBreakdown['paypal_fee']['value'])) {
-                $fee = -abs((float)$orderBreakdown['paypal_fee']['value']);
-            }
-            if (isset($orderBreakdown['net_amount']['value'])) {
-                $parsed['amount'] = (float)$orderBreakdown['net_amount']['value'];
-            } elseif ($parsed['amount'] !== null && $fee != 0.0) {
-                $parsed['amount'] = round($parsed['amount'] + $fee, 2);
-            }
-            $parsed['payer_name'] = isset($data['payer']['name']['full_name']) ? trim($data['payer']['name']['full_name']) : null;
-            $parsed['payer_email'] = isset($data['payer']['email_address']) ? strtolower(trim($data['payer']['email_address'])) : null;
-            $parsed['transaction_note'] = isset($data['purchase_units'][0]['description']) ? trim($data['purchase_units'][0]['description']) : null;
-            $parsed['account_id'] = isset($data['purchase_units'][0]['payee']['merchant_id']) ? $data['purchase_units'][0]['payee']['merchant_id'] : null;
+        $detail = (isset($apiResult['type']) && $apiResult['type'] === 'reporting' && isset($apiResult['data']))
+            ? $this->getMatchingReportingTransactionDetail($apiResult['data'], trim((string)$row['paypal_transaction_id']))
+            : null;
+        if ($detail === null) {
+            return $parsed;
         }
 
-        if ($parsed['payer_email'] === null) {
-            $parsed['payer_email'] = null;
+        $fields = $this->extractReportingFields($detail);
+        if ($fields['payer_email'] === null && isset($apiResult['capture_payee_email']) && trim($apiResult['capture_payee_email']) !== '') {
+            $fields['payer_email'] = strtolower(trim($apiResult['capture_payee_email']));
         }
-        if ($parsed['payer_name'] === null) {
-            $parsed['payer_name'] = null;
+        if ($fields['transaction_note'] === null && isset($detail['transaction_item_details'][0]['item_details']['name'])) {
+            $fields['transaction_note'] = trim($detail['transaction_item_details'][0]['item_details']['name']);
         }
-        if ($parsed['transaction_note'] === null) {
-            $parsed['transaction_note'] = '';
-        }
-        $parsed['fee'] = $fee;
-        if ($parsed['transaction_status'] === null) {
-            $parsed['transaction_status'] = 'unknown';
-        }
+        return [
+            'account_id' => $fields['account_id'],
+            'payer_name' => $fields['payer_name'],
+            'payer_email' => $fields['payer_email'],
+            'amount' => $fields['amount'],
+            'transaction_status' => $fields['transaction_status'] !== null ? $fields['transaction_status'] : 'unknown',
+            'transaction_note' => $fields['transaction_note'] !== null ? $fields['transaction_note'] : '',
+            'received_at' => $fields['received_at'],
+            'fee' => $fields['fee'],
+        ];
+    }
 
-        return $parsed;
+    /**
+     * Fields of a Reporting API transaction_details entry. 'amount' is net: gross plus the
+     * (negative) fee, e.g. 10.00 + -0.54.
+     */
+    private function extractReportingFields(array $detail)
+    {
+        $info = isset($detail['transaction_info']) ? $detail['transaction_info'] : [];
+        $payer = isset($detail['payer_info']) ? $detail['payer_info'] : [];
+        $gross = isset($info['transaction_amount']['value']) ? (float)$info['transaction_amount']['value'] : null;
+        $fee = isset($info['fee_amount']['value']) ? (float)$info['fee_amount']['value'] : 0.0;
+        return [
+            'gross' => $gross,
+            'fee' => $fee,
+            'amount' => $gross !== null ? round($gross + $fee, 2) : null,
+            'transaction_status' => isset($info['transaction_status']) ? $info['transaction_status'] : null,
+            'account_id' => isset($info['paypal_reference_id']) ? $info['paypal_reference_id'] : (isset($info['paypal_account_id']) ? $info['paypal_account_id'] : null),
+            'payer_email' => isset($payer['email_address']) ? strtolower(trim($payer['email_address'])) : null,
+            'payer_name' => isset($payer['name']['alternate_full_name']) ? trim($payer['name']['alternate_full_name'])
+                : (isset($payer['name']['full_name']) ? trim($payer['name']['full_name']) : null),
+            'transaction_note' => isset($info['transaction_note']) ? trim($info['transaction_note'])
+                : (isset($info['transaction_subject']) ? trim($info['transaction_subject']) : null),
+            'received_at' => isset($info['transaction_initiation_date']) ? trim($info['transaction_initiation_date']) : null,
+        ];
     }
 
     private function isValidPaypalApiResult(array $apiResult, array $row)
@@ -1424,27 +1314,6 @@ class PaypalTransactionManager
             && isset($response['transaction_details'])
             && is_array($response['transaction_details'])
             && count($response['transaction_details']) > 0;
-    }
-
-    private function reportingContainsTransaction($response, $transactionId)
-    {
-        if (!$this->isReportingResult($response)) {
-            return false;
-        }
-
-        foreach ($response['transaction_details'] as $detail) {
-            if (!is_array($detail) || !isset($detail['transaction_info'])) {
-                continue;
-            }
-            if (isset($detail['transaction_info']['transaction_id']) && trim($detail['transaction_info']['transaction_id']) === $transactionId) {
-                return true;
-            }
-            if (isset($detail['transaction_info']['paypal_reference_id']) && trim($detail['transaction_info']['paypal_reference_id']) === $transactionId) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private function paypalApiRequest($url, $method = 'GET', $accessToken = null, $body = null, $useBasicAuth = false, $clientId = null, $clientSecret = null)
@@ -1652,23 +1521,6 @@ class PaypalTransactionManager
         return '';
     }
 
-    private function findTransactionStatus($body, $subject)
-    {
-        $patterns = [
-            '/Status\s*[:\-]?\s*([A-Za-zäöüÄÖÜ ]+)/i',
-            '/Zahlungsstatus\s*[:\-]?\s*([A-Za-zäöüÄÖÜ ]+)/i',
-        ];
-        foreach ($patterns as $pattern) {
-            if (preg_match($pattern, $body, $matches)) {
-                return trim($matches[1]);
-            }
-        }
-        if (preg_match('/completed/i', $subject)) {
-            return 'completed';
-        }
-        return 'unknown';
-    }
-
     private function findTransactionNote($body, $plainBody, $subject)
     {
         // Prefer the sender message text that follows the strong headline in the HTML email.
@@ -1733,13 +1585,24 @@ class PaypalTransactionManager
     // -------------------------------------------------------------------------
 
     /**
-     * Build the IMAP connection string prefix (without folder/mailbox name appended).
-     * Example result: {imap.example.com:993/imap/ssl/novalidate-cert}
+     * Validate the IMAP settings and return [connection prefix, user, password]; the prefix
+     * has no folder appended, e.g. {imap.example.com:993/imap/ssl/novalidate-cert}.
      */
-    private function buildImapConnectionPrefix($imapHost, $imapPort, $imapSsl)
+    private function getImapConnection(array $settings)
     {
-        $protocol = '/imap' . ($imapSsl ? '/ssl' : '');
-        return sprintf('{%s:%d%s/novalidate-cert}', $imapHost, $imapPort, $protocol);
+        if (!function_exists('imap_open')) {
+            throw new \RuntimeException('IMAP PHP extension is not available.');
+        }
+        $imapPort = (int)$settings['imap_port'];
+        if (!self::hasImapSettings($settings) || $imapPort <= 0) {
+            throw new \RuntimeException('PayPal IMAP settings are incomplete.');
+        }
+        $protocol = '/imap' . ($settings['imap_ssl'] === '1' ? '/ssl' : '');
+        return [
+            sprintf('{%s:%d%s/novalidate-cert}', $settings['imap_host'], $imapPort, $protocol),
+            $settings['imap_user'],
+            $settings['imap_password'],
+        ];
     }
 
     /**
@@ -1783,32 +1646,14 @@ class PaypalTransactionManager
      *  - Only a real transaction ID from the email body is used for matching;
      *    fallback IDs are intentionally not generated here.
      *
-     * @param string    $imapHost
-     * @param int|string $imapPort
-     * @param string    $imapUser
-     * @param string    $imapPassword
-     * @param bool|string|int $imapSsl
+     * @param array     $settings   as returned by loadSettings()
      * @param \DateTime $startDate  Inclusive start (time will be set to 00:00:00 by caller)
      * @param \DateTime $endDate    Inclusive end   (time will be set to 23:59:59 by caller)
      * @return array{folders: int, messages: int, matched: int, updated: int, skipped: int, errors: string[]}
      */
-    public function fillPayerNamesFromImap($imapHost, $imapPort, $imapUser, $imapPassword, $imapSsl, \DateTime $startDate, \DateTime $endDate)
+    public function fillPayerNamesFromImap(array $settings, \DateTime $startDate, \DateTime $endDate)
     {
-        if (!function_exists('imap_open')) {
-            throw new \RuntimeException('IMAP PHP extension is not available.');
-        }
-
-        $imapHost     = trim((string)$imapHost);
-        $imapPort     = (int)$imapPort;
-        $imapUser     = trim((string)$imapUser);
-        $imapPassword = trim((string)$imapPassword);
-        $imapSsl      = ($imapSsl === true || $imapSsl === '1' || $imapSsl === 1);
-
-        if ($imapHost === '' || $imapPort <= 0 || $imapUser === '' || $imapPassword === '') {
-            throw new \RuntimeException('PayPal IMAP settings are incomplete.');
-        }
-
-        $connPrefix = $this->buildImapConnectionPrefix($imapHost, $imapPort, $imapSsl);
+        list($connPrefix, $imapUser, $imapPassword) = $this->getImapConnection($settings);
 
         // Open INBOX once to enumerate all accessible folders via imap_list
         $enumBox = @imap_open($connPrefix . 'INBOX', $imapUser, $imapPassword, 0, 1);

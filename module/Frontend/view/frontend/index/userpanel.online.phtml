@@ -174,113 +174,16 @@ var frontendTeamStatsModalController = createTeamStatsModal({
         }
         return url;
     },
-    buildMemberUpdateRequest: function(operation, memberUserId, state) {
-        return {
-            url: '<?= $this->url('user/teamlead-team-members') ?>',
-            body: new URLSearchParams({
-                operation: operation,
-                team_uid: String(state.teamUid),
-                team_event_id: String(state.currentEventId),
-                member_user_id: String(memberUserId)
-            })
-        };
-    },
-    buildOrderRelevanceUpdateRequest: function(drinkId, unitPrice, memberUserIds, state) {
-        return {
-            url: '<?= $this->url('user/teamlead-order-relevance') ?>',
-            body: new URLSearchParams({
-                team_uid: String(state.teamUid),
-                team_event_id: String(state.currentEventId),
-                drink_id: String(drinkId),
-                unit_price: String(unitPrice),
-                member_user_ids: String((memberUserIds || []).join(','))
-            })
-        };
-    },
-    buildExtraCostCreateRequest: function(payload, state) {
-        return {
-            url: '<?= $this->url('user/teamlead-extra-cost') ?>',
-            body: new URLSearchParams({
-                team_uid: String(state.teamUid),
-                team_event_id: String(state.currentEventId),
-                payer_user_id: String(payload.payerUserId || 0),
-                amount: String(payload.amount || 0),
-                comment: String(payload.comment || ''),
-                relevant_member_ids: String((payload.relevantMemberIds || []).join(','))
-            })
-        };
-    },
-    buildExtraCostUpdateRequest: function(payload, state) {
-        return {
-            url: '<?= $this->url('user/teamlead-update-extra-cost') ?>',
-            body: new URLSearchParams({
-                team_uid: String(state.teamUid),
-                extra_cost_id: String(payload.extraCostId || 0),
-                team_event_id: String(state.currentEventId),
-                payer_user_id: String(payload.payerUserId || 0),
-                amount: String(payload.amount || 0),
-                comment: String(payload.comment || ''),
-                relevant_member_ids: String((payload.relevantMemberIds || []).join(','))
-            })
-        };
-    },
-    buildExtraCostDeleteRequest: function(extraCostId, state) {
-        return {
-            url: '<?= $this->url('user/teamlead-delete-extra-cost') ?>',
-            body: new URLSearchParams({
-                team_uid: String(state.teamUid),
-                extra_cost_id: String(extraCostId || 0),
-                team_event_id: String(state.currentEventId)
-            })
-        };
-    },
-    buildGuestDonationCreateRequest: function(payload, state) {
-        return {
-            url: '<?= $this->url('user/teamlead-guest-donation') ?>',
-            body: new URLSearchParams({
-                team_uid: String(state.teamUid),
-                team_event_id: String(state.currentEventId),
-                receiver_user_id: String(payload.receiverUserId || 0),
-                amount: String(payload.amount || 0),
-                comment: String(payload.comment || '')
-            })
-        };
-    },
-    buildGuestDonationUpdateRequest: function(payload, state) {
-        return {
-            url: '<?= $this->url('user/teamlead-update-guest-donation') ?>',
-            body: new URLSearchParams({
-                team_uid: String(state.teamUid),
-                guest_donation_id: String(payload.guestDonationId || 0),
-                team_event_id: String(state.currentEventId),
-                receiver_user_id: String(payload.receiverUserId || 0),
-                amount: String(payload.amount || 0),
-                comment: String(payload.comment || '')
-            })
-        };
-    },
-    buildGuestDonationDeleteRequest: function(guestDonationId, state) {
-        return {
-            url: '<?= $this->url('user/teamlead-delete-guest-donation') ?>',
-            body: new URLSearchParams({
-                team_uid: String(state.teamUid),
-                guest_donation_id: String(guestDonationId || 0),
-                team_event_id: String(state.currentEventId)
-            })
-        };
-    },
-    buildCloseEventRequest: function(state, settlement) {
-        var body = new URLSearchParams({
-            team_uid: String(state.teamUid),
-            team_event_id: String(state.currentEventId)
-        });
-        if (settlement && Array.isArray(settlement.refunds) && settlement.refunds.length > 0) {
-            body.set('settlement_refunds', JSON.stringify(settlement.refunds));
-        }
-        return {
-            url: '<?= $this->url('user/teamlead-close-team-event') ?>',
-            body: body
-        };
+    endpoints: {
+        members: '<?= $this->url('user/teamlead-team-members') ?>',
+        orderRelevance: '<?= $this->url('user/teamlead-order-relevance') ?>',
+        extraCost: '<?= $this->url('user/teamlead-extra-cost') ?>',
+        updateExtraCost: '<?= $this->url('user/teamlead-update-extra-cost') ?>',
+        deleteExtraCost: '<?= $this->url('user/teamlead-delete-extra-cost') ?>',
+        guestDonation: '<?= $this->url('user/teamlead-guest-donation') ?>',
+        updateGuestDonation: '<?= $this->url('user/teamlead-update-guest-donation') ?>',
+        deleteGuestDonation: '<?= $this->url('user/teamlead-delete-guest-donation') ?>',
+        closeEvent: '<?= $this->url('user/teamlead-close-team-event') ?>'
     },
     afterLoadData: function(data, state, refs) {
         if (data.team_alias) {
@@ -326,36 +229,9 @@ var frontendTeamStatsModalController = createTeamStatsModal({
             var selectedSpieltag = data.spieltag || '';
             var selectedEventId = parseInt(data.team_event_id || 0, 10);
             
-            // Handle both flat events array and grouped events by team
-            var flatEvents = [];
-            if (Array.isArray(events)) {
-                // Check if events are grouped by team (object with team keys)
-                var isGrouped = events.length > 0 && typeof events[Object.keys(events)[0]] === 'object' && events[Object.keys(events)[0]].events !== undefined;
-                if (isGrouped) {
-                    // Flatten grouped events, sorting each team's events by id descending
-                    var teamKeys = Object.keys(events);
-                    for (var t = 0; t < teamKeys.length; t++) {
-                        var teamData = events[teamKeys[t]];
-                        var teamEvents = Array.isArray(teamData.events) ? teamData.events : [];
-                        // Sort events within each team by id descending (newest first)
-                        teamEvents.sort(function(a, b) { return (b.id || 0) - (a.id || 0); });
-                        // Merge team info into each event
-                        for (var e = 0; e < teamEvents.length; e++) {
-                            teamEvents[e].team_alias = teamData.team_alias;
-                            teamEvents[e].team_admin_user_id = teamData.team_admin_user_id;
-                        }
-                        flatEvents = flatEvents.concat(teamEvents);
-                    }
-                } else {
-                    flatEvents = events;
-                }
-            }
-            
-            // Sort all events by id descending (newest first)
-            flatEvents.sort(function(a, b) { return (b.id || 0) - (a.id || 0); });
-            
-            for (var i2 = 0; i2 < flatEvents.length; i2++) {
-                var event2 = flatEvents[i2];
+            // Newest first (server order)
+            for (var i2 = 0; i2 < events.length; i2++) {
+                var event2 = events[i2];
                 var name = String(event2.label || '').trim();
                 if (!name) continue;
                 var teamAlias = String(event2.team_alias || '').trim();
@@ -373,7 +249,7 @@ var frontendTeamStatsModalController = createTeamStatsModal({
                 if (selectedEventId > 0 ? parseInt(event2.id || 0, 10) === selectedEventId : name === selectedSpieltag) opt.selected = true;
                 refs.select.appendChild(opt);
             }
-            refs.select.disabled = flatEvents.length === 0;
+            refs.select.disabled = events.length === 0;
         }
     }
 });

@@ -71,12 +71,6 @@ class EditDrinksAliasForm extends Form
                             'message' => 'Der Alias muss zwischen 2 und 50 Zeichen lang sein',
                         ),
                     ),
-                    array(
-                        'name' => 'Drinks\Validator\UniqueDrinksAlias',
-                        'options' => array(
-                            'message' => 'Dieser Alias ist bereits vergeben.',
-                        ),
-                    ),
                 ),
             ),
             'edaf-order-email' => array(

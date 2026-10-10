@@ -226,15 +226,9 @@
             var memberSharesByUid = {};
             var settlementRefunds = [];
             var settlementDebtors = [];
-            var canEditRelevance = canManageMembers && typeof config.buildOrderRelevanceUpdateRequest === 'function';
-            var canEditExtraCosts = canManageMembers
-                && typeof config.buildExtraCostCreateRequest === 'function'
-                && typeof config.buildExtraCostUpdateRequest === 'function'
-                && typeof config.buildExtraCostDeleteRequest === 'function';
-            var canEditGuestDonations = canManageMembers
-                && typeof config.buildGuestDonationCreateRequest === 'function'
-                && typeof config.buildGuestDonationUpdateRequest === 'function'
-                && typeof config.buildGuestDonationDeleteRequest === 'function';
+            var canEditRelevance = canManageMembers && hasEndpoint('orderRelevance');
+            var canEditExtraCosts = canManageMembers && hasEndpoint('extraCost') && hasEndpoint('updateExtraCost') && hasEndpoint('deleteExtraCost');
+            var canEditGuestDonations = canManageMembers && hasEndpoint('guestDonation') && hasEndpoint('updateGuestDonation') && hasEndpoint('deleteGuestDonation');
             // When canManageMembers is false (team member without teamlead role), show view-only mode
             // All editing elements will be hidden, settlement button will be disabled
             var relevanceTriggerClass = config.orderRelevanceTriggerClass || 'team-stats-order-relevance-trigger';
@@ -640,10 +634,38 @@
             return html;
         }
 
-        async function closeCurrentTeamEvent() {
-            if (typeof config.buildCloseEventRequest !== 'function') {
-                throw new Error('Close request is not configured.');
+        function hasEndpoint(name) {
+            return !!(config.endpoints && config.endpoints[name]);
+        }
+
+        /**
+         * POST form fields to config.endpoints[name], then reload the current Spieltag.
+         */
+        async function postForm(name, fields, errorMessage) {
+            if (!hasEndpoint(name)) {
+                throw new Error('Endpoint "' + name + '" ist nicht konfiguriert.');
             }
+            var body = new URLSearchParams();
+            Object.keys(fields).forEach(function(key) {
+                body.set(key, String(fields[key] == null ? '' : fields[key]));
+            });
+            var resp = await fetch(config.endpoints[name], {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: body
+            });
+            var data = await resp.json();
+            if (!resp.ok || !data || !data.success) {
+                throw new Error((data && data.error) ? data.error : errorMessage);
+            }
+            return data;
+        }
+
+        async function closeCurrentTeamEvent() {
             if (!state.currentEventId) {
                 throw new Error('Kein Spieltag ausgewählt.');
             }
@@ -669,20 +691,11 @@
                 return;
             }
 
-            var requestData = config.buildCloseEventRequest(state, settlement);
-            var resp = await fetch(requestData.url, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: requestData.body
-            });
-            var data = await resp.json();
-            if (!resp.ok || !data || !data.success) {
-                throw new Error((data && data.error) ? data.error : 'Fehler beim Schließen der Abrechnung.');
+            var closeFields = { team_event_id: state.currentEventId };
+            if (Array.isArray(settlement.refunds) && settlement.refunds.length > 0) {
+                closeFields.settlement_refunds = JSON.stringify(settlement.refunds);
             }
+            await postForm('closeEvent', closeFields, 'Fehler beim Schließen der Abrechnung.');
 
             if (typeof config.onTeamEventClosed === 'function') {
                 config.onTeamEventClosed(state);
@@ -691,167 +704,80 @@
         }
 
         async function updateMember(operation, memberUserId) {
-            var requestData = config.buildMemberUpdateRequest(operation, memberUserId, state);
-            var resp = await fetch(requestData.url, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: requestData.body
-            });
-            var data = await resp.json();
-            if (!resp.ok || !data || !data.success) {
-                throw new Error((data && data.error) ? data.error : 'Fehler beim Speichern der Mitglieder.');
-            }
+            await postForm('members', {
+                operation: operation,
+                team_event_id: state.currentEventId,
+                member_user_id: memberUserId
+            }, 'Fehler beim Speichern der Mitglieder.');
             await loadCurrentSelection();
         }
 
         async function updateOrderRelevance(drinkId, unitPrice, memberUserIds) {
-            if (typeof config.buildOrderRelevanceUpdateRequest !== 'function') {
-                throw new Error('Relevanz-Update ist nicht konfiguriert.');
-            }
-            var requestData = config.buildOrderRelevanceUpdateRequest(drinkId, unitPrice, memberUserIds, state);
-            var resp = await fetch(requestData.url, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: requestData.body
-            });
-            var data = await resp.json();
-            if (!resp.ok || !data || !data.success) {
-                throw new Error((data && data.error) ? data.error : 'Fehler beim Speichern der Relevanz.');
-            }
+            await postForm('orderRelevance', {
+                team_event_id: state.currentEventId,
+                drink_id: drinkId,
+                unit_price: unitPrice,
+                member_user_ids: (memberUserIds || []).join(',')
+            }, 'Fehler beim Speichern der Relevanz.');
             await loadCurrentSelection();
         }
 
+        function extraCostFields(payload) {
+            return {
+                team_event_id: state.currentEventId,
+                payer_user_id: payload.payerUserId || 0,
+                amount: payload.amount || 0,
+                comment: payload.comment || '',
+                relevant_member_ids: (payload.relevantMemberIds || []).join(',')
+            };
+        }
+
         async function createExtraCost(payload) {
-            if (typeof config.buildExtraCostCreateRequest !== 'function') {
-                throw new Error('Extrakosten-Create ist nicht konfiguriert.');
-            }
-            var requestData = config.buildExtraCostCreateRequest(payload, state);
-            var resp = await fetch(requestData.url, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: requestData.body
-            });
-            var data = await resp.json();
-            if (!resp.ok || !data || !data.success) {
-                throw new Error((data && data.error) ? data.error : 'Fehler beim Speichern der Extrakosten.');
-            }
+            await postForm('extraCost', extraCostFields(payload), 'Fehler beim Speichern der Extrakosten.');
             await loadCurrentSelection();
         }
 
         async function updateExtraCost(payload) {
-            if (typeof config.buildExtraCostUpdateRequest !== 'function') {
-                throw new Error('Extrakosten-Update ist nicht konfiguriert.');
-            }
-            var requestData = config.buildExtraCostUpdateRequest(payload, state);
-            var resp = await fetch(requestData.url, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: requestData.body
-            });
-            var data = await resp.json();
-            if (!resp.ok || !data || !data.success) {
-                throw new Error((data && data.error) ? data.error : 'Fehler beim Aktualisieren der Extrakosten.');
-            }
+            var fields = extraCostFields(payload);
+            fields.extra_cost_id = payload.extraCostId || 0;
+            await postForm('updateExtraCost', fields, 'Fehler beim Aktualisieren der Extrakosten.');
             await loadCurrentSelection();
         }
 
         async function deleteExtraCost(extraCostId) {
-            if (typeof config.buildExtraCostDeleteRequest !== 'function') {
-                throw new Error('Extrakosten-Delete ist nicht konfiguriert.');
-            }
-            var requestData = config.buildExtraCostDeleteRequest(extraCostId, state);
-            var resp = await fetch(requestData.url, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: requestData.body
-            });
-            var data = await resp.json();
-            if (!resp.ok || !data || !data.success) {
-                throw new Error((data && data.error) ? data.error : 'Fehler beim Löschen der Extrakosten.');
-            }
+            await postForm('deleteExtraCost', {
+                extra_cost_id: extraCostId || 0,
+                team_event_id: state.currentEventId
+            }, 'Fehler beim Löschen der Extrakosten.');
             await loadCurrentSelection();
         }
 
+        function guestDonationFields(payload) {
+            return {
+                team_event_id: state.currentEventId,
+                receiver_user_id: payload.receiverUserId || 0,
+                amount: payload.amount || 0,
+                comment: payload.comment || ''
+            };
+        }
+
         async function createGuestDonation(payload) {
-            if (typeof config.buildGuestDonationCreateRequest !== 'function') {
-                throw new Error('Gastspenden-Create ist nicht konfiguriert.');
-            }
-            var requestData = config.buildGuestDonationCreateRequest(payload, state);
-            var resp = await fetch(requestData.url, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: requestData.body
-            });
-            var data = await resp.json();
-            if (!resp.ok || !data || !data.success) {
-                throw new Error((data && data.error) ? data.error : 'Fehler beim Speichern der Gastspende.');
-            }
+            await postForm('guestDonation', guestDonationFields(payload), 'Fehler beim Speichern der Gastspende.');
             await loadCurrentSelection();
         }
 
         async function updateGuestDonation(payload) {
-            if (typeof config.buildGuestDonationUpdateRequest !== 'function') {
-                throw new Error('Gastspenden-Update ist nicht konfiguriert.');
-            }
-            var requestData = config.buildGuestDonationUpdateRequest(payload, state);
-            var resp = await fetch(requestData.url, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: requestData.body
-            });
-            var data = await resp.json();
-            if (!resp.ok || !data || !data.success) {
-                throw new Error((data && data.error) ? data.error : 'Fehler beim Aktualisieren der Gastspende.');
-            }
+            var fields = guestDonationFields(payload);
+            fields.guest_donation_id = payload.guestDonationId || 0;
+            await postForm('updateGuestDonation', fields, 'Fehler beim Aktualisieren der Gastspende.');
             await loadCurrentSelection();
         }
 
         async function deleteGuestDonation(guestDonationId) {
-            if (typeof config.buildGuestDonationDeleteRequest !== 'function') {
-                throw new Error('Gastspenden-Delete ist nicht konfiguriert.');
-            }
-            var requestData = config.buildGuestDonationDeleteRequest(guestDonationId, state);
-            var resp = await fetch(requestData.url, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: requestData.body
-            });
-            var data = await resp.json();
-            if (!resp.ok || !data || !data.success) {
-                throw new Error((data && data.error) ? data.error : 'Fehler beim Löschen der Gastspende.');
-            }
+            await postForm('deleteGuestDonation', {
+                guest_donation_id: guestDonationId || 0,
+                team_event_id: state.currentEventId
+            }, 'Fehler beim Löschen der Gastspende.');
             await loadCurrentSelection();
         }
 
@@ -1996,10 +1922,6 @@
                 config.onOpen(args, state, r);
             }
 
-            // Fallback: set teamUid from teamLeadTeams if onOpen didn't set it (only in userpanel context)
-            if (!state.teamUid && typeof teamLeadTeams !== 'undefined' && Array.isArray(teamLeadTeams) && teamLeadTeams.length > 0) {
-                state.teamUid = teamLeadTeams[0].user_id;
-            }
             // Don't set title here - it will be set correctly in load() after the dropdown is populated
 
             var selectedSpieltag = '';
