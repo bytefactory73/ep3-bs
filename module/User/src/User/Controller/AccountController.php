@@ -597,6 +597,9 @@ class AccountController extends AbstractActionController
 
         /* Prepare drinks alias form (handled by Drinks module) */
         $editDrinksAliasForm = $this->prepareDrinksAliasForm($user, $serviceManager, $editParam);
+        if ($editDrinksAliasForm instanceof \Zend\Http\Response) {
+            return $editDrinksAliasForm; // saved: redirect
+        }
 
         return array(
             'user' => $user,

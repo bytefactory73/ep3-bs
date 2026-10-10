@@ -98,18 +98,10 @@ class DrinksController extends AbstractActionController
             // In case of DB error, leave $drinkStats empty
         }
 
-        $currentBalance = 0;
-        try {
-            $currentBalance = $drinkManager->calculateUserDrinkBalance($userId, $serviceManager);
-        } catch (\Exception $e) {
-            // Leave default
-        }
-
         $viewModel = new ViewModel([
             'now' => new \DateTime(),
             'drinks' => $drinkManager->getAll($userId),
             'drinkCategories' => $this->service('Drinks\Manager\DrinkCategoryManager')->getAll(),
-            'drinkOrders' => $drinkOrders,
             'drinkHistory' => $drinkHistory,
             'drinkStats' => $drinkStats,
             'userId' => $userId,
@@ -118,7 +110,6 @@ class DrinksController extends AbstractActionController
             'drinksEnabled' => $drinksEnabled,
             'moneyRecipients' => $drinkManager->getMoneyRecipients($userManager, $userId),
             'thekenadmin' => $thekenadmin,
-            'currentBalance' => $currentBalance,
             'pendingPaypalAmount' => $drinkManager->getPendingPaypalAmount($userId),
             'minimumAccountBalance' => $drinkManager->getMinimumAccountBalance($serviceManager),
             'pendingPaypalDeposits' => $this->service('Drinks\Manager\PaypalTransactionManager')->getPendingByUser($userId),
@@ -255,15 +246,6 @@ class DrinksController extends AbstractActionController
         $lastCheckUserName = null;
         $lastUserCheckDate = null;
 
-        $gf = function($row, $key) {
-            if (!$row) return null;
-            if (is_array($row)) return array_key_exists($key, $row) ? $row[$key] : null;
-            if ($row instanceof \ArrayAccess && isset($row[$key])) return $row[$key];
-            if (is_object($row) && isset($row->$key)) return $row->$key;
-            $tmp = (array)$row;
-            return array_key_exists($key, $tmp) ? $tmp[$key] : null;
-        };
-
         try {
             $row = $dbAdapter->query(
                 'SELECT dc.user_id, dc.check_time, u.alias AS user_alias, da.alias AS drink_alias
@@ -273,14 +255,8 @@ class DrinksController extends AbstractActionController
                  ORDER BY dc.check_time DESC LIMIT 1', []
             )->current();
             if ($row) {
-                $lastCheckDate = $gf($row, 'check_time');
-                $uid = $gf($row, 'user_id');
-                $lastCheckUserName = $gf($row, 'user_alias') ?: $gf($row, 'drink_alias');
-                if (!$lastCheckUserName && $uid) {
-                    $fallbackAliasRow = $dbAdapter->query('SELECT alias FROM drink_aliases WHERE user_id = ? LIMIT 1', [$uid])->current();
-                    $fa = $gf($fallbackAliasRow, 'alias');
-                    $lastCheckUserName = $fa ?: ('UID ' . $uid);
-                }
+                $lastCheckDate = $row['check_time'];
+                $lastCheckUserName = $row['user_alias'] ?: ($row['drink_alias'] ?: ($row['user_id'] ? 'UID ' . $row['user_id'] : null));
             }
         } catch (\Exception $e) { /* ignore */ }
 
@@ -288,7 +264,7 @@ class DrinksController extends AbstractActionController
         if ($actorUid) {
             try {
                 $rowMy = $dbAdapter->query('SELECT check_time FROM drink_checks WHERE user_id = ? ORDER BY check_time DESC LIMIT 1', [$actorUid])->current();
-                $lastUserCheckDate = $gf($rowMy, 'check_time');
+                $lastUserCheckDate = $rowMy ? $rowMy['check_time'] : null;
             } catch (\Exception $e) { /* ignore */ }
         }
 
@@ -346,15 +322,13 @@ class DrinksController extends AbstractActionController
 
         if ($quick) {
             $now = new \DateTime();
-            $todayStr = $now->format('Y-m-d');
             if ($quick === 'sinceLastCheck') {
                 if (empty($from) && $lastCheckNormalized) {
                     $from = $lastCheckNormalized;
                 }
             } elseif ($quick === 'sinceMyLastCheck') {
-                $lastMyNorm = $normalize($lastUserCheckDate);
-                if (empty($from) && $lastMyNorm) {
-                    $from = $lastMyNorm;
+                if (empty($from) && $lastUserCheckNormalized) {
+                    $from = $lastUserCheckNormalized;
                 }
             } elseif ($quick === 'cw' || $quick === 'lw') {
                 $monday = clone $now;
@@ -701,7 +675,7 @@ class DrinksController extends AbstractActionController
                         isset($post['deposit_new_spieltag']) ? $post['deposit_new_spieltag'] : ''
                     );
                     if (!$eventRow || empty($eventRow['id'])) {
-                        $viewVariables['message'] = 'Bitte gueltigen Spieltag auswaehlen.';
+                        $viewVariables['message'] = 'Bitte gültigen Spieltag auswählen.';
                     } else {
                         $teamEventId = (int)$eventRow['id'];
                     }
@@ -757,7 +731,7 @@ class DrinksController extends AbstractActionController
                 isset($data['new_spieltag']) ? $data['new_spieltag'] : ''
             );
             if (!$teamEvent || empty($teamEvent['id'])) {
-                return $this->jsonError(400, 'Bitte gueltigen Spieltag auswaehlen.');
+                return $this->jsonError(400, 'Bitte gültigen Spieltag auswählen.');
             }
             $teamEventId = (int)$teamEvent['id'];
         }
@@ -795,7 +769,7 @@ class DrinksController extends AbstractActionController
                 if ($balance < 0) {
                     $body .= '<br><br>' . $drinkManager->negativeBalanceWarningHtml([$this, 't']);
                 }
-                $this->sendFromTheke($this->service('User\Service\MailService'), $this->service('Zend\Db\Adapter\Adapter'), $user, $subject, $body, ['isHtml' => true]);
+                $this->service('Drinks\Service\ThekeMailer')->send($user, $subject, $body, ['isHtml' => true]);
             }
         } catch (\Exception $e) {
             error_log('addDrinkBooking: ' . $e->getMessage());
@@ -843,15 +817,15 @@ class DrinksController extends AbstractActionController
     public function getUserDepositsDataAction()
     {
         if (!$this->getAdminUser()) {
-            return $this->jsonResponse(['error' => 'No permission'], 403);
+            return $this->jsonError(403, 'No permission');
         }
         $uid = (int)$this->params()->fromQuery('uid');
         if (!$uid) {
-            return $this->jsonResponse(['error' => 'No user selected'], 400);
+            return $this->jsonError(400, 'No user selected');
         }
         $userManager = $this->service('User\Manager\UserManager');
         if (!$userManager->get($uid, false)) {
-            return $this->jsonResponse(['error' => 'User not found'], 404);
+            return $this->jsonError(404, 'User not found');
         }
         $dbAdapter = $this->service('Zend\Db\Adapter\Adapter');
 
@@ -1083,7 +1057,7 @@ class DrinksController extends AbstractActionController
 
         $serviceManager = @$this->getServiceLocator();
         $userManager = $this->service('User\Manager\UserManager');
-        $mailService = $this->service('User\Service\MailService');
+        $mailer = $this->service('Drinks\Service\ThekeMailer');
         $drinkManager = $this->getDrinkManager();
         $action = $newDeleted ? 'storniert' : 'wiederhergestellt';
         $adminName = htmlspecialchars($admin->get('alias') ?: $admin->get('name') ?: 'Administrator');
@@ -1100,7 +1074,7 @@ class DrinksController extends AbstractActionController
                 $subject = 'Einzahlung ' . ucfirst($action);
                 $body = 'Ihre Einzahlung am ' . $row['deposit_time'] . ' wurde von ' . $adminName . ' ' . $action . '.';
             }
-            $this->sendFromTheke($mailService, $dbAdapter, $user, $subject, $body . $balanceLine($row['user_id']), ['isHtml' => true]);
+            $mailer->send($user, $subject, $body . $balanceLine($row['user_id']), ['isHtml' => true]);
         } elseif ($user && $drinkManager->shouldSendOrderEmail($row['user_id'], $drinkManager->calculateUserDrinkBalance($row['user_id'], $serviceManager))) {
             $drink = $drinkManager->get($row['drink_id']);
             $drinkName = $drink ? $drink['name'] : $row['drink_id'];
@@ -1114,7 +1088,7 @@ class DrinksController extends AbstractActionController
                 $subject = 'Buchung ' . ucfirst($action) . ' (Admin)';
                 $body = 'Ihre Getränkebuchung (' . $label . ') am ' . $row['order_time'] . ' wurde von ' . $adminName . ' ' . $action . '.';
             }
-            $this->sendFromTheke($mailService, $dbAdapter, $user, $subject, $body . $balanceLine($row['user_id']), ['isHtml' => true]);
+            $mailer->send($user, $subject, $body . $balanceLine($row['user_id']), ['isHtml' => true]);
         }
 
         // The other side of a money transfer
@@ -1123,7 +1097,7 @@ class DrinksController extends AbstractActionController
             $counterUser = ($counterRow && (int)$counterRow['user_id'] !== (int)$row['user_id']) ? $userManager->get($counterRow['user_id'], false) : null;
             if ($counterUser) {
                 $counterBody = 'Eine Geldüberweisung, die Ihr Konto betrifft, wurde von ' . $adminName . ' ' . $action . '.' . $balanceLine($counterRow['user_id']);
-                $this->sendFromTheke($mailService, $dbAdapter, $counterUser, 'Geldüberweisung ' . ucfirst($action), $counterBody, ['isHtml' => true]);
+                $mailer->send($counterUser, 'Geldüberweisung ' . ucfirst($action), $counterBody, ['isHtml' => true]);
             }
         }
 
@@ -1137,14 +1111,14 @@ class DrinksController extends AbstractActionController
     public function setUserDrinksSettingsAction()
     {
         if (!$this->getAdminUser()) {
-            return $this->jsonResponse(['error' => 'No permission'], 403);
+            return $this->jsonError(403, 'No permission');
         }
-        if (!$this->getRequest()->isPost()) {
-            return $this->jsonResponse(['error' => 'POST required'], 405);
+        if ($error = $this->rejectNonPost()) {
+            return $error;
         }
         $uid = (int)$this->params()->fromPost('uid');
         if (!$uid) {
-            return $this->jsonResponse(['error' => 'No user selected'], 400);
+            return $this->jsonError(400, 'No user selected');
         }
         $isTrue = function ($value) {
             return $value === '1' || $value === 1 || $value === true || $value === 'true';
@@ -1160,7 +1134,7 @@ class DrinksController extends AbstractActionController
             // Empty or up to 50 word characters, dashes and spaces
             $drinksAlias = trim($drinksAlias);
             if ($drinksAlias !== '' && !preg_match('/^[\w\-\s]{1,50}$/u', $drinksAlias)) {
-                return $this->jsonResponse(['error' => 'Invalid alias'], 400);
+                return $this->jsonError(400, 'Invalid alias');
             }
             $values['alias'] = $drinksAlias;
         }
@@ -1168,7 +1142,7 @@ class DrinksController extends AbstractActionController
         if ($orderEmailOption !== null) {
             $orderEmailOption = trim((string)$orderEmailOption);
             if (!in_array($orderEmailOption, ['order', 'summary', 'negative'], true)) {
-                return $this->jsonResponse(['error' => 'Invalid order email option'], 400);
+                return $this->jsonError(400, 'Invalid order email option');
             }
             $values['order_email_option'] = $orderEmailOption;
         }
@@ -1181,7 +1155,7 @@ class DrinksController extends AbstractActionController
                     continue;
                 }
                 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                    return $this->jsonResponse(['error' => 'Invalid teamlead email address'], 400);
+                    return $this->jsonError(400, 'Invalid teamlead email address');
                 }
                 $normalizedEmails[$email] = $email;
             }
@@ -1197,7 +1171,7 @@ class DrinksController extends AbstractActionController
             $exists = (bool)$dbAdapter->query('SELECT user_id FROM drink_aliases WHERE user_id = ?', [$uid])->current();
             if (!$exists) {
                 if (empty($values)) {
-                    return $this->jsonResponse(['error' => 'Alias, enabled, and thekenadmin required for new entry'], 400);
+                    return $this->jsonError(400, 'Alias, enabled, and thekenadmin required for new entry');
                 }
                 $values = array_merge(['alias' => null, 'enabled' => 0, 'thekenadmin' => 0, 'is_team' => 0, 'order_email_option' => 'order', 'teamlead_email' => ''], $values);
             }
@@ -1214,7 +1188,7 @@ class DrinksController extends AbstractActionController
             }
         } catch (\Exception $e) {
             error_log('setUserDrinksSettings: ' . $e->getMessage());
-            return $this->jsonResponse(['error' => 'DB error'], 500);
+            return $this->jsonError(500, 'DB error');
         }
         return $this->jsonResponse(['success' => true]);
     }
@@ -1516,7 +1490,6 @@ class DrinksController extends AbstractActionController
                 'amount' => (float)$depositRow['amount'],
                 'balance_after' => $balanceAfter,
                 'comment' => $comment,
-                'is_paypal' => $paypalInfo !== null ? 1 : 0,
                 'is_paypal_deposit' => $paypalInfo !== null ? 1 : 0,
                 'is_paypal_transaction' => 0,
                 'drinks_paypal_id' => $paypalInfo !== null ? $paypalInfo['drinks_paypal_id'] : null,

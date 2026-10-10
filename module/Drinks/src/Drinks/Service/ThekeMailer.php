@@ -1,20 +1,28 @@
 <?php
 
-namespace Drinks\Controller\Traits;
+namespace Drinks\Service;
 
-trait ThekeMailTrait
+/**
+ * Mails of the Theke (orders, deposits, transfers), sent from the Theke address. A team account's
+ * mail goes to its teamlead_email instead, if one is set.
+ */
+class ThekeMailer
 {
-    protected function sendFromTheke($mailService, $dbAdapter, $recipient, $subject, $text, $optionsOrAttachments = array())
+    private $mailService;
+    private $dbAdapter;
+
+    public function __construct($mailService, $dbAdapter)
     {
-        return $mailService->sendFromTheke(
-            $this->resolveThekeMailRecipient($recipient, $dbAdapter),
-            $subject,
-            $text,
-            $optionsOrAttachments
-        );
+        $this->mailService = $mailService;
+        $this->dbAdapter = $dbAdapter;
     }
 
-    protected function resolveThekeMailRecipient($recipient, $dbAdapter)
+    public function send($recipient, $subject, $text, $optionsOrAttachments = array())
+    {
+        return $this->mailService->sendFromTheke($this->resolveRecipient($recipient), $subject, $text, $optionsOrAttachments);
+    }
+
+    private function resolveRecipient($recipient)
     {
         if (!is_object($recipient) || !method_exists($recipient, 'need')) {
             return $recipient;
@@ -25,7 +33,7 @@ trait ThekeMailTrait
             if ($recipientUserId <= 0) {
                 return $recipient;
             }
-            $row = $dbAdapter->query('SELECT teamlead_email FROM drink_aliases WHERE user_id = ?', [$recipientUserId])->current();
+            $row = $this->dbAdapter->query('SELECT teamlead_email FROM drink_aliases WHERE user_id = ?', [$recipientUserId])->current();
             $teamleadEmail = ($row && isset($row['teamlead_email'])) ? trim((string)$row['teamlead_email']) : '';
             if ($teamleadEmail !== '' && filter_var($teamleadEmail, FILTER_VALIDATE_EMAIL)) {
                 $recipientClone = clone $recipient;

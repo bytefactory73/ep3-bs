@@ -11,17 +11,15 @@ $this->setup(array(
 
 ?>
 <?php
-// Cleaned up: removed unused variables and redundant code, improved formatting
+// Shared by the main site and the Theke (simpleOrderMode)
 $simpleOrderMode = $simpleOrderMode ?? ($this->simpleOrderMode ?? false);
 $drinks = $this->drinks ?? [];
-// drinksEnabled: should be set by controller, fallback to true for BC
 $drinksEnabled = isset($this->drinksEnabled) ? (bool)$this->drinksEnabled : true;
-        $isTeamAccount = isset($this->isTeamAccount) ? (bool)$this->isTeamAccount : false;
-        $isTeamLead = isset($this->isTeamLead) ? (bool)$this->isTeamLead : false;
-        $isTeamMemberOfAnyEvent = isset($this->isTeamMemberOfAnyEvent) ? (bool)$this->isTeamMemberOfAnyEvent : false;
-        $isTeamLeadOrMember = $isTeamLead || $isTeamMemberOfAnyEvent;
-$showFullBalanceInSimple = (!$simpleOrderMode && !empty($this->thekenadmin)); // Show balance in title bar only for non-simple-mode thekenadmin users
-$showBalanceColumn = (!$simpleOrderMode || $showFullBalanceInSimple || $isTeamAccount);
+$isTeamAccount = !empty($this->isTeamAccount);
+// Theke: Kostenübersicht for team accounts with Spieltage and for members of a Spieltag
+$hasTeamStats = !empty($this->hasTeamEvents) || !empty($this->isTeamMemberOfAnyEvent);
+// The Theke shows balances only to team accounts (the tablet is shared)
+$showBalanceColumn = !$simpleOrderMode || $isTeamAccount;
 
 // Party mode: ordering is disabled, only the message is shown
 $partyMode = isset($this->partyMode) ? $this->partyMode : ['active' => false];
@@ -43,7 +41,6 @@ foreach (is_array($this->drinkHistory ?? null) ? $this->drinkHistory : [] as $en
 ?>
 <script>window.DRINKS_PAGE = <?= json_encode([
     'simpleOrderMode' => (bool)$simpleOrderMode,
-    'showFullBalanceInSimple' => (bool)$showFullBalanceInSimple,
     'orderBalance' => (float)$historyBalance,
     'pendingPaypalAmount' => (float)($this->pendingPaypalAmount ?? 0),
     'minimumAccountBalance' => (float)($this->minimumAccountBalance ?? 0),
@@ -86,8 +83,8 @@ foreach (is_array($this->drinkHistory ?? null) ? $this->drinkHistory : [] as $en
                     </select>
                 </span>
             <?php endif; ?>
-            <?php if (!$simpleOrderMode || $showFullBalanceInSimple): ?>
-                <?php $availableBalanceInitially = $currentBalance + (float)$pendingPaypalAmount; ?>
+            <?php if (!$simpleOrderMode): ?>
+                <?php $availableBalanceInitially = $historyBalance + (float)$pendingPaypalAmount; ?>
                 <?php $isBelowMinimumInitially = $minimumAccountBalance != 0.0 ? ($availableBalanceInitially < $minimumAccountBalance) : ($availableBalanceInitially < 0); ?>
                 <div id="current-balance-display" class="<?= $isBelowMinimumInitially ? 'negative-balance' : '' ?>" style="color: #2196f3; display: inline-flex; align-items: center;">
                     <?= $this->t('Guthaben:') ?>
@@ -157,7 +154,7 @@ foreach (is_array($this->drinkHistory ?? null) ? $this->drinkHistory : [] as $en
                             <span class="sr-only" style="position:absolute;left:-9999px;"> <?= $this->t('Gesamtauswertung') ?> </span>
                         </button>
                 <?php endif; ?>
-                <?php if ($simpleOrderMode && ($isTeamAccount || $isTeamLeadOrMember)) : ?>
+                <?php if ($simpleOrderMode && ($isTeamAccount || $hasTeamStats)) : ?>
                         <button id="team-stats-btn" type="button" class="default-button" title="<?= $this->t('Team-Statistik') ?>" style="font-size: 1.1em; font-weight: bold; background: #e3f0fa; color: #2196f3; border: 1px solid #2196f3; border-radius: 6px; padding: 4px; display: flex; align-items: center; gap: 0; margin-left: 0; min-width: 0; width: 52px; height: 44px; justify-content: center;" onclick="event.preventDefault(); if (typeof openTeamStatsModal === 'function') openTeamStatsModal();">
                             <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                                 <rect x="6" y="7" width="20" height="18" rx="3" fill="#f7fbff" stroke="#2196f3" stroke-width="2"/>
@@ -788,20 +785,6 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
             </tr>
             <?php
             $drinkHistory = array_reverse($this->drinkHistory);
-            $balance = 0;
-            $rows = [];
-            // Calculate balance from bottom up
-            for ($i = count($drinkHistory) - 1; $i >= 0; $i--) {
-                $entry = $drinkHistory[$i];
-                if ($entry['type'] === 'deposit') {
-                    $balance += $entry['amount'];
-                } else if ($entry['type'] === 'order') {
-                    if (!empty($entry['deleted'])) continue; // skip deleted orders for balance
-                    $balance -= $entry['total'];
-                }
-                $rows[$i] = $balance;
-            }
-            $rows = array_reverse($rows);
             // Prepare a flat list of top-level entries: day groups and deposits, sorted newest to oldest
             $entriesByDay = [];
             $deposits = [];
@@ -818,11 +801,8 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
             }
             // Build a flat list of top-level items (date group or deposit), sorted oldest to newest for math
             $topLevel = [];
-            $startBalanceForWindow = null;
-            $historyLookbackHours = 18;
             if ($simpleOrderMode) {
                 if ($isTeamAccount) {
-                    $startBalanceForWindow = null;
                     foreach ($entriesByDay as $date => $orders) {
                         if (count($orders) > 0) {
                             $topLevel[] = [ 'type' => 'day', 'date' => $date, 'orders' => $orders ];
@@ -832,9 +812,8 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
                         $topLevel[] = [ 'type' => 'deposit', 'datetime' => $deposit['datetime'], 'entry' => $deposit ];
                     }
                 } else {
-                    $now = time();
-                    $historyLookbackHours = 18;
-                    $cutoff = $now - $historyLookbackHours * 3600;
+                    // Individual accounts at the Theke only see orders of the last 18 hours
+                    $cutoff = time() - 18 * 3600;
                     foreach ($entriesByDay as $date => $orders) {
                         // Filter orders in this group by the configured simple-order window
                         $recentOrders = array_filter($orders, function($entry) use ($cutoff) {
@@ -860,7 +839,7 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
                 return $aTime <=> $bTime;
             });
             // Calculate balances for each top-level group
-            $balance = ($simpleOrderMode && $isTeamAccount && $startBalanceForWindow !== null) ? $startBalanceForWindow : 0;
+            $balance = 0;
             $groupBalances = [];
             foreach ($topLevel as $idx => $item) {
                 if ($item['type'] === 'day') {
@@ -969,17 +948,6 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
                     if ($showBalanceColumn) echo '<td>' . $this->priceFormat($balanceAfter * 100.0, null, null, null, null, null, true, true, false) . '</td>';
                     echo '</tr>';
                 }
-            }
-            if ($simpleOrderMode && $isTeamAccount && $startBalanceForWindow !== null) {
-                $lookbackDays = (int)($historyLookbackHours / 24);
-                echo '<tr style="background:#fff7e6; font-weight:bold;">';
-                echo '<td></td>';
-                echo '<td>' . $this->t('Startguthaben') . ' (' . $this->t('vor') . ' ' . $lookbackDays . ' ' . $this->t('Tagen') . ')</td>';
-                echo '<td></td>';
-                echo '<td></td>';
-                echo '<td>' . $this->priceFormat($startBalanceForWindow * 100.0, null, null, null, null, null, true, true, false) . '</td>';
-                if ($showBalanceColumn) echo '<td></td>';
-                echo '</tr>';
             }
             ?>
         </table>

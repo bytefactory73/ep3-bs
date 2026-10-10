@@ -933,9 +933,9 @@ def theke_order_page_and_spieltag(ctx):
     facts['member_team_stats'] = stats.status
     team = Theke(ctx, TEAM_UID)
     spieltag = team.client.get_json('user/simple-order/spieltag')
-    expect(spieltag['current_spieltag'] in spieltag['spieltage'], 'current Spieltag not among the open ones')
+    expect(spieltag['current_spieltag'] in spieltag['open_spieltage'], 'current Spieltag not among the open ones')
     open_labels = [e['label'] for e in ctx.open_team_events()]
-    expect(spieltag['spieltage'] == open_labels, 'Theke Spieltage %s != open Spieltage %s' % (spieltag['spieltage'], open_labels))
+    expect(spieltag['open_spieltage'] == open_labels, 'Theke Spieltage %s != open Spieltage %s' % (spieltag['open_spieltage'], open_labels))
     facts['team_page'] = page_facts(team.client.get('user/simple-order'))
     return facts
 

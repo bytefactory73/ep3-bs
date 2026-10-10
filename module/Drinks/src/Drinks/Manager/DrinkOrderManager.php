@@ -35,12 +35,6 @@ class DrinkOrderManager
             }
             $price = (float)$row['price'];
         }
-        if ($addedByUserId === null) {
-            // Try to get current user from session if not provided
-            if (isset($_SESSION['user_id'])) {
-                $addedByUserId = $_SESSION['user_id'];
-            }
-        }
         $columns = ['user_id', 'drink_id', 'quantity', 'price', 'comment', 'teamevent_id', 'is_auto_order'];
         $params = [$userId, $drinkId, $quantity, $price, $comment, $teamEventId, $isAutoOrder];
         if ($addedByUserId !== null) {
@@ -90,15 +84,9 @@ class DrinkOrderManager
         if (time() - $orderTime > self::CANCEL_WINDOW_SECONDS) {
             throw new \RuntimeException('Order can only be deleted within 10 minutes');
         }
-        // Set deleted=1 and user_id_deleted
+        // Set deleted=1 and user_id_deleted (the owner, unless someone else is named)
         if ($deletedByUserId === null) {
-            if (isset($_SESSION['user_id'])) {
-                $deletedByUserId = $_SESSION['user_id'];
-            } else if ($userId !== null) {
-                $deletedByUserId = $userId;
-            } else {
-                $deletedByUserId = null;
-            }
+            $deletedByUserId = $userId;
         }
         if ($userId) {
             $sql = 'UPDATE drink_orders SET deleted = 1, user_id_deleted = ? WHERE id = ? AND user_id = ?';

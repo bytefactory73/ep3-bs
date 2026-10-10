@@ -586,9 +586,7 @@
                 }
             }
 
-            var settlementBaseTotal = (typeof data.settlement_total_sum !== 'undefined')
-                ? Number(data.settlement_total_sum || 0)
-                : Number((data.total_sum || 0) + (data.guest_donation_due_total || 0));
+            var settlementBaseTotal = Number(data.total_sum || 0);
 
             html += '<div style="margin-top:14px;">';
             html += '<h3 style="margin:0 0 8px 0; color:#1769aa;">Mitglieder und Beiträge</h3>';

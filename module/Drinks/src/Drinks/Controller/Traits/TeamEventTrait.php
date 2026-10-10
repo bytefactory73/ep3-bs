@@ -49,11 +49,7 @@ trait TeamEventTrait
 
     protected function getTeamEventDbAdapter()
     {
-        $serviceLocator = $this->getServiceLocator();
-        if (!is_object($serviceLocator) || !method_exists($serviceLocator, 'get')) {
-            throw new \Exception('Service locator unavailable');
-        }
-        return $serviceLocator->get('Zend\\Db\\Adapter\\Adapter');
+        return @$this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
     }
 
     protected function normalizeTeamEventLabel($value)
@@ -745,7 +741,7 @@ trait TeamEventTrait
         $teamEventLabel = $this->normalizeTeamEventLabel($teamEventLabel);
         $selectedTeamEventId = (int)$selectedTeamEventId;
         if ($teamAdminUserId <= 0 || $teamEventLabel === '') {
-            return ['rows' => [], 'total_sum' => 0.0, 'guest_donation_due_total' => 0.0, 'settlement_total_sum' => 0.0, 'extra_costs' => [], 'guest_donations' => []];
+            return ['rows' => [], 'total_sum' => 0.0, 'extra_costs' => [], 'guest_donations' => []];
         }
 
         $activeMemberNamesById = [];
@@ -767,19 +763,6 @@ trait TeamEventTrait
         }
         $userIdsPlaceholder = implode(', ', array_fill(0, count($orderUserIds), '?'));
 
-        if ($selectedTeamEventId > 0) {
-            $teameventFilter = 'o.teamevent_id = ?';
-            $teameventParams = [$selectedTeamEventId];
-        } else {
-            $teameventFilter = 'o.teamevent_id IN (
-                SELECT e.id
-                FROM drinks_teamevents e
-                WHERE e.team_admin_user_id = ?
-                  AND TRIM(COALESCE(e.comment, "")) = ?
-            )';
-            $teameventParams = [$teamAdminUserId, $teamEventLabel];
-        }
-
         $orderRows = $this->getTeamEventDbAdapter()->query(
             'SELECT
                 o.drink_id,
@@ -794,15 +777,13 @@ trait TeamEventTrait
              JOIN drinks d ON d.id = o.drink_id
              LEFT JOIN drink_categories c ON c.id = d.category
              WHERE o.user_id IN (' . $userIdsPlaceholder . ')
-              AND o.deleted = 0
+              AND (o.deleted IS NULL OR o.deleted = 0)
               AND o.drink_id <> -1
-              AND (
-                  ' . $teameventFilter . '
-                  OR (o.teamevent_id IS NULL AND TRIM(COALESCE(o.comment, "")) = ?)
-              )
+              AND ' . $this->teamEventRowConditionSql('o') . '
              GROUP BY o.drink_id, d.name, o.price, c.name, c.sort_priority
              ORDER BY category_sort ASC, category_name ASC, d.name ASC, o.price ASC',
-            array_merge($orderUserIds, $teameventParams, [$teamEventLabel])
+            // Without a Spieltag row only legacy rows (label as comment) can match
+            array_merge($orderUserIds, [$selectedTeamEventId > 0 ? $selectedTeamEventId : -1, $teamEventLabel])
         )->toArray();
 
         $rows = [];
@@ -880,7 +861,6 @@ trait TeamEventTrait
         }
 
         $guestDonations = [];
-        $guestDonationDueTotal = 0.0;
         foreach ($selectedTeamEventId > 0 ? $this->getTeamEventGuestDonations($selectedTeamEventId) : [] as $guestDonation) {
             $guestDonationId = isset($guestDonation['id']) ? (int)$guestDonation['id'] : 0;
             $amount = isset($guestDonation['amount']) ? (float)$guestDonation['amount'] : 0.0;
@@ -899,7 +879,6 @@ trait TeamEventTrait
                 // Receiver has to transfer this amount additionally to the account.
                 'due_amount' => MoneyCalculator::roundMoney(0.0 - abs($amount)),
             ];
-            $guestDonationDueTotal = MoneyCalculator::add($guestDonationDueTotal, 0.0 - abs($amount));
         }
 
         $totalSum = 0.0;
@@ -910,8 +889,6 @@ trait TeamEventTrait
         return [
             'rows' => $rows,
             'total_sum' => $totalSum,
-            'guest_donation_due_total' => MoneyCalculator::roundMoney($guestDonationDueTotal),
-            'settlement_total_sum' => $totalSum,
             'extra_costs' => $extraCosts,
             'guest_donations' => $guestDonations,
         ];
@@ -1036,22 +1013,14 @@ trait TeamEventTrait
             if ($selectedTeamEvent && !$this->isTeamEventClosedRow($selectedTeamEvent)) {
                 return $selectedTeamEvent;
             }
-            // Fallback to latest open team event if the preferred one is closed or invalid
-            if (!$selectedTeamEvent || $this->isTeamEventClosedRow($selectedTeamEvent)) {
-                $latestEvent = $this->getLatestTeamEventRow($teamAdminUserId);
-                if ($latestEvent && !$this->isTeamEventClosedRow($latestEvent)) {
-                    return $latestEvent;
-                }
+        } else {
+            $newTeamEventLabel = $this->normalizeTeamEventLabel($newTeamEventLabel);
+            if ($newTeamEventLabel !== '') {
+                return $this->getOrCreateTeamEventByLabel($teamAdminUserId, $newTeamEventLabel);
             }
-            return null;
         }
 
-        $newTeamEventLabel = $this->normalizeTeamEventLabel($newTeamEventLabel);
-        if ($newTeamEventLabel !== '') {
-            return $this->getOrCreateTeamEventByLabel($teamAdminUserId, $newTeamEventLabel);
-        }
-
-        // Fallback: return the latest open team event when no specific ID or label is provided
+        // The preferred one is closed or unknown, or none was given: the latest Spieltag if it is open
         $latestEvent = $this->getLatestTeamEventRow($teamAdminUserId);
         if ($latestEvent && !$this->isTeamEventClosedRow($latestEvent)) {
             return $latestEvent;
@@ -1144,7 +1113,6 @@ trait TeamEventTrait
             return ['success' => true, 'total_refund' => 0.0, 'transfers' => []];
         }
 
-        $serviceManager = $this->getServiceLocator();
         $teamEventLabel = isset($teamEvent['comment']) ? trim((string)$teamEvent['comment']) : '';
         $eventBalance = 0.0;
         if ($teamEventLabel !== '') {
@@ -1152,7 +1120,6 @@ trait TeamEventTrait
         }
         $totalRefund = 0.0;
         $totalCharge = 0.0;
-        $netOutgoing = 0.0;
         foreach ($validRefunds as $refundRow) {
             $amount = MoneyCalculator::roundMoney((float)$refundRow['amount']);
             if ($amount > 0) {
@@ -1160,7 +1127,6 @@ trait TeamEventTrait
             } else {
                 $totalCharge = MoneyCalculator::add($totalCharge, abs($amount));
             }
-            $netOutgoing = MoneyCalculator::add($netOutgoing, $amount);
         }
         // Settlement is valid when event balance after requested charges/payouts is non-negative.
         $eventRemaining = MoneyCalculator::add($eventBalance, MoneyCalculator::subtract($totalCharge, $totalRefund));
@@ -1172,7 +1138,6 @@ trait TeamEventTrait
                 'event_remaining' => $eventRemaining,
                 'total_refund' => $totalRefund,
                 'total_charge' => $totalCharge,
-                'net_outgoing' => $netOutgoing,
             ];
         }
 
@@ -1212,7 +1177,6 @@ trait TeamEventTrait
             'success' => true,
             'total_refund' => $totalRefund,
             'total_charge' => $totalCharge,
-            'net_outgoing' => $netOutgoing,
             'transfers' => $transfers,
         ];
     }

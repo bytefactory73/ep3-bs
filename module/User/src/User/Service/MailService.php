@@ -31,12 +31,12 @@ class MailService extends AbstractService
 
         $toAddress = $recipient->need('email');
         $toName = $recipient->get('alias') ?: $recipient->get('name') ?: '';
-        $originalToAddress = $toAddress;
 
-        // In test environments, redirect all outgoing mail to a catch-all address.
+        // In test environments, redirect all outgoing mail to a catch-all address
+        // (config mail.test_redirect, else the sender address mail.address).
         $mailMode = $this->getMailMode();
         if ($mailMode === 'test' || ($mailMode === 'auto' && $this->isTestEnvironment())) {
-            $toAddress = 'sport@kuehn-clan.de';
+            $toAddress = $this->configManager->get('mail.test_redirect') ?: $this->configManager->need('mail.address');
             $toName = $toName . ' [TEST redirect from ' . $recipient->need('email') . ']';
             $subject = '[TEST] ' . $subject;
         }
@@ -55,11 +55,9 @@ class MailService extends AbstractService
 
         $finalBody = $isHtml
             ? sprintf("%s %s,<br><br>%s<br><br>%s,<br>%s %s<br>%s",
-                $this->t('Hello'), $toName, $text, $this->t('Sincerely'), $this->t("Your"), $fromName, $this->optionManager->need('service.website'))
+                $this->t('Hello'), htmlspecialchars($toName), $text, $this->t('Sincerely'), $this->t("Your"), $fromName, $this->optionManager->need('service.website'))
             : sprintf("%s %s,\r\n\r\n%s\r\n\r\n%s,\r\n%s %s\r\n%s",
                 $this->t('Hello'), $toName, $text, $this->t('Sincerely'), $this->t("Your"), $fromName, $this->optionManager->need('service.website'));
-
-            // Debug mail delivery removed
 
         if ($isHtml) {
             $this->baseMailService->sendHtml($fromAddress, $fromName, $replyToAddress, $replyToName, $toAddress, $toName, $subject, $finalBody, $attachments);

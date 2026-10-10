@@ -450,8 +450,7 @@
         var minimumAccountBalance = DRINKS_PAGE.minimumAccountBalance;
         var belowMinimum = minimumAccountBalance !== 0 ? (availableBalance < minimumAccountBalance) : (availableBalance < 0);
         var formattedBalance = "";
-        var showFullBalanceInSimple = DRINKS_PAGE.showFullBalanceInSimple;
-        if (window.SIMPLE_ORDER_MODE && !showFullBalanceInSimple) {
+        if (window.SIMPLE_ORDER_MODE) {
             formattedBalance = newBalance > 0 ? " > 0 €" : " < 0 €";
         } else {
             formattedBalance = newBalance.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });

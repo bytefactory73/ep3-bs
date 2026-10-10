@@ -2,13 +2,10 @@
 
 namespace Drinks\Manager;
 
-use Drinks\Controller\Traits\ThekeMailTrait;
 use Zend\Db\Adapter\Adapter;
 
 class DrinkManager
 {
-    use ThekeMailTrait;
-
     /**
      * Drink ids priced per order: 1 = "Sonstiges", -1 = money transfer.
      */
@@ -226,8 +223,7 @@ class DrinkManager
                 '<li><strong>Neuer Kontostand:</strong> ' . number_format($balance, 2, ',', '.') . ' €</li>' .
                 '</ul>' .
                 '<p>Viele Grüße<br>Dein Theken-Team</p>';
-            $mailService = $serviceManager->get('User\Service\MailService');
-            $this->sendFromTheke($mailService, $this->dbAdapter, $recipient, 'Neue Einzahlung auf Ihr Getränkekonto', $body, ['isHtml' => true]);
+            $serviceManager->get('Drinks\Service\ThekeMailer')->send($recipient, 'Neue Einzahlung auf Ihr Getränkekonto', $body, ['isHtml' => true]);
         } catch (\Throwable $e) {
             error_log('Fehler beim Senden der Einzahlungsbenachrichtigung: ' . $e->getMessage());
         }
@@ -373,8 +369,7 @@ class DrinkManager
                 ? call_user_func($tCallback, 'Deine Geldüberweisung wurde erfolgreich storniert.')
                 : call_user_func($tCallback, 'Deine Getränkebestellung wurde erfolgreich storniert.');
             $text = $this->orderMailHtml($intro, $lines, 'Kontostand nach Stornierung:', $balance, $tCallback);
-            $userMailService = $serviceManager->get('User\Service\MailService');
-            $this->sendFromTheke($userMailService, $this->dbAdapter, $user, $subject, $text, ['isHtml' => true]);
+            $serviceManager->get('Drinks\Service\ThekeMailer')->send($user, $subject, $text, ['isHtml' => true]);
 
             // If this was a transfer order, notify the counterpart (deposit side)
             if (!empty($order['transfer_reference'])) {
@@ -396,7 +391,7 @@ class DrinkManager
                                 htmlspecialchars($senderName),
                                 $counterBalance
                             );
-                            $this->sendFromTheke($userMailService, $this->dbAdapter, $counterUser, $counterSubject, $counterText, ['isHtml' => true]);
+                            $serviceManager->get('Drinks\Service\ThekeMailer')->send($counterUser, $counterSubject, $counterText, ['isHtml' => true]);
                         }
                     }
                 } catch (\Exception $e) {
@@ -448,7 +443,7 @@ class DrinkManager
             $lines[] = '---------------------';
             $lines[] = sprintf(call_user_func($tCallback, 'Gesamt:') . ' %.2f EUR', $orderTotal);
             $text = $this->orderMailHtml(call_user_func($tCallback, 'Vielen Dank für Deine Getränkebestellung!'), $lines, 'Kontostand nach Bestellung:', $balance, $tCallback);
-            $this->sendFromTheke($serviceManager->get('User\Service\MailService'), $this->dbAdapter, $user, call_user_func($tCallback, 'Bestätigung Deiner Getränkebestellung'), $text, ['isHtml' => true]);
+            $serviceManager->get('Drinks\Service\ThekeMailer')->send($user, call_user_func($tCallback, 'Bestätigung Deiner Getränkebestellung'), $text, ['isHtml' => true]);
         }
         return ['success' => true, 'balance' => $balance, 'error' => null];
     }
@@ -524,8 +519,7 @@ class DrinkManager
         $text = $this->orderMailHtml($tCallback('Deine Getränkebestellungen im Überblick:'), $lines, 'Kontostand:', $balance, $tCallback);
         $subject = $tCallback('Deine Getränkebestellungen (Zusammenfassung)');
 
-        $mailService = $serviceManager->get('User\Service\MailService');
-        $this->sendFromTheke($mailService, $this->dbAdapter, $user, $subject, $text, ['isHtml' => true]);
+        $serviceManager->get('Drinks\Service\ThekeMailer')->send($user, $subject, $text, ['isHtml' => true]);
         return true;
     }
 
@@ -547,8 +541,7 @@ class DrinkManager
             . $tCallback('Bitte lade dein Guthaben auf.') . "\n\n"
             . $tCallback('Liebe Grüße') . "\n"
             . $tCallback('Dein Theken-Team');
-        $mailService = $serviceManager->get('User\\Service\\MailService');
-        $this->sendFromTheke($mailService, $this->dbAdapter, $user, $subject, $text, ['isHtml' => false]);
+        $serviceManager->get('Drinks\Service\ThekeMailer')->send($user, $subject, $text, ['isHtml' => false]);
         return true;
     }
 }

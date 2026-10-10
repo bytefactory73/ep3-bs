@@ -10,7 +10,8 @@ trait EditDrinksAliasTrait
      * @param object $user The current user
      * @param object $serviceManager Service manager
      * @param string $editParam The edit parameter from request
-     * @return object|null The form object or null if user doesn't have drinks enabled
+     * @return object|null The form, a redirect response after a successful save, or null if
+     *                     the user doesn't have drinks enabled
      */
     protected function prepareDrinksAliasForm($user, $serviceManager, $editParam)
     {

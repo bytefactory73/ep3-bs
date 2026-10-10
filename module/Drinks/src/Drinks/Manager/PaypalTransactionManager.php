@@ -31,14 +31,14 @@ class PaypalTransactionManager
     /** @var object|null */
     private $userManager;
 
-    /** @var object|null */
-    private $mailService;
+    /** @var \Drinks\Service\ThekeMailer|null */
+    private $thekeMailer;
 
-    public function __construct(AdapterInterface $dbAdapter, $userManager = null, $mailService = null)
+    public function __construct(AdapterInterface $dbAdapter, $userManager = null, $thekeMailer = null)
     {
         $this->dbAdapter = $dbAdapter;
         $this->userManager = $userManager;
-        $this->mailService = $mailService;
+        $this->thekeMailer = $thekeMailer;
         DbSchema::ensureUtf8mb4($dbAdapter);
     }
 
@@ -704,7 +704,7 @@ class PaypalTransactionManager
 
     private function sendPendingDepositNotification($userId, $amount)
     {
-        if (!$this->userManager || !$this->mailService) {
+        if (!$this->userManager || !$this->thekeMailer) {
             return;
         }
 
@@ -718,7 +718,7 @@ class PaypalTransactionManager
             $body = '<p>Gutschrift in Höhe von ' . htmlspecialchars($formattedAmount) . ' wurde vorgemerkt.</p>' .
                 '<p>Sobald PayPal sie verbucht hat, wird sie deinem Konto gutgeschrieben (in der Regel innerhalb von 1-4 Stunden).</p>' .
                 '<p>Viele Grüße<br>Dein Theken-Team</p>';
-            $this->mailService->sendFromTheke($recipient, $subject, $body, ['isHtml' => true]);
+            $this->thekeMailer->send($recipient, $subject, $body, ['isHtml' => true]);
         } catch (\Throwable $e) {
             // A notification failure must not reject the imported PayPal transaction.
         }

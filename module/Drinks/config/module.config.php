@@ -108,6 +108,7 @@ return [
             'Drinks\Manager\DrinkDepositManager' => 'Drinks\Manager\DrinkDepositManagerFactory',
             'Drinks\Manager\DrinkCategoryManager' => 'Drinks\Manager\DrinkCategoryManagerFactory',
             'Drinks\Manager\PaypalTransactionManager' => 'Drinks\Manager\PaypalTransactionManagerFactory',
+            'Drinks\Service\ThekeMailer' => 'Drinks\Service\ThekeMailerFactory',
         ],
     ],
     'controllers' => [

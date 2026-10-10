@@ -201,7 +201,6 @@ class SimpleLoginController extends AbstractActionController
             $drinkHistory[] = [
                 'type' => 'deposit',
                 'amount' => $deposit['amount'],
-                'created_at' => $deposit['deposit_time'],
                 'datetime' => $deposit['deposit_time'],
                 'id' => $deposit['id'],
                 'comment' => isset($deposit['comment']) ? trim((string)$deposit['comment']) : '',
@@ -222,7 +221,6 @@ class SimpleLoginController extends AbstractActionController
                 'quantity' => $order['quantity'],
                 'price' => $order['price'],
                 'total' => $order['quantity'] * $order['price'],
-                'created_at' => $order['order_time'],
                 'datetime' => $order['order_time'],
                 'id' => $order['id'],
                 'deleted' => $order['deleted'],
@@ -241,16 +239,15 @@ class SimpleLoginController extends AbstractActionController
             }));
         }
         usort($drinkHistory, function($a, $b) {
-            return strtotime($b['created_at']) - strtotime($a['created_at']);
+            return strcmp($b['datetime'], $a['datetime']);
         });
 
-        $teamLeadRow = $db->query('SELECT COUNT(*) AS cnt FROM drinks_teamevents WHERE team_admin_user_id = ?', [$userId])->current();
+        $teamEventCount = $db->query('SELECT COUNT(*) AS cnt FROM drinks_teamevents WHERE team_admin_user_id = ?', [$userId])->current();
 
         $viewModel = new ViewModel([
             'drinks' => $drinkManager->getAll($userId),
             'drinkHistory' => $drinkHistory,
             'userName' => $userManager->get($userId)->get('alias'),
-            'currentBalance' => $drinkManager->calculateUserDrinkBalance($userId, $serviceManager),
             'pendingPaypalAmount' => $drinkManager->getPendingPaypalAmount($userId),
             'minimumAccountBalance' => $drinkManager->getMinimumAccountBalance($serviceManager),
             'error' => null,
@@ -261,7 +258,7 @@ class SimpleLoginController extends AbstractActionController
             'simpleOrderMode' => true,
             'thekenadmin' => $row && !empty($row['thekenadmin']),
             'isTeamAccount' => $isTeamAccount,
-            'isTeamLead' => $teamLeadRow && (int)$teamLeadRow['cnt'] > 0,
+            'hasTeamEvents' => $teamEventCount && (int)$teamEventCount['cnt'] > 0,
             'isTeamMemberOfAnyEvent' => $drinkManager->isTeamEventMember($userId),
             'currentSpieltag' => $currentTeamEventLabel,
             'availableSpieltage' => $availableTeamEventLabels,
@@ -394,7 +391,7 @@ class SimpleLoginController extends AbstractActionController
                 $selected = ($eventById && isset($eventById['comment'])) ? $this->normalizeTeamEventLabel((string)$eventById['comment']) : '';
             }
             if ($selected === '') {
-                return $this->jsonError(400, 'Ungueltiger Spieltag.');
+                return $this->jsonError(400, 'Ungültiger Spieltag.');
             }
 
             $event = $this->getOrCreateTeamEventByLabel($teamAdminUserId, $selected);
@@ -420,7 +417,6 @@ class SimpleLoginController extends AbstractActionController
         return $this->jsonResponse([
             'success' => true,
             'current_spieltag' => $currentTeamEventLabel,
-            'spieltage' => $availableTeamEventLabels,
             'open_spieltage' => $availableTeamEventLabels,
         ]);
     }

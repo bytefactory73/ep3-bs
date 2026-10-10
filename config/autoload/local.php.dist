@@ -19,6 +19,7 @@ return [
         'type' => 'sendmail', // or 'smtp' or 'smtp-tls' (or 'file', to not send, but save to file (data/mails/))
         'address' => 'info@bookings.example.com',
             // Make sure 'bookings.example.com' matches the hosting domain when using type 'sendmail'
+        'test_redirect' => '', // test systems (bookingtest.*): all mails go to this address instead (default: 'address')
 
         'host' => '?', // for 'smtp' type only, otherwise remove or leave as is
         'user' => '?', // for 'smtp' type only, otherwise remove or leave as is

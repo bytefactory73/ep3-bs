@@ -273,7 +273,6 @@ trait TeamEventEndpointsTrait
                 $errorCode = isset($settlementResult['error']) ? (string)$settlementResult['error'] : '';
                 $messages = [
                     'insufficient_settlement_balance' => 'Spieltagssaldo reicht für die gewünschten Ausgleichszahlungen nicht aus.',
-                    'insufficient_team_balance' => 'Nicht genügend Guthaben für die Ausgleichszahlungen vorhanden.',
                     'transfer_failed' => 'Mindestens eine Ausgleichszahlung ist fehlgeschlagen.',
                 ];
                 return $this->jsonError(

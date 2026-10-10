@@ -9,8 +9,6 @@ use Drinks\Service\DbSchema;
  */
 trait MoneyTransferTrait
 {
-    use ThekeMailTrait;
-
     /**
      * JSON response for a transfer from $senderUserId to the POSTed receiver_user_id
      * (team_event_id for a team receiver, amount, optional transfer_key).
@@ -259,28 +257,26 @@ trait MoneyTransferTrait
         }
 
         // Notifications after commit: a mail failure must not report a completed transfer as failed.
+        $mailer = $serviceManager->get('Drinks\Service\ThekeMailer');
         try {
-            $userMailService = $serviceManager->get('User\\Service\\MailService');
-
             $senderSubject = $this->t('Geld versendet');
             $senderText = sprintf(
                 $this->t('Du hast %.2f EUR an %s überwiesen.'),
                 $amount,
                 $receiverName
             );
-            $this->sendFromTheke($userMailService, $dbAdapter, $senderUser, $senderSubject, $senderText, ['isHtml' => false]);
+            $mailer->send($senderUser, $senderSubject, $senderText, ['isHtml' => false]);
         } catch (\Exception $e) {
             error_log('Money transfer notification (sender) failed: ' . $e->getMessage());
         }
         try {
-            $userMailService = $serviceManager->get('User\\Service\\MailService');
             $receiverSubject = $this->t('Geld erhalten');
             $receiverText = sprintf(
                 $this->t('Du hast %.2f EUR von %s erhalten.'),
                 $amount,
                 $senderName
             );
-            $this->sendFromTheke($userMailService, $dbAdapter, $receiverUser, $receiverSubject, $receiverText, ['isHtml' => false]);
+            $mailer->send($receiverUser, $receiverSubject, $receiverText, ['isHtml' => false]);
         } catch (\Exception $e) {
             error_log('Money transfer notification (receiver) failed: ' . $e->getMessage());
         }
