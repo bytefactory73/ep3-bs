@@ -931,7 +931,7 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
                         $drinkName = isset($entry['name']) ? $entry['name'] : '';
                         if (\Drinks\Manager\DrinkManager::isCustomPriceDrink($drinkId)) {
                             // Sonstiges and money transfers: only the comment
-                            $rowLabel = ($quantity > 1 ? $quantity . 'x ' : '') . $comment;
+                            $rowLabel = ($quantity > 1 ? $quantity . 'x ' : '') . $this->escapeHtml($comment);
                         } else {
                             // Normal drink: show quantity, name, then comment (if any)
                             $rowLabel = $quantity . 'x ' . $this->escapeHtml($drinkName);

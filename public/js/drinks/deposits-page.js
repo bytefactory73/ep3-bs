@@ -1278,7 +1278,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         var daySum = day.entries
                             .filter(e => !e.deleted)
                             .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
-                        html += '<div style="margin-top:18px; margin-bottom:8px; font-weight:bold; color:#1769aa;">' + day.date + '</div>';
+                        html += '<div style="margin-top:18px; margin-bottom:8px; font-weight:bold; color:#1769aa;">' + escapeHtml(day.date) + '</div>';
                         html += '<div style="margin-left:32px;">';
                         // Calculate per-day Kontostand: sum all non-deleted entries up to and including this day
                         var dayEnd = day.date + ' 23:59:59';
@@ -1312,15 +1312,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
                             var xBtn = '';
                             if (isDeleted) {
-                                xBtn = '<button class="entry-cancel-btn" data-entry-id="' + entry.id + '" data-entry-type="deposit" data-reactivate="1" title="Reaktivieren" style="margin-right:6px; color:#388e3c; background:none; border:none; font-size:15px; font-weight:bold; cursor:pointer; line-height:1;">&times;</button>';
+                                xBtn = '<button class="entry-cancel-btn" data-entry-id="' + escapeHtml(entry.id) + '" data-entry-type="deposit" data-reactivate="1" title="Reaktivieren" style="margin-right:6px; color:#388e3c; background:none; border:none; font-size:15px; font-weight:bold; cursor:pointer; line-height:1;">&times;</button>';
                             } else {
-                                xBtn = '<button class="entry-cancel-btn" data-entry-id="' + entry.id + '" data-entry-type="deposit" title="Stornieren" style="margin-right:6px; color:#d32f2f; background:none; border:none; font-size:15px; font-weight:bold; cursor:pointer; line-height:1;">&times;</button>';
+                                xBtn = '<button class="entry-cancel-btn" data-entry-id="' + escapeHtml(entry.id) + '" data-entry-type="deposit" title="Stornieren" style="margin-right:6px; color:#d32f2f; background:none; border:none; font-size:15px; font-weight:bold; cursor:pointer; line-height:1;">&times;</button>';
                             }
 
                             html += '<tr style="' + style + '">';
-                            html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + xBtn + entry.type + '</td>';
+                            html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + xBtn + escapeHtml(entry.type) + '</td>';
                             html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + formatCurrency(entry.amount) + '</td>';
-                            html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + (entry.desc || '') + (timeStr ? ' <span style=\"color:#888;font-size:90%;margin-left:8px;\">' + timeStr + '</span>' : '') + renderSpieltagBadge(entry) + '</td>';
+                            html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + escapeHtml(entry.desc || '') + (timeStr ? ' <span style=\"color:#888;font-size:90%;margin-left:8px;\">' + timeStr + '</span>' : '') + renderSpieltagBadge(entry) + '</td>';
                             html += '</tr>';
                         }
                         // Show orders (reverse for most recent first)
@@ -1341,9 +1341,9 @@ document.addEventListener('DOMContentLoaded', function() {
                             var xBtn = '';
                             var orderId = (typeof entry.id !== 'undefined') ? entry.id : (typeof entry.order_id !== 'undefined' ? entry.order_id : '');
                             if (isDeleted) {
-                                xBtn = '<button class="entry-cancel-btn" data-entry-id="' + orderId + '" data-entry-type="order" data-reactivate="1" title="Reaktivieren" style="margin-right:6px; color:#388e3c; background:none; border:none; font-size:15px; font-weight:bold; cursor:pointer; line-height:1;">&times;</button>';
+                                xBtn = '<button class="entry-cancel-btn" data-entry-id="' + escapeHtml(orderId) + '" data-entry-type="order" data-reactivate="1" title="Reaktivieren" style="margin-right:6px; color:#388e3c; background:none; border:none; font-size:15px; font-weight:bold; cursor:pointer; line-height:1;">&times;</button>';
                             } else {
-                                xBtn = '<button class="entry-cancel-btn" data-entry-id="' + orderId + '" data-entry-type="order" title="Stornieren" style="margin-right:6px; color:#d32f2f; background:none; border:none; font-size:15px; font-weight:bold; cursor:pointer; line-height:1;">&times;</button>';
+                                xBtn = '<button class="entry-cancel-btn" data-entry-id="' + escapeHtml(orderId) + '" data-entry-type="order" title="Stornieren" style="margin-right:6px; color:#d32f2f; background:none; border:none; font-size:15px; font-weight:bold; cursor:pointer; line-height:1;">&times;</button>';
                             }
                             // For Sonstiges (1) and money transfers (-1), show only the comment
                             var descWithComment = '';
@@ -1355,17 +1355,14 @@ document.addEventListener('DOMContentLoaded', function() {
                                     descWithComment = '';
                                 }
                             } else {
-                                // For other drinks, show as before, but skip '1x' if quantity==1
-                                descWithComment = entry.desc || '';
-                                if (entry.quantity == 1 && descWithComment.match(/^\s*\d+x\s+/)) {
-                                    descWithComment = descWithComment.replace(/^\s*1x\s+/, '');
-                                }
+                                // Other drinks: "1 x Bier" is shown as "Bier"
+                                descWithComment = escapeHtml(String(entry.desc || '').replace(/^\s*1\s*x\s+/, ''));
                                 if (entry.comment && entry.comment.trim() !== '') {
                                     descWithComment += ' <span style="color:#888;">(' + escapeHtml(entry.comment) + ')</span>';
                                 }
                             }
                             html += '<tr style="' + style + '">';
-                            html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + xBtn + entry.type + '</td>';
+                            html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + xBtn + escapeHtml(entry.type) + '</td>';
                             html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + formatCurrency(entry.amount) + '</td>';
                             html += '<td style="text-align:left;padding-top:1px;padding-bottom:1px;line-height:1;">' + descWithComment + (timeStr ? ' <span style="color:#888;font-size:90%;margin-left:8px;">' + timeStr + '</span>' : '') + renderSpieltagBadge(entry) + '</td>';
                             html += '</tr>';
@@ -1451,85 +1448,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Only update if a user is preselected
     if (userIdInput.value) updateUserInfo();
 
-    function computeMemberSharesFromRows(rows, guestDonations) {
-        var sharesByUid = {};
-        var safeRows = Array.isArray(rows) ? rows : [];
-        for (var i = 0; i < safeRows.length; i++) {
-            var row = safeRows[i] || {};
-            var share = Number(row.share_per_member || 0);
-            var relevantMembers = Array.isArray(row.relevant_members) ? row.relevant_members : [];
-            for (var m = 0; m < relevantMembers.length; m++) {
-                var uid = parseInt((relevantMembers[m] || {}).uid || 0, 10);
-                if (!uid) continue;
-                sharesByUid[uid] = (sharesByUid[uid] || 0) + share;
-            }
-        }
-
-        var safeDonations = Array.isArray(guestDonations) ? guestDonations : [];
-        for (var g = 0; g < safeDonations.length; g++) {
-            var donation = safeDonations[g] || {};
-            var receiverId = parseInt(donation.receiver_user_id || 0, 10);
-            var amount = Math.abs(Number(donation.amount || 0));
-            if (receiverId > 0 && amount > 0) {
-                sharesByUid[receiverId] = (sharesByUid[receiverId] || 0) - amount;
-            }
-        }
-
-        return sharesByUid;
-    }
-
-    function renderTeamEventStatsTable(data) {
-        if (!data || !Array.isArray(data.rows)) {
-            return '<div style="color:#c62828;">Keine Auswertungsdaten verfügbar.</div>';
-        }
-
-        var rows = data.rows;
-        var members = Array.isArray(data.members) ? data.members : [];
-        var guestDonations = Array.isArray(data.guest_donations) ? data.guest_donations : [];
-        var memberSharesByUid = computeMemberSharesFromRows(rows, guestDonations);
-        var totalSum = Number(typeof data.settlement_total_sum !== 'undefined' ? data.settlement_total_sum : data.total_sum || 0);
-
-        var html = '';
-        html += '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px;">';
-        html += '<div style="font-weight:700; color:#1769aa;">Auswertung: ' + (data.spieltag ? String(data.spieltag) : '-') + '</div>';
-        html += '<div style="font-weight:700; color:' + (totalSum >= 0 ? '#2e7d32' : '#c62828') + ';">Saldo: ' + formatCurrency(totalSum) + '</div>';
-        html += '</div>';
-
-        html += '<table class="default-table" style="width:100%; margin:0 0 10px 0;">';
-        html += '<tr style="background:#e3f0fa;"><th style="text-align:left;">Artikel</th><th style="text-align:right;">Menge</th><th style="text-align:right;">Einzelpreis</th><th style="text-align:right;">Anteil p.P.</th><th style="text-align:right;">Gesamtpreis</th></tr>';
-        for (var i = 0; i < rows.length; i++) {
-            var row = rows[i] || {};
-            html += '<tr>';
-            html += '<td>' + String(row.article || '-') + '</td>';
-            html += '<td style="text-align:right;">' + String(row.quantity || 0) + '</td>';
-            html += '<td style="text-align:right;">' + formatCurrency(Number(row.single_price || 0)) + '</td>';
-            html += '<td style="text-align:right;">' + formatCurrency(Number(row.share_per_member || 0)) + '</td>';
-            html += '<td style="text-align:right;">' + formatCurrency(Number(row.total_price || 0)) + '</td>';
-            html += '</tr>';
-        }
-        html += '<tr style="font-weight:bold; background:#f5faff;"><td colspan="4" style="text-align:right;">Gesamtsumme Ausgaben</td><td style="text-align:right;">' + formatCurrency(totalSum) + '</td></tr>';
-        html += '</table>';
-
-        html += '<table class="default-table" style="width:100%; margin:0;">';
-        html += '<tr style="background:#e3f0fa;"><th style="text-align:left;">Mitglied</th><th style="text-align:right;">Bereits gezahlt</th><th style="text-align:right;">Zu zahlen</th><th style="text-align:right;">Rest</th></tr>';
-        for (var m = 0; m < members.length; m++) {
-            var member = members[m] || {};
-            if (!member.is_member) continue;
-            var memberUid = parseInt(member.uid || 0, 10);
-            var paid = Number(member.total_paid || 0) - Math.abs(Number(member.total_refunded || 0));
-            var due = Number(memberSharesByUid[memberUid] || 0);
-            var rest = paid + due;
-            html += '<tr>';
-            html += '<td>' + String(member.name || ('User ' + memberUid)) + '</td>';
-            html += '<td style="text-align:right;">' + formatCurrency(paid) + '</td>';
-            html += '<td style="text-align:right;">' + formatCurrency(due) + '</td>';
-            html += '<td style="text-align:right;">' + formatCurrency(rest) + '</td>';
-            html += '</tr>';
-        }
-        html += '</table>';
-        return html;
-    }
-
     function renderTeamEventsPanelList(teamEvents, selectedTeamEventId) {
         currentTeamEventsForPanel = Array.isArray(teamEvents) ? teamEvents : [];
         currentSelectedTeamEventIdForPanel = String(selectedTeamEventId || '');
@@ -1550,8 +1468,8 @@ document.addEventListener('DOMContentLoaded', function() {
             var lineStyle = isSelected
                 ? 'border:1px solid #1769aa; background:#eaf4ff;'
                 : 'border:1px solid #d9e7f7; background:#fff;';
-            html += '<button type="button" class="team-event-panel-item" data-team-event-id="' + eventId + '" style="display:flex; justify-content:space-between; align-items:center; gap:8px; text-align:left; padding:8px 10px; border-radius:8px; ' + lineStyle + '">';
-            html += '<span><strong>' + String(evt.label || ('Spieltag ' + eventId)) + '</strong> <span style="color:#607d8b; font-size:12px;">(' + statusLabel + ')</span></span>';
+            html += '<button type="button" class="team-event-panel-item" data-team-event-id="' + escapeHtml(eventId) + '" style="display:flex; justify-content:space-between; align-items:center; gap:8px; text-align:left; padding:8px 10px; border-radius:8px; ' + lineStyle + '">';
+            html += '<span><strong>' + escapeHtml(evt.label || ('Spieltag ' + eventId)) + '</strong> <span style="color:#607d8b; font-size:12px;">(' + statusLabel + ')</span></span>';
             html += '<span style="font-weight:700; color:' + (Number(evt.balance || 0) >= 0 ? '#2e7d32' : '#c62828') + ';">' + formatCurrency(Number(evt.balance || 0)) + '</span>';
             html += '</button>';
         }

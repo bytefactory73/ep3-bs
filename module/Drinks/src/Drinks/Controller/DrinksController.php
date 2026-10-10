@@ -385,18 +385,13 @@ class DrinksController extends AbstractActionController
         $from = $normalize($from);
         $to = $normalize($to);
 
-        $groupSql = 'DATE(order_time)';
-        $labelFormat = 'Y-m-d';
-        if ($group === 'week') {
-            $groupSql = 'YEAR(order_time), WEEK(order_time, 1)';
-            $labelFormat = 'o-\KWW';
-        } elseif ($group === 'month') {
-            $groupSql = 'YEAR(order_time), MONTH(order_time)';
-            $labelFormat = 'Y-m';
-        } elseif ($group === 'year') {
-            $groupSql = 'YEAR(order_time)';
-            $labelFormat = 'Y';
-        }
+        // One expression per group that already is its label: 2026-05-01, 2026-KW05 (ISO week), 2026-05, 2026
+        $groupExpressions = [
+            'week' => "CONCAT(LEFT(YEARWEEK(order_time, 3), 4), '-KW', RIGHT(YEARWEEK(order_time, 3), 2))",
+            'month' => "DATE_FORMAT(order_time, '%Y-%m')",
+            'year' => 'YEAR(order_time)',
+        ];
+        $groupSql = isset($groupExpressions[$group]) ? $groupExpressions[$group] : 'DATE(order_time)';
         $sql = 'SELECT ' . $groupSql . ' as grp, user_id, drink_id, SUM(quantity) as quantity, MIN(order_time) as min_time, SUM(quantity * price) as total_amount
                 FROM drink_orders
                 WHERE deleted = 0
@@ -418,22 +413,8 @@ class DrinksController extends AbstractActionController
             $orders[] = $row;
         }
         $orderMap = [];
-        $drinkPriceMap = [];
-        foreach ($drinks as $drink) {
-            $drinkPriceMap[$drink['id']] = (float)$drink['price'];
-        }
         foreach ($orders as $row) {
             $grp = $row['grp'];
-            if ($group === 'week') {
-                $dt = new \DateTime($row['min_time']);
-                $grp = $dt->format('o') . '-KW' . $dt->format('W');
-            } elseif ($group === 'month') {
-                $dt = new \DateTime($row['min_time']);
-                $grp = $dt->format('Y-m');
-            } elseif ($group === 'year') {
-                $dt = new \DateTime($row['min_time']);
-                $grp = $dt->format('Y');
-            }
             $uid = $row['user_id'];
             $did = $row['drink_id'];
             $count = (int)$row['quantity'];
