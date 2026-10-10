@@ -27,7 +27,7 @@ data/docs/
 
 ## Architecture
 
-The system is based on the well-known LAMP stack (Linux, Apache 2, MySQL 5+, PHP 8.1+) and the powerful
+The system is based on the well-known LAMP stack (Linux, Apache 2, MySQL 5+, PHP 8.1+) and
 [Zend Framework 2](http://framework.zend.com/) (2.5).
 
 As of version 1.9.0, it requires at least PHP 8.1 and is compatible and tested with up to PHP 8.4. 
@@ -46,7 +46,10 @@ where you can find stable and (latest) development releases.
 
 ## Versions
 
-The current version is 1.9.0 from May 2025.
+The current version is 1.9.1 from August 2026.
+
+Version 1.9.1 added [new features and mobile optimizations](https://github.com/tkrebs/ep3-bs/pull/690) constributed by [holli73](https://github.com/holli73)
+as well as some configuration improvements.
 
 Version 1.9.0 applied IDE inspections for PHP 8.4 compatibility.
 

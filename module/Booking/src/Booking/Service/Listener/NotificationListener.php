@@ -53,19 +53,23 @@ class NotificationListener extends AbstractListenerAggregate
     public function onCreateSingle(Event $event)
     {
         $booking = $event->getTarget();
-        $reservation = current($booking->getExtra('reservations'));
+        $reservations = $booking->getExtra('reservations');
+
         $square = $this->squareManager->get($booking->need('sid'));
         $user = $this->userManager->get($booking->need('uid'));
 
         $dateFormatHelper = $this->dateFormatHelper;
         $dateRangerHelper = $this->dateRangeHelper;
 
-	    $reservationTimeStart = explode(':', $reservation->need('time_start'));
-        $reservationTimeEnd = explode(':', $reservation->need('time_end'));
-
+        // Start time from first reservation
+        $reservation = reset($reservations);
+        $reservationTimeStart = explode(':', $reservation->need('time_start'));
         $reservationStart = new \DateTime($reservation->need('date'));
         $reservationStart->setTime($reservationTimeStart[0], $reservationTimeStart[1]);
 
+        // End time from last reservation
+        $reservation = end($reservations);
+        $reservationTimeEnd = explode(':', $reservation->need('time_end'));
         $reservationEnd = new \DateTime($reservation->need('date'));
         $reservationEnd->setTime($reservationTimeEnd[0], $reservationTimeEnd[1]);
 
@@ -118,19 +122,22 @@ class NotificationListener extends AbstractListenerAggregate
     public function onCancelSingle(Event $event)
     {
         $booking = $event->getTarget();
-        $reservations = $this->reservationManager->getBy(['bid' => $booking->need('bid')], 'date ASC', 1);
-        $reservation = current($reservations);
+        $reservations = $this->reservationManager->getBy(['bid' => $booking->need('bid')], 'date ASC');
+
         $square = $this->squareManager->get($booking->need('sid'));
         $user = $this->userManager->get($booking->need('uid'));
 
         $dateRangerHelper = $this->dateRangeHelper;
 
-	    $reservationTimeStart = explode(':', $reservation->need('time_start'));
-        $reservationTimeEnd = explode(':', $reservation->need('time_end'));
-
+        // Start time from first reservation
+        $reservation = reset($reservations);
+        $reservationTimeStart = explode(':', $reservation->need('time_start'));
         $reservationStart = new \DateTime($reservation->need('date'));
         $reservationStart->setTime($reservationTimeStart[0], $reservationTimeStart[1]);
 
+        // End time from last reservation
+        $reservation = end($reservations);
+        $reservationTimeEnd = explode(':', $reservation->need('time_end'));
         $reservationEnd = new \DateTime($reservation->need('date'));
         $reservationEnd->setTime($reservationTimeEnd[0], $reservationTimeEnd[1]);
 

@@ -6,6 +6,8 @@ $squareType = $this->option('subject.square.type');
 $dateStart = $this->dateStart;
 $dateEnd = $this->dateEnd;
 
+$bookingTypeTitles = $this->bookingTypeTitles;
+
 $this->setup(array(
     'title' => sprintf('%s-%s', $squareType, $this->t('Booking')),
     'panel' => 'centered-panel',
@@ -64,6 +66,32 @@ $this->setup(array(
                 <input type="checkbox" name="bf-accept-rules-text" id="bf-accept-rules-text">
                 <label for="bf-accept-rules-text"><?= sprintf($this->t('Yes, I have %sread and accepted%s these rules and notes'), '<b>', '</b>') ?></label>
             </div>
+
+            <div class="separator separator-line"></div>
+
+        <?php endif; ?>
+
+        <?php if ($square->getMeta('allow-custom-name', 'false') == 'true'): ?>
+
+            <label for="bf-custom-name"><?= $this->t('Booking name') ?></label>
+
+            <input type="text" name="bf-custom-name" id="bf-custom-name" maxlength="64" style="width: 100%;">
+
+            <div class="separator separator-line"></div>
+
+        <?php endif; ?>
+
+        <?php if ($bookingTypeTitles): ?>
+
+            <label for="bf-type"><?= $this->t('Type') ?></label>
+
+            <select name="bf-type" id="bf-type" style="width: 100%;">
+                <option value=""><?= $this->t('- none -') ?></option>
+
+                <?php foreach ($bookingTypeTitles as $slug => $title): ?>
+                    <option value="<?= $this->escapeHtmlAttr($slug) ?>"><?= $this->escapeHtml($title) ?></option>
+                <?php endforeach; ?>
+            </select>
 
             <div class="separator separator-line"></div>
 

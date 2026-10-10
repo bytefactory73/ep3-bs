@@ -27,6 +27,7 @@ return [
 
     'User-Administration' => 'Benutzer-Verwaltung',
     'Here you can create, edit or delete the users of your system.' => 'Hier können Sie die Benutzer Ihres Systems erstellen, bearbeiten oder löschen.',
+    'Latest created users' => 'Zuletzt erstellte Benutzer',
 
     'Booking-Administration' => 'Buchungs-Verwaltung',
     'Here you can create, edit or delete the bookings of your system.' => 'Hier können Sie die Buchungen Ihres Systems erstellen, bearbeiten oder löschen.',
@@ -188,6 +189,7 @@ return [
     'Billing status' => 'Rechnungsstatus',
     'Billing total' => 'Rechnungssumme',
     'Billing status options' => 'Rechnungsstatus-Bezeichnungen',
+    'Type' => 'Spielart',
     'Number of players' => 'Anzahl Spieler',
     'Booked to' => 'Gebucht auf',
     'Edit user once saved' => 'Benutzer anschließend bearbeiten',
@@ -291,6 +293,10 @@ return [
     'Multiple bookings' => 'Mehrfachbuchungen',
     'May this square be booked multiple times until its full?'
         => 'Kann dieser Platz mehrmals gebucht werden bis er voll ist (s. Kapazität)?',
+    'Allow users to set a custom name for their booking' => 'Erlaube Benutzern eine eigene Bezeichnung für ihre Buchung',
+    'The custom name replaces the booking user\'s name in the calendar' => 'Die Bezeichnung ersetzt den Namen des Benutzers im Kalender',
+    'Booking name' => 'Bezeichnung',
+    'Shown in the calendar instead of the booking user\'s name' => 'Wird im Kalender anstelle des Namens des Benutzers angezeigt',
     'Visibility of names' => 'Sichtbarkeit von Namen',
     'For other users that are logged in' => 'Für andere angemeldete Benutzer',
     'Publicly for everyone' => 'Für alle Besucher öffentlich',
@@ -394,4 +400,6 @@ return [
     'Booked by' => 'Gebucht von',
 
     'User matched by' => 'Benutzer ermittelt nach',
+
+    'Limit bookings' => 'Buchungen einschränken',
 ];

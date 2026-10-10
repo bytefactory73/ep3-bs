@@ -13,8 +13,12 @@ $this->setup(array(
 
 ?>
 
-<div>
+<div style="position: relative">
     <h1><?= $this->t('User-Administration') ?></h1>
+
+    <div style="position: absolute; top: 0.4rem; right: 0.4rem">
+        <p><a href="<?= $this->url('backend/user/edit') ?>" class="unlined gray"><span class="symbolic symbolic-plus"><?= $this->t('New user') ?></span></a></p>
+    </div>
 
     <div class="separator-small"></div>
 
@@ -28,6 +32,12 @@ $this->setup(array(
 
     <div class="centered-text" style="padding: 16px 0 16px 0;">
 
+        <?php if ($this->usersQueryNote): ?>
+        <div style="margin-bottom: 2rem; font-weight: 600">
+            <?= $this->usersQueryNote ?>:
+        </div>
+        <?php endif; ?>
+
         <?php if ($this->users): ?>
 
             <?= $this->backendUsersFormat($this->users, $this->search) ?>
@@ -37,8 +47,6 @@ $this->setup(array(
             <?php if ($this->search): ?>
                 <p><span class="red"><?= sprintf($this->t('%sNo users found%s for this search'), '<b>', '</b>') ?></span></p>
             <?php endif; ?>
-
-            <p><a href="<?= $this->url('backend/user/edit') ?>" class="unlined gray"><span class="symbolic symbolic-plus"><?= $this->t('New user') ?></span></a></p>
 
         <?php endif; ?>
 

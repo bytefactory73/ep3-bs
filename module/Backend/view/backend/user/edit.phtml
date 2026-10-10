@@ -29,8 +29,12 @@ $this->headScript()->appendFile($this->basePath('js/controller/backend/user/edit
 
 ?>
 
-<div>
+<div style="position: relative">
     <h1><?= $this->t('User-Administration') ?></h1>
+
+    <div style="position: absolute; top: 0.4rem; right: 0.4rem">
+        <p><a href="<?= $this->url('backend/user/edit') ?>" class="unlined gray"><span class="symbolic symbolic-plus"><?= $this->t('New user') ?></span></a></p>
+    </div>
 
     <div class="separator-small"></div>
 
@@ -70,6 +74,7 @@ $this->headScript()->appendFile($this->basePath('js/controller/backend/user/edit
                 <?= $this->formRowDefault($form, 'euf-privileges') ?>
                 <?= $this->formRowDefault($form, 'euf-email') ?>
                 <?= $this->formRowDefault($form, 'euf-pw') ?>
+                <?= $this->formRowDefault($form, 'euf-max-active-bookings') ?>
 
                 <tr>
                     <td class="right-text"><?= $this->t('Last activity') ?></td>

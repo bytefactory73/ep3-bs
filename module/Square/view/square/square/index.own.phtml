@@ -6,10 +6,19 @@ foreach ($this->bookingsFromUser as $bid => $booking) {
     echo sprintf('<p><span class="green">' . $this->t('This %s has been %sbooked to you%s.') . '</span></p>',
         $squareType, '<b>', '</b>');
 
+    if ($this->validator->isReservationCancellable($booking)) {
+        foreach ($this->reservations as $rid => $reservation) {
+            if ($reservation->need('bid') == $bid) {
+                echo sprintf('<p><a href="%s" class="default-button squarebox-internal-link"><span class="symbolic symbolic-cross">%s</span></a></p>',
+                    $this->url('square/booking/reservation-cancellation', [], ['query' => ['rid' => $rid]]), $this->t('Cancel this reservation'));
+            }
+        }
+    }
     if ($this->validator->isCancellable($booking)) {
         echo sprintf('<p><a href="%s" class="default-button squarebox-internal-link"><span class="symbolic symbolic-cross">%s</span></a></p>',
             $this->url('square/booking/cancellation', [], ['query' => ['bid' => $bid]]), $this->t('Cancel this booking'));
-    } else {
+    }
+    if (! ($this->validator->isReservationCancellable($booking) || $this->validator->isCancellable($booking))) {
         echo '<p><em>' . $this->t('This booking cannot be cancelled anymore online.') . '</em></p>';
     }
 }

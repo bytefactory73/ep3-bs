@@ -3,6 +3,7 @@
 namespace Backend\Controller;
 
 use User\Entity\User;
+use User\Manager\UserManager;
 use User\Table\UserTable;
 use Zend\Crypt\Password\Bcrypt;
 use Zend\Db\Adapter\Adapter;
@@ -16,8 +17,10 @@ class UserController extends AbstractActionController
         $this->authorize('admin.user');
 
         $serviceManager = @$this->getServiceLocator();
+        /** @var UserManager $userManager */
         $userManager = $serviceManager->get('User\Manager\UserManager');
 
+        $usersQueryNote = null;
         $users = array();
 
         $search = $this->params()->fromQuery('usf-search');
@@ -41,10 +44,14 @@ class UserController extends AbstractActionController
             } catch (\RuntimeException $e) {
                 $users = array();
             }
+        } else {
+            $usersQueryNote = $this->t('Latest created users');
+            $users = $userManager->getAll('created DESC', 20);
         }
 
         return array(
             'search' => $search,
+            'usersQueryNote' => $usersQueryNote,
             'users' => $users,
         );
     }
@@ -131,6 +138,8 @@ class UserController extends AbstractActionController
                     $user->set('pw', $bcrypt->create($pw));
                 }
 
+                $user->setMeta('max_active_bookings', $eud['euf-max-active-bookings']);
+
                 /* Personal data */
 
                 $user->setMeta('gender', $eud['euf-gender']);
@@ -178,6 +187,7 @@ class UserController extends AbstractActionController
                     'euf-status' => $user->need('status'),
                     'euf-privileges' => $privileges,
                     'euf-email' => $user->get('email'),
+                    'euf-max-active-bookings' => $user->getMeta('max_active_bookings'),
                     'euf-gender' => $user->getMeta('gender'),
                     'euf-firstname' => $user->getMeta('firstname', $user->getMeta('name')),
                     'euf-lastname' => $user->getMeta('lastname'),

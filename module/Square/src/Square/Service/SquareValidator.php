@@ -24,10 +24,14 @@ class SquareValidator extends AbstractService
     protected $optionManager;
     protected $user;
 
-    public function __construct(BookingManager $bookingManager, ReservationManager $reservationManager,
-        EventManager $eventManager, SquareManager $squareManager, UserSessionManager $userSessionManager,
-        OptionManager $optionManager)
-    {
+    public function __construct(
+        BookingManager $bookingManager,
+        ReservationManager $reservationManager,
+        EventManager $eventManager,
+        SquareManager $squareManager,
+        UserSessionManager $userSessionManager,
+        OptionManager $optionManager,
+    ) {
         $this->bookingManager = $bookingManager;
         $this->reservationManager = $reservationManager;
         $this->eventManager = $eventManager;
@@ -316,7 +320,13 @@ class SquareValidator extends AbstractService
         /* Check for maximum active bookings limitation */
 
         if ($user) {
-            $maxActiveBookings = $square->need('max_active_bookings');
+            $maxActiveBookings = (int)$this->optionManager->get('service.user.default.max_active_bookings', '0');
+            if ((int)$square->get('max_active_bookings', '0') !== 0) {
+                $maxActiveBookings = (int)$square->get('max_active_bookings');
+            }
+            if ((int)$user->getMeta('max_active_bookings', '0') !== 0) {
+                $maxActiveBookings = (int)$user->getMeta('max_active_bookings');
+            }
 
             if ($maxActiveBookings != 0) {
                 $activeBookings = $this->bookingManager->getByValidity([
@@ -472,6 +482,19 @@ class SquareValidator extends AbstractService
         } else {
             return false;
         }
+    }
+
+    /**
+     * Checks if the current user is allowed to cancel a single reservation of this booking.
+     *
+     * @param Booking $booking
+     * @return boolean
+     */
+    public function isReservationCancellable(Booking $booking)
+    {
+        return $this->user &&
+            ($this->user->can('calendar.cancel-subscription-bookings') || $this->user->can('calendar.cancel-subscription-reservations')) &&
+            $booking->need('status') == 'subscription';
     }
 
 }

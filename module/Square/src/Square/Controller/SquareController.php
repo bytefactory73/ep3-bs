@@ -19,9 +19,11 @@ class SquareController extends AbstractActionController
         $serviceManager = @$this->getServiceLocator();
         $squareProductManager = $serviceManager->get('Square\Manager\SquareProductManager');
         $squareValidator = $serviceManager->get('Square\Service\SquareValidator');
+        $bookingTypeService = $serviceManager->get('Booking\Service\BookingTypeService');
 
         $byproducts = $squareValidator->isBookable($dateStartParam, $dateEndParam, $timeStartParam, $timeEndParam, $squareParam);
         $byproducts['validator'] = $squareValidator;
+        $byproducts['bookingTypeService'] = $bookingTypeService;
 
         $products = $squareProductManager->getBySquare($byproducts['square']);
         $byproducts['products'] = $products;

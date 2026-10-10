@@ -2,11 +2,19 @@
 
 namespace Calendar\View\Helper\Cell\Render;
 
+use Booking\Service\BookingTypeService;
 use Square\Entity\Square;
 use Zend\View\Helper\AbstractHelper;
 
 class OccupiedForVisitors extends AbstractHelper
 {
+
+    protected $bookingTypeService;
+
+    public function __construct(BookingTypeService $bookingTypeService)
+    {
+        $this->bookingTypeService = $bookingTypeService;
+    }
 
     public function __invoke(array $reservations, array $cellLinkParams, Square $square, $user = null)
     {
@@ -21,14 +29,17 @@ class OccupiedForVisitors extends AbstractHelper
             $booking = $reservation->needExtra('booking');
 
             if ($square->getMeta('public_names', 'false') == 'true') {
-                $cellLabel = $booking->needExtra('user')->need('alias');
+                $cellLabel = $booking->getMeta('custom-name') ?: $booking->needExtra('user')->need('alias');
             } else if ($square->getMeta('private_names', 'false') == 'true' && $user) {
-                $cellLabel = $booking->needExtra('user')->need('alias');
+                $cellLabel = $booking->getMeta('custom-name') ?: $booking->needExtra('user')->need('alias');
             } else {
                 $cellLabel = null;
             }
 
             $cellGroup = ' cc-group-' . $booking->need('bid');
+
+            $bookingTypeColor = $this->bookingTypeService->getTypeColor($booking->getMeta('type'));
+            $cellStyle = $bookingTypeColor ? 'background-color: ' . $bookingTypeColor . ';' : null;
 
             switch ($booking->need('status')) {
                 case 'single':
@@ -36,13 +47,13 @@ class OccupiedForVisitors extends AbstractHelper
                         $cellLabel = $this->view->t('Occupied');
                     }
 
-                    return $view->calendarCellLink($view->escapeHtml($cellLabel), $view->url('square', [], $cellLinkParams), 'cc-single' . $cellGroup);
+                    return $view->calendarCellLink($view->escapeHtml($cellLabel), $view->url('square', [], $cellLinkParams), 'cc-single' . $cellGroup, null, $cellStyle);
                 case 'subscription':
                     if (! $cellLabel) {
                         $cellLabel = $this->view->t('Subscription');
                     }
 
-                    return $view->calendarCellLink($view->escapeHtml($cellLabel), $view->url('square', [], $cellLinkParams), 'cc-multiple' . $cellGroup);
+                    return $view->calendarCellLink($view->escapeHtml($cellLabel), $view->url('square', [], $cellLinkParams), 'cc-multiple' . $cellGroup, null, $cellStyle);
             }
         }
     }

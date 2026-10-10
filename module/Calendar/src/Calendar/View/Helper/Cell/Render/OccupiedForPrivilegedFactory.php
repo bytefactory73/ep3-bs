@@ -10,7 +10,9 @@ class OccupiedForPrivilegedFactory implements FactoryInterface
 
     public function createService(ServiceLocatorInterface $sm)
     {
-        return new OccupiedForPrivileged($sm->getServiceLocator()->get('Booking\Service\BookingStatusService'));
+        return new OccupiedForPrivileged(
+            $sm->getServiceLocator()->get('Booking\Service\BookingStatusService'),
+            $sm->getServiceLocator()->get('Booking\Service\BookingTypeService'));
     }
 
 }

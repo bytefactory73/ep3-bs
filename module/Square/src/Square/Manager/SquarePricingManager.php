@@ -60,7 +60,7 @@ class SquarePricingManager extends AbstractManager
 
         try {
             $adapter = $this->squarePricingTable->getAdapter();
-            $adapter->query('TRUNCATE TABLE ' . SquarePricingTable::NAME, Adapter::QUERY_MODE_EXECUTE);
+            $adapter->query('DELETE FROM ' . SquarePricingTable::NAME, Adapter::QUERY_MODE_EXECUTE);
 
             $statement = $adapter->query('INSERT INTO ' . SquarePricingTable::NAME . ' (sid, priority, date_start, date_end, day_start, day_end, time_start, time_end, price, rate, gross, per_time_block) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
             );
@@ -71,10 +71,11 @@ class SquarePricingManager extends AbstractManager
                 }
 
                 $statement->execute($rule);
-                $transaction = false;
             }
 
-            $connection->commit();
+            if ($transaction) {
+				$connection->commit();
+			}
 
             $this->getEventManager()->trigger('create', $rules);
 
@@ -509,3 +510,4 @@ class SquarePricingManager extends AbstractManager
     }
 
 }
+
