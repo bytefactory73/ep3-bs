@@ -247,40 +247,40 @@
       "sync_result"
     ],
     "~import_errors": 0,
-    "~needs_review": 1
+    "~needs_review": 0
   },
   "read_admin_pages": {
     "user/balance-list": {
       "status": 200,
-      "title": "Kontostände Übersicht &middot; STC Tennisplatz-Buchung (Test)"
+      "title": "Kontostände Übersicht &middot; STC Tennisplatz-Buchung"
     },
     "user/deposit-overview": {
       "status": 200,
-      "title": "Einzahlungsübersicht &middot; STC Tennisplatz-Buchung (Test)"
+      "title": "Einzahlungsübersicht &middot; STC Tennisplatz-Buchung"
     },
     "user/deposits": {
       "status": 200,
-      "title": "Benutzer Ein-/Auszahlungen &middot; STC Tennisplatz-Buchung (Test)"
+      "title": "Benutzer Ein-/Auszahlungen &middot; STC Tennisplatz-Buchung"
     },
     "user/drinks-admin": {
       "status": 200,
-      "title": "Drinks Verwaltung &middot; STC Tennisplatz-Buchung (Test)"
+      "title": "Drinks Verwaltung &middot; STC Tennisplatz-Buchung"
     },
     "user/drinks-admin/paypal-settings": {
       "status": 200,
-      "title": "PayPal Einstellungen &middot; STC Tennisplatz-Buchung (Test)"
+      "title": "PayPal Einstellungen &middot; STC Tennisplatz-Buchung"
     },
     "user/drinks-admin/spieltage-overview": {
       "status": 200,
-      "title": "Spieltage-Übersicht &middot; STC Tennisplatz-Buchung (Test)"
+      "title": "Spieltage-Übersicht &middot; STC Tennisplatz-Buchung"
     },
     "user/drinks-summary": {
       "status": 200,
-      "title": "Gesamtauswertung &middot; STC Tennisplatz-Buchung (Test)"
+      "title": "Gesamtauswertung &middot; STC Tennisplatz-Buchung"
     },
     "user/manage-drinks": {
       "status": 200,
-      "title": "Manage Drinks &middot; STC Tennisplatz-Buchung (Test)"
+      "title": "Manage Drinks &middot; STC Tennisplatz-Buchung"
     }
   },
   "read_deposit_overview_variants": {
@@ -292,35 +292,19 @@
   },
   "read_drinks_page": {
     "status": 200,
-    "title": "Drinks &middot; STC Tennisplatz-Buchung (Test)",
-    "~drink_buttons": 62
+    "title": "Drinks &middot; STC Tennisplatz-Buchung",
+    "~drink_buttons": 70
   },
   "read_drinks_summary_groupings_agree": {
-    "~amount": "429,79",
-    "~count": "125"
+    "~amount": "12.917,34",
+    "~count": "4096"
   },
   "read_drinks_summary_variants": {
     "mode_amount": 200,
     "mode_count": 200
   },
   "read_extra_costs_and_guest_donations_lists": {
-    "16": {
-      "~extra_costs": 0,
-      "~guest_donations": 0
-    },
-    "17": {
-      "~extra_costs": 1,
-      "~guest_donations": 1
-    },
-    "26": {
-      "~extra_costs": 0,
-      "~guest_donations": 0
-    },
-    "32": {
-      "~extra_costs": 0,
-      "~guest_donations": 0
-    },
-    "33": {
+    "18": {
       "~extra_costs": 0,
       "~guest_donations": 0
     }
@@ -459,12 +443,8 @@
     },
     "team_events": [
       {
-        "id": 26,
-        "label": "Spieltag 2026-06-07"
-      },
-      {
-        "id": 17,
-        "label": "Spieltag 2026-05-06"
+        "id": 18,
+        "label": "Spieltag 2026-08-22"
       }
     ]
   },
@@ -488,11 +468,7 @@
   },
   "read_team_deposits_data": {
     "team_event_ids": [
-      33,
-      32,
-      26,
-      17,
-      16
+      18
     ],
     "team_event_shape": [
       "balance",
@@ -501,24 +477,16 @@
       "label",
       "team_admin_user_id"
     ],
-    "~balance": -35.0,
+    "~balance": -11.0,
     "~team_event_balances": {
-      "16": -22.0,
-      "17": 0.0,
-      "26": -13.0,
-      "32": 0.0,
-      "33": 0.0
+      "18": -11.0
     }
   },
   "read_team_stats_admin": {
-    "16": {
+    "18": {
       "can_close_team_event": true,
       "event_ids": [
-        33,
-        32,
-        26,
-        17,
-        16
+        18
       ],
       "event_shape": [
         "can_manage_members",
@@ -552,275 +520,35 @@
         "total_sum",
         "user_role"
       ],
-      "spieltag": "Medenspiel 2026-05-09",
-      "team_alias": "D50",
-      "~account_balance": -35.0,
-      "~active_members": [
-        4,
-        90
-      ],
+      "spieltag": "Spieltag 2026-08-22",
+      "team_alias": "U18-1",
+      "~account_balance": -11.0,
+      "~active_members": [],
       "~rows": [
         [
           "order",
-          "Kaffee (Tasse)",
-          4,
-          -2.0
+          "Cola, Fanta, Sprite (Glas 0.5)",
+          3,
+          -6.0
         ],
         [
           "order",
-          "Aperol Spritz",
-          4,
-          -20.0
-        ]
-      ],
-      "~total_sum": -22.0
-    },
-    "17": {
-      "can_close_team_event": true,
-      "event_ids": [
-        33,
-        32,
-        26,
-        17,
-        16
-      ],
-      "event_shape": [
-        "can_manage_members",
-        "closed",
-        "id",
-        "label",
-        "role",
-        "team_admin_user_id",
-        "team_alias"
-      ],
-      "shape": [
-        "account_balance",
-        "active_members",
-        "can_close_team_event",
-        "can_manage_members",
-        "events",
-        "extra_costs",
-        "guest_donations",
-        "is_editable",
-        "member_candidates",
-        "members",
-        "open_spieltage",
-        "rows",
-        "spieltag",
-        "spieltage",
-        "success",
-        "team_alias",
-        "team_event_closed",
-        "team_event_id",
-        "team_uid",
-        "total_sum",
-        "user_role"
-      ],
-      "spieltag": "Spieltag 2026-05-06",
-      "team_alias": "D50",
-      "~account_balance": -35.0,
-      "~active_members": [
-        4,
-        125
-      ],
-      "~rows": [
-        [
-          "extra_cost",
-          "Extrakosten (Alex Link)",
+          "Medenspiel-Pauschale",
           1,
-          -11.0
+          -5.0
         ]
       ],
       "~total_sum": -11.0
-    },
-    "26": {
-      "can_close_team_event": true,
-      "event_ids": [
-        33,
-        32,
-        26,
-        17,
-        16
-      ],
-      "event_shape": [
-        "can_manage_members",
-        "closed",
-        "id",
-        "label",
-        "role",
-        "team_admin_user_id",
-        "team_alias"
-      ],
-      "shape": [
-        "account_balance",
-        "active_members",
-        "can_close_team_event",
-        "can_manage_members",
-        "events",
-        "extra_costs",
-        "guest_donations",
-        "is_editable",
-        "member_candidates",
-        "members",
-        "open_spieltage",
-        "rows",
-        "spieltag",
-        "spieltage",
-        "success",
-        "team_alias",
-        "team_event_closed",
-        "team_event_id",
-        "team_uid",
-        "total_sum",
-        "user_role"
-      ],
-      "spieltag": "Spieltag 2026-06-07",
-      "team_alias": "D50",
-      "~account_balance": -35.0,
-      "~active_members": [
-        4,
-        89
-      ],
-      "~rows": [
-        [
-          "order",
-          "Radler (Flasche 0.33) Alkoholfrei",
-          2,
-          -3.0
-        ],
-        [
-          "order",
-          "Aperol Spritz",
-          1,
-          -5.0
-        ],
-        [
-          "order",
-          "Medenspielpauschale",
-          1,
-          -5.0
-        ]
-      ],
-      "~total_sum": -13.0
-    },
-    "32": {
-      "can_close_team_event": true,
-      "event_ids": [
-        33,
-        32,
-        26,
-        17,
-        16
-      ],
-      "event_shape": [
-        "can_manage_members",
-        "closed",
-        "id",
-        "label",
-        "role",
-        "team_admin_user_id",
-        "team_alias"
-      ],
-      "shape": [
-        "account_balance",
-        "active_members",
-        "can_close_team_event",
-        "can_manage_members",
-        "events",
-        "extra_costs",
-        "guest_donations",
-        "is_editable",
-        "member_candidates",
-        "members",
-        "open_spieltage",
-        "rows",
-        "spieltag",
-        "spieltage",
-        "success",
-        "team_alias",
-        "team_event_closed",
-        "team_event_id",
-        "team_uid",
-        "total_sum",
-        "user_role"
-      ],
-      "spieltag": "SMOKETEST A4 2026-10-10 22:50:49",
-      "team_alias": "D50",
-      "~account_balance": -35.0,
-      "~active_members": [
-        1
-      ],
-      "~rows": [],
-      "~total_sum": 0.0
-    },
-    "33": {
-      "can_close_team_event": true,
-      "event_ids": [
-        33,
-        32,
-        26,
-        17,
-        16
-      ],
-      "event_shape": [
-        "can_manage_members",
-        "closed",
-        "id",
-        "label",
-        "role",
-        "team_admin_user_id",
-        "team_alias"
-      ],
-      "shape": [
-        "account_balance",
-        "active_members",
-        "can_close_team_event",
-        "can_manage_members",
-        "events",
-        "extra_costs",
-        "guest_donations",
-        "is_editable",
-        "member_candidates",
-        "members",
-        "open_spieltage",
-        "rows",
-        "spieltag",
-        "spieltage",
-        "success",
-        "team_alias",
-        "team_event_closed",
-        "team_event_id",
-        "team_uid",
-        "total_sum",
-        "user_role"
-      ],
-      "spieltag": "SMOKETEST A4 2026-10-10 22:51:06",
-      "team_alias": "D50",
-      "~account_balance": -35.0,
-      "~active_members": [
-        1
-      ],
-      "~rows": [],
-      "~total_sum": 0.0
     }
   },
   "read_team_stats_member_view": {
     "status": 200,
     "~events": [
-      33,
-      32,
-      27,
-      25,
-      23,
-      21
+      22
     ]
   },
   "read_team_stats_teamlead_matches_admin": {
-    "16": "identical",
-    "17": "identical",
-    "26": "identical",
-    "32": "identical",
-    "33": "identical"
+    "18": "identical"
   },
   "read_user_deposits_data": {
     "entry_shape_deposit": [
@@ -837,7 +565,6 @@
     ],
     "entry_shape_order": [
       "amount",
-      "balance",
       "comment",
       "datetime",
       "deleted",
@@ -850,7 +577,7 @@
       "teamevent_id",
       "type"
     ],
-    "order_email_option": "summary",
+    "order_email_option": "order",
     "shape": [
       "balance",
       "current_teamevent_id",
@@ -863,8 +590,8 @@
       "team_events",
       "teamlead_email"
     ],
-    "~active_history_entries": 74,
-    "~balance": 1.47
+    "~active_history_entries": 0,
+    "~balance": 0.0
   },
   "theke_login_errors": {
     "empty": "Bitte geben Sie eine Theken-ID ein.",
@@ -899,9 +626,7 @@
     "wrong_password": "Passwort ist falsch."
   },
   "theke_team_stats_match_admin": {
-    "16": "identical",
-    "17": "identical",
-    "26": "identical"
+    "18": "identical"
   },
   "theke_team_writes_roundtrip": {
     "foreign_team_spieltag_error": "Spieltag nicht gefunden.",
@@ -929,14 +654,14 @@
     "restored": true
   },
   "write_extra_cost_roundtrip": {
-    "delete_other_spieltag_error": "Extrakosten konnten nicht gelöscht werden.",
+    "delete_other_spieltag_error": null,
     "listed": true,
     "row_article": "Extrakosten: SMOKETEST (Tilo Kühn (Admin))",
     "zero_amount_error": "Ungültige Eingabe."
   },
   "write_guest_donation_roundtrip": {
     "due_amount": -0.01,
-    "non_member_error": null,
+    "non_member_error": "Empfänger ist kein aktiver Teilnehmer.",
     "updated_amount": 0.02
   },
   "write_history_move_roundtrip": {
@@ -950,7 +675,7 @@
       "SMOKETEST 2",
       0.02
     ],
-    "~drink_count": 36
+    "~drink_count": 39
   },
   "write_money_transfer_roundtrip": {
     "already_processed": true,

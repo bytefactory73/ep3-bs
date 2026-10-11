@@ -25,7 +25,7 @@ Exit-Code 0 = kein Test fehlgeschlagen.
 | `--write` | Einzahlung, Admin-Buchung, Team-Buchung, Geld senden (inkl. Doppel-Submit), Einstellungen, Party-Mode, Getränke anlegen/ändern/löschen, Mitglieder, Zusatzkosten, Gastspenden, Relevanz, Spieltag umhängen, geschlossener Spieltag | Jede Änderung wird rückgängig gemacht (Storno). Es bleiben stornierte Einträge mit Kommentar `SMOKETEST`; Mails gehen an die Test-Umleitung. |
 | `--theke` | Theke-Login, Bestellen/Stornieren, Kostenübersicht (gleich wie Admin-Sicht), Team-Schreibaktionen, Geld senden mit Passwort | wie `--write` |
 | `--paypal` | PayPal-Historie-Import (3 Tage) und Namensabgleich aus dem Postfach | neue Zeilen in `drinks_paypal` |
-| `--destructive` | Spieltag `SMOKETEST <Zeit>` anlegen und abschließen; Spieltag `SMOKETEST A4 <Zeit>` mit 0,01 € abschließen (fehlschlagender Ausgleich lässt ihn offen, gültiger bucht die Überweisung; Geld wird storniert) | zwei abgeschlossene Spieltage pro Lauf beim Team 962 (auch `--record` führt die Tests aus) |
+| `--destructive` | Spieltag `SMOKETEST <Zeit>` anlegen und abschließen; Spieltag `SMOKETEST A4 <Zeit>` mit 0,01 € abschließen (fehlschlagender Ausgleich lässt ihn offen, gültiger bucht die Überweisung; Geld wird storniert) | zwei abgeschlossene Spieltage pro Lauf beim Team 992 (auch `--record` führt die Tests aus) |
 | `--paypal-imap` | PayPal-IMAP-Abruf | markiert Mails im PayPal-Postfach als gelesen |
 
 Vor und nach Schreibläufen räumt die Suite übrig gebliebene `SMOKETEST`-Daten eines abgebrochenen
@@ -33,8 +33,9 @@ Laufs auf (Storno, Löschen) und meldet sie. Reste nach einem Lauf zählen als F
 
 ## Testdaten (bookingtest)
 
-In `drinks_suite.py` oben: Admin uid 1 (Session-User, Thekenadmin), Empfänger uid 4, Mannschaft 962
-(„D50“) mit mindestens einem offenen, einem abgeschlossenen Spieltag. Die Theke-Tests lesen die
+bookingtest läuft mit einer Kopie der Produktions-DB (11.10.2026). In `drinks_suite.py` oben: Admin uid 1
+(Session-User, Thekenadmin), Empfänger uid 4, Mannschaft 992 („U18-1“) mit einem offenen Spieltag, fremde Mannschaft 989 („D50“); andere
+Mannschaft per `EP3_TEAM_UID=<uid>`. Die Theke-Tests lesen die
 Theken-IDs dieser Konten zur Laufzeit über die Admin-API; sie werden nie ausgegeben oder gespeichert.
 
 ## Referenzwerte

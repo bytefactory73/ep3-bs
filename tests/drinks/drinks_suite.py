@@ -37,7 +37,8 @@ REFERENCE_FILE = os.path.join(HERE, 'reference.json')
 # Test data on bookingtest (see README.md)
 ADMIN_UID = 1          # session user; thekenadmin and backend admin
 PEER_UID = 4           # receiver of test money transfers
-TEAM_UID = int(os.environ.get('EP3_TEAM_UID', 962))  # team account "D50" with open Spieltage (989 in the production data)
+TEAM_UID = int(os.environ.get('EP3_TEAM_UID', 992))  # team account "U18-1" with an open Spieltag
+FOREIGN_TEAM_UID = 989  # another team account ("D50"); its Spieltage must be rejected at TEAM_UID's Theke
 MARK = 'SMOKETEST'     # comment / label of everything the suite creates
 CENT = 0.01
 
@@ -1038,7 +1039,7 @@ def theke_team_writes_roundtrip(ctx):
         donation = post('team-guest-donation', {'receiver_user_id': ADMIN_UID, 'amount': CENT, 'comment': MARK})
         donation_id = next(d['id'] for d in donation['guest_donations'] if d['comment'] == MARK)
         post('team-delete-guest-donation', {'guest_donation_id': donation_id})
-        foreign = [e for e in ctx.admin.get_json('user/get-user-team-event-stats-data', uid=854)['events']][:1]
+        foreign = [e for e in ctx.admin.get_json('user/get-user-team-event-stats-data', uid=FOREIGN_TEAM_UID)['events']][:1]
         foreign_error = team.client.post_json('user/simple-order/team-extra-cost', {'team_event_id': foreign[0]['id'], 'payer_user_id': ADMIN_UID, 'amount': CENT}, expect_status=404)['error'] if foreign else None
     finally:
         if added:
