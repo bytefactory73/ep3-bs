@@ -443,12 +443,11 @@
                     clearBtn.style.cursor = 'not-allowed';
                 }
             }
-        var initialBalance = DRINKS_PAGE.orderBalance;
-        var pendingPaypalAmount = DRINKS_PAGE.pendingPaypalAmount;
-        var newBalance = initialBalance - total;
-        var availableBalance = newBalance + pendingPaypalAmount;
-        var minimumAccountBalance = DRINKS_PAGE.minimumAccountBalance;
-        var belowMinimum = minimumAccountBalance !== 0 ? (availableBalance < minimumAccountBalance) : (availableBalance < 0);
+        // The server sends how much may still be ordered (null = no limit); here only the
+        // selected total is compared with it, in cents
+        var newBalance = DRINKS_PAGE.orderBalance - total;
+        var orderLimit = DRINKS_PAGE.orderLimit;
+        var belowMinimum = orderLimit !== null && Math.round(total * 100) > Math.round(orderLimit * 100);
         var formattedBalance = "";
         if (window.SIMPLE_ORDER_MODE) {
             formattedBalance = newBalance > 0 ? " > 0 €" : " < 0 €";
@@ -485,7 +484,7 @@
                 rechargeSubtext.textContent = belowMinimum ? 'Bitte zuerst Guthaben aufladen' : 'Du kannst die Bestellung trotzdem abschließen';
             }
         }
-        if (bookBtn && minimumAccountBalance !== 0) {
+        if (bookBtn) {
             bookBtn.disabled = !anySelected || belowMinimum;
         }
     }

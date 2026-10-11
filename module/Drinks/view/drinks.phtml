@@ -31,12 +31,13 @@ if ($partyMode['active']) {
 // Balance of the history shown below (for team accounts: the selected Spieltag); the order
 // form checks bookings against it.
 $historyBalance = (float)($this->historyBalance ?? 0);
+$orderLimit = $this->orderLimit ?? null;
 ?>
 <script>window.DRINKS_PAGE = <?= json_encode([
     'simpleOrderMode' => (bool)$simpleOrderMode,
     'orderBalance' => (float)$historyBalance,
-    'pendingPaypalAmount' => (float)($this->pendingPaypalAmount ?? 0),
-    'minimumAccountBalance' => (float)($this->minimumAccountBalance ?? 0),
+    // How much may still be ordered (null = no limit); the order form compares its total with it
+    'orderLimit' => $orderLimit,
     'moneyRecipients' => is_array($this->moneyRecipients ?? null) ? $this->moneyRecipients : [],
     'urls' => [
         'sendMoney' => $simpleOrderMode ? $this->url('user/simple-order/send-money') : $this->url('user/send-money'),
@@ -77,8 +78,7 @@ $historyBalance = (float)($this->historyBalance ?? 0);
                 </span>
             <?php endif; ?>
             <?php if (!$simpleOrderMode): ?>
-                <?php $availableBalanceInitially = $historyBalance + (float)$pendingPaypalAmount; ?>
-                <?php $isBelowMinimumInitially = $minimumAccountBalance != 0.0 ? ($availableBalanceInitially < $minimumAccountBalance) : ($availableBalanceInitially < 0); ?>
+                <?php $isBelowMinimumInitially = !\Drinks\Accounting\AccountLedger::fitsOrderLimit(0, $orderLimit); ?>
                 <div id="current-balance-display" class="<?= $isBelowMinimumInitially ? 'negative-balance' : '' ?>" style="color: #2196f3; display: inline-flex; align-items: center;">
                     <?= $this->t('Guthaben:') ?>
                     <span id="current-balance-value" style="margin-left: 8px"></span>

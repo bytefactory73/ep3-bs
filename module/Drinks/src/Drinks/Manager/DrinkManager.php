@@ -54,17 +54,16 @@ class DrinkManager
         }
     }
 
-    public function getPendingPaypalAmount($userId)
+    /**
+     * How much the user may still order (AccountLedger::orderLimit() with the configured
+     * minimum balance); null for team accounts, which have no limit.
+     */
+    public function getOrderLimit($userId, $serviceManager)
     {
-        try {
-            $row = $this->dbAdapter->query(
-                'SELECT COALESCE(SUM(amount), 0) AS total FROM drinks_paypal WHERE linked_user_id = ? AND linked_deposit_id IS NULL AND state != ?',
-                [(int)$userId, 'ignored']
-            )->current();
-            return round($row && isset($row['total']) ? (float)$row['total'] : 0.0, 2);
-        } catch (\Exception $e) {
-            return 0.0;
+        if ($this->isTeamAccount($userId)) {
+            return null;
         }
+        return $serviceManager->get('Drinks\Accounting\AccountLedger')->orderLimit($userId, $this->getMinimumAccountBalance($serviceManager));
     }
 
     public function isTeamAccount($userId)
@@ -275,24 +274,13 @@ class DrinkManager
         ];
     }
 
+    /**
+     * Whether the user may order (or send) $orderTotal: it has to fit into getOrderLimit().
+     * A minimum balance of 0 means the balance must not drop below 0 EUR.
+     */
     public function isOrderAllowed($userId, $orderTotal, $serviceManager, $allowBelowMinimum = false)
     {
-        if ($allowBelowMinimum || $this->isTeamAccount($userId)) {
-            return true;
-        }
-
-        $minimumBalance = $this->getMinimumAccountBalance($serviceManager);
-        if ($minimumBalance == 0.0) {
-            return true;
-        }
-
-        $newBalance = round(
-            $this->calculateUserDrinkBalance($userId, $serviceManager)
-            + $this->getPendingPaypalAmount($userId)
-            - (float)$orderTotal,
-            2
-        );
-        return $newBalance >= $minimumBalance;
+        return $allowBelowMinimum || AccountLedger::fitsOrderLimit($orderTotal, $this->getOrderLimit($userId, $serviceManager));
     }
 
     public function getAll($userId = null)

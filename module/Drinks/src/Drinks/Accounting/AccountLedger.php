@@ -46,6 +46,42 @@ class AccountLedger
     }
 
     /**
+     * PayPal payments assigned to the account but not yet credited as deposit.
+     */
+    public function pendingPaypal($userId)
+    {
+        try {
+            $row = $this->dbAdapter->query(
+                'SELECT COALESCE(SUM(amount), 0) AS total FROM drinks_paypal WHERE linked_user_id = ? AND linked_deposit_id IS NULL AND state != ?',
+                [(int)$userId, 'ignored']
+            )->current();
+            return MoneyCalculator::roundMoney($row ? $row['total'] : 0);
+        } catch (\Exception $e) {
+            return 0.0;
+        }
+    }
+
+    /**
+     * How much the account may still order: balance plus pending PayPal payments down to the
+     * minimum balance. Below zero no order is possible.
+     */
+    public function orderLimit($userId, $minimumBalance)
+    {
+        return MoneyCalculator::subtract(
+            MoneyCalculator::add($this->balance($userId), $this->pendingPaypal($userId)),
+            $minimumBalance
+        );
+    }
+
+    /**
+     * Whether an order of $orderTotal fits into $orderLimit (null = no limit).
+     */
+    public static function fitsOrderLimit($orderTotal, $orderLimit)
+    {
+        return $orderLimit === null || MoneyCalculator::toCents($orderTotal) <= MoneyCalculator::toCents($orderLimit);
+    }
+
+    /**
      * Deposits and orders of one account, oldest first, each with the balance after it.
      * Cancelled orders are included (deleted = 1, the balance does not change), cancelled
      * deposits only with 'cancelled_deposits' => true.

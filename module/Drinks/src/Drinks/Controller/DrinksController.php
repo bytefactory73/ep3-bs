@@ -77,8 +77,7 @@ class DrinksController extends AbstractActionController
             'drinksEnabled' => $drinksEnabled,
             'moneyRecipients' => $drinkManager->getMoneyRecipients($userManager, $userId),
             'thekenadmin' => $thekenadmin,
-            'pendingPaypalAmount' => $drinkManager->getPendingPaypalAmount($userId),
-            'minimumAccountBalance' => $drinkManager->getMinimumAccountBalance($serviceManager),
+            'orderLimit' => $drinkManager->getOrderLimit($userId, $serviceManager),
             'pendingPaypalDeposits' => $this->service('Drinks\Manager\PaypalTransactionManager')->getPendingByUser($userId),
             'partyMode' => $drinkManager->getPartyMode($serviceManager),
         ]);
