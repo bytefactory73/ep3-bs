@@ -1861,7 +1861,7 @@ class DrinksController extends AbstractActionController
             }
         }
 
-        $this->getDrinkManager()->notifyDeposit($userId, $creditResult['amount'], $creditResult['comment'], @$this->getServiceLocator());
+        $this->getDrinkManager()->notifyDeposit($userId, $creditResult['amount'], $creditResult['comment'], @$this->getServiceLocator(), $creditResult['fee']);
 
         return $this->jsonResponse(['success' => true, 'deposit_id' => $creditResult['deposit_id']]);
     }

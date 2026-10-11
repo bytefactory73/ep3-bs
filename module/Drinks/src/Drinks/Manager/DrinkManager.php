@@ -185,7 +185,11 @@ class DrinkManager
     /**
      * Mail the user about a new deposit and the resulting balance. Never throws.
      */
-    public function notifyDeposit($userId, $amount, $comment, $serviceManager)
+    /**
+     * Email the user about a deposit. $paypalFee > 0: PayPal kept a fee because the payment was
+     * not sent as "Freunde und Familie"; the email says so.
+     */
+    public function notifyDeposit($userId, $amount, $comment, $serviceManager, $paypalFee = 0.0)
     {
         try {
             $recipient = $serviceManager->get('User\Manager\UserManager')->get($userId, false);
@@ -200,6 +204,10 @@ class DrinkManager
                 '<li><strong>Einzahlungsbetrag:</strong> ' . number_format($amount, 2, ',', '.') . ' €</li>' .
                 '<li><strong>Neuer Kontostand:</strong> ' . number_format($balance, 2, ',', '.') . ' €</li>' .
                 '</ul>' .
+                ($paypalFee > 0
+                    ? '<p>Achtung: die Gutschrift wurde nicht an "Freunde und Familie" gesendet. Deshalb ist eine Gebühr angefallen. '
+                        . 'Achte das nächste mal darauf wenn du Gebühren vermeiden möchtest.</p>'
+                    : '') .
                 '<p>Viele Grüße<br>Dein Theken-Team</p>';
             $serviceManager->get('Drinks\Service\ThekeMailer')->send($recipient, 'Neue Einzahlung auf Ihr Getränkekonto', $body, ['isHtml' => true]);
         } catch (\Throwable $e) {

@@ -239,7 +239,7 @@ class PaypalTransactionManager
      * Create and link a deposit for a PayPal transaction exactly once.
      * A per-transaction MySQL named lock serialises concurrent attempts (double click,
      * manual credit racing the cron auto-assign); the row is re-read under the lock.
-     * Returns ['success' => bool, 'deposit_id', 'amount', 'comment', 'deposit_time', 'error'];
+     * Returns ['success' => bool, 'deposit_id', 'amount', 'fee' (PayPal fee), 'comment', 'deposit_time', 'error'];
      * error 'already_linked' means the transaction was credited before (no new deposit).
      *
      * Only payments the sync with the PayPal account confirmed as completed are credited, with
@@ -322,6 +322,7 @@ class PaypalTransactionManager
                 'success' => true,
                 'deposit_id' => $depositId,
                 'amount' => $amount,
+                'fee' => $this->amountsOf($row)['fee'],
                 'comment' => $comment,
                 'deposit_time' => $depositTime,
             ];
@@ -734,7 +735,7 @@ class PaypalTransactionManager
                 }
                 if ($serviceManager !== null) {
                     $serviceManager->get('Drinks\Manager\DrinkManager')
-                        ->notifyDeposit($matchedUserId, $creditResult['amount'], $creditResult['comment'], $serviceManager);
+                        ->notifyDeposit($matchedUserId, $creditResult['amount'], $creditResult['comment'], $serviceManager, $creditResult['fee']);
                 }
 
                 $result['created']++;
