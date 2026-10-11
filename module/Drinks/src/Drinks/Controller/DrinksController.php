@@ -501,6 +501,11 @@ class DrinksController extends AbstractActionController
         return $this->handleCloseTeamEventRequest();
     }
 
+    public function teamleadSettlementPreviewAction()
+    {
+        return $this->handleSettlementPreviewRequest();
+    }
+
     /**
      * Admin or thekenadmin: Drinks management page (thekenadmins see only their entries)
      */

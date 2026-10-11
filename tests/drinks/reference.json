@@ -466,6 +466,22 @@
     "paypal_client_secret_present": true,
     "saved_flag": true
   },
+  "read_settlement_preview": {
+    "rows": 0,
+    "shape": [
+      "account_after",
+      "account_balance",
+      "collected_total",
+      "day_balance",
+      "payout_total",
+      "remaining",
+      "requested_charge",
+      "requested_refund",
+      "rows",
+      "success"
+    ],
+    "~remaining": -11.0
+  },
   "read_team_deposits_data": {
     "team_event_ids": [
       18
@@ -502,14 +518,18 @@
         "active_members",
         "can_close_team_event",
         "can_manage_members",
+        "contributions_total",
+        "event_balance",
         "events",
         "extra_costs",
+        "guest_donation_total",
         "guest_donations",
         "is_editable",
         "member_candidates",
         "members",
         "open_spieltage",
         "rows",
+        "settlement_requests",
         "spieltag",
         "spieltage",
         "success",

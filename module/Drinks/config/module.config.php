@@ -51,6 +51,7 @@ return [
                     'teamlead-update-guest-donation' => $route('/teamlead-update-guest-donation', 'teamleadUpdateGuestDonation'),
                     'teamlead-delete-guest-donation' => $route('/teamlead-delete-guest-donation', 'teamleadDeleteGuestDonation'),
                     'teamlead-close-team-event' => $route('/teamlead-close-team-event', 'teamleadCloseTeamEvent'),
+                    'teamlead-settlement-preview' => $route('/teamlead-settlement-preview', 'teamleadSettlementPreview'),
 
                     // Admin pages
                     'drinks-admin' => $route('/drinks-admin', 'drinksAdmin', 'Drinks\Controller\Drinks', [
@@ -96,6 +97,7 @@ return [
                         'team-update-guest-donation' => $theke('/team-update-guest-donation', 'teamUpdateGuestDonation'),
                         'team-delete-guest-donation' => $theke('/team-delete-guest-donation', 'teamDeleteGuestDonation'),
                         'close-team-event' => $theke('/close-team-event', 'closeTeamEvent'),
+                        'settlement-preview' => $theke('/settlement-preview', 'settlementPreview'),
                     ]),
                 ],
             ],

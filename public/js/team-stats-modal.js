@@ -19,14 +19,6 @@
         return Math.round(Number(value || 0) * 100) / 100;
     }
 
-    function roundAwayFromZero(value) {
-        var amount = Number(value || 0);
-        if (amount === 0) return 0;
-        // Drop float noise before rounding up: 1.1 * 100 is 110.00000000000001, not 110
-        var cents = Math.ceil(Number((Math.abs(amount) * 100).toFixed(6)));
-        return (amount > 0 ? cents : -cents) / 100;
-    }
-
     function amountColor(value) {
         var amount = Number(value || 0);
         if (amount > 0) return '#2e7d32';
@@ -126,7 +118,6 @@
 
         var state = {
             currentEventId: 0,
-            teamAdminUserId: 0,
             memberCandidates: [],
             selectedMemberId: 0,
             selectedIndex: -1,
@@ -298,6 +289,8 @@
                     email: String((member && member.email) || ''),
                     total_paid: Number((member && member.total_paid) || 0),
                     total_refunded: Number((member && member.total_refunded) || 0),
+                    due: Number((member && member.due) || 0),
+                    rest: Number((member && member.rest) || 0),
                     deposit_comment: String((member && member.deposit_comment) || ''),
                     is_member: (member && typeof member.is_member !== 'undefined') ? !!member.is_member : true
                 };
@@ -310,9 +303,6 @@
                 return String((row || {}).row_type || 'order') !== 'extra_cost';
             });
             var html = '';
-            var memberSharesByUid = {};
-            var settlementRefunds = [];
-            var settlementDebtors = [];
             var canEditRelevance = canManageMembers && hasEndpoint('orderRelevance');
             var canEditExtraCosts = canManageMembers && hasEndpoint('extraCost') && hasEndpoint('updateExtraCost') && hasEndpoint('deleteExtraCost');
             var canEditGuestDonations = canManageMembers && hasEndpoint('guestDonation') && hasEndpoint('updateGuestDonation') && hasEndpoint('deleteGuestDonation');
@@ -367,11 +357,6 @@
 
                     var relevantMembers = Array.isArray(row.relevant_members) ? row.relevant_members : [];
                     var relevanceDisplay = renderRelevantMemberLabels(relevantMembers, activeMemberIds);
-                    for (var ri = 0; ri < relevanceDisplay.ids.length; ri++) {
-                        var relId = relevanceDisplay.ids[ri];
-                        var orderShare = Number(row.share_per_member || 0);
-                        memberSharesByUid[relId] = (memberSharesByUid[relId] || 0) + orderShare;
-                    }
 
                     var rowKey = String(row.drink_id || '') + '|' + String(row.unit_price || '');
                     state.relevanceEditorRows[rowKey] = {
@@ -430,11 +415,6 @@
 
                     var extraRelevantMembers = Array.isArray(extraCost.relevant_members) ? extraCost.relevant_members : [];
                     var extraRelevanceDisplay = renderRelevantMemberLabels(extraRelevantMembers, activeMemberIds);
-                    for (var eri = 0; eri < extraRelevanceDisplay.ids.length; eri++) {
-                        var extraRelId = extraRelevanceDisplay.ids[eri];
-                        var extraShare = Number(extraCost.share_per_member || 0);
-                        memberSharesByUid[extraRelId] = (memberSharesByUid[extraRelId] || 0) + extraShare;
-                    }
 
                     state.extraCostRows[extraCostId] = {
                         id: extraCostId,
@@ -500,7 +480,6 @@
             }
             html += '</tr>';
 
-            var guestDonationTotal = 0;
             if (guestDonations.length === 0) {
                 html += '<tr><td colspan="' + (canEditGuestDonations ? '4' : '3') + '" style="padding:8px; color:#666;">Keine Gastspenden hinterlegt.</td></tr>';
             } else {
@@ -511,11 +490,6 @@
 
                     var receiverUserId = parseInt(guestDonation.receiver_user_id || 0, 10);
                     var guestAmount = Math.abs(parseFloat(guestDonation.amount || 0));
-                    // Note: Guest donations reduce the pool, they are NOT added to memberSharesByUid here.
-                    // Receivers have additional payment obligations (they must transfer the donation cash),
-                    // but this is handled separately - they pay their regular share PLUS the donation amount.
-
-                    guestDonationTotal += guestAmount;
                     state.guestDonationRows[guestDonationId] = {
                         id: guestDonationId,
                         receiverUserId: receiverUserId,
@@ -552,42 +526,10 @@
             }
             html += '<div style="display:flex; gap:20px; align-items:center;">';
             html += '<span>Gesamtsumme Gastspenden:</span>';
-            html += '<span style="color:' + amountColor(guestDonationTotal) + ';">' + formatCurrency(guestDonationTotal) + '</span>';
+            html += '<span style="color:' + amountColor(data.guest_donation_total) + ';">' + formatCurrency(data.guest_donation_total) + '</span>';
             html += '</div>';
             html += '</div>';
             html += '</div>';
-
-            // Adjust member shares based on guest donations
-            // Guest donations REDUCE the pool to be split among members
-            // Pool = total expenses - guest donations
-            // Each member's base share is reduced proportionally
-            // Then, each receiver's obligation is increased by their guest donation amount
-            if (guestDonationTotal > 0 && activeMembers.length > 0) {
-                var totalSum = Math.abs(Number(data.total_sum || 0));
-                var poolAfterDonations = totalSum - guestDonationTotal;
-                // Without expenses there are no shares to reduce (and no factor: 0 / 0)
-                var reductionFactor = totalSum > 0 ? poolAfterDonations / totalSum : 1;  // e.g., 15/25 = 0.6
-
-                // Reduce all member shares proportionally
-                for (var memberIdx = 0; memberIdx < activeMemberIds.length; memberIdx++) {
-                    var mId = activeMemberIds[memberIdx];
-                    if (typeof memberSharesByUid[mId] !== 'undefined') {
-                        memberSharesByUid[mId] = memberSharesByUid[mId] * reductionFactor;
-                    }
-                }
-
-                // Add guest donation obligations to receivers
-                for (var gdIdx = 0; gdIdx < guestDonations.length; gdIdx++) {
-                    var gd = guestDonations[gdIdx] || {};
-                    var gdReceiverId = parseInt(gd.receiver_user_id || 0, 10);
-                    var gdAmount = Math.abs(parseFloat(gd.amount || 0));
-                    if (gdReceiverId > 0 && gdAmount > 0) {
-                        memberSharesByUid[gdReceiverId] = (memberSharesByUid[gdReceiverId] || 0) - gdAmount;
-                    }
-                }
-            }
-
-            var settlementBaseTotal = Number(data.total_sum || 0);
 
             html += '<div style="margin-top:14px;">';
             html += '<h3 style="margin:0 0 8px 0; color:#1769aa;">Mitglieder und Beiträge</h3>';
@@ -602,8 +544,6 @@
             }
             html += '</tr>';
 
-            var membersGrossTotalSum = 0;
-            var membersNetTotalSum = 0;
             if (members.length === 0) {
                 html += '<tr><td colspan="' + (canManageMembers ? '5' : '4') + '" style="padding:8px; color:#666;">Keine Mitglieder hinterlegt.</td></tr>';
             } else {
@@ -613,9 +553,6 @@
                     var isMember = !!member.is_member;
                     var memberTotalPaid = roundMoney(member.total_paid || 0);
                     var memberTotalRefunded = roundMoney(Math.abs(Number(member.total_refunded || 0)));
-                    var memberNetPaid = roundMoney(memberTotalPaid - memberTotalRefunded);
-                    membersGrossTotalSum = roundMoney(membersGrossTotalSum + memberTotalPaid);
-                    membersNetTotalSum = roundMoney(membersNetTotalSum + memberNetPaid);
                     html += '<tr class="' + config.rowClass + '" data-member-uid="' + memberUid + '">';
                     var memberDisplay = escapeHtml(member.name || '');
                     var depositComment = member.deposit_comment ? escapeHtml(member.deposit_comment.trim()) : '';
@@ -629,23 +566,8 @@
                     }
                     html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(memberTotalPaid) + ';">' + paidCell + '</td>';
                     if (isMember) {
-                        var memberDue = roundAwayFromZero(memberSharesByUid[memberUid] || 0);
-                        var restAmount = roundMoney(memberDue + memberNetPaid);
-                        html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(memberDue) + ';">' + formatCurrency(memberDue) + '</td>';
-                        html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(restAmount) + ';">' + formatCurrency(restAmount) + '</td>';
-                        if (restAmount > 0.00001 && memberUid !== state.teamAdminUserId) {
-                            settlementRefunds.push({
-                                receiver_user_id: memberUid,
-                                name: String(member.name || ''),
-                                amount: restAmount
-                            });
-                        } else if (restAmount < -0.00001) {
-                            settlementDebtors.push({
-                                receiver_user_id: memberUid,
-                                name: String(member.name || ''),
-                                amount: restAmount
-                            });
-                        }
+                        html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(member.due) + ';">' + formatCurrency(member.due) + '</td>';
+                        html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(member.rest) + ';">' + formatCurrency(member.rest) + '</td>';
                     } else {
                         html += '<td style="text-align:right; padding:4px 8px; color:#999;">-</td>';
                         html += '<td style="text-align:right; padding:4px 8px; color:#999;">-</td>';
@@ -661,24 +583,15 @@
                 }
                 html += '<tr style="font-weight:bold; background:#f5faff;">';
                 html += '<td colspan="' + (canManageMembers ? '4' : '3') + '" style="text-align:right; padding:4px 8px;">Gesamtsumme Einzahlungen</td>';
-                html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(membersNetTotalSum) + ';">' + formatCurrency(membersNetTotalSum) + '</td>';
+                html += '<td style="text-align:right; padding:4px 8px; color:' + amountColor(data.contributions_total) + ';">' + formatCurrency(data.contributions_total) + '</td>';
                 html += '</tr>';
             }
             html += '</table>';
 
-            var accountBalance = Number(data.account_balance || 0);
-            var totalRefund = 0;
-            for (var sr = 0; sr < settlementRefunds.length; sr++) {
-                totalRefund += Number(settlementRefunds[sr].amount || 0);
-            }
-            var grandTotal = roundMoney(settlementBaseTotal + membersNetTotalSum);
+            var grandTotal = Number(data.event_balance || 0);
             state.settlementPreview = {
-                refunds: settlementRefunds,
-                debtors: settlementDebtors,
-                totalRefund: totalRefund,
-                accountBalance: accountBalance,
-                dayBalance: grandTotal,
-                canSettle: grandTotal >= 0
+                requests: Array.isArray(data.settlement_requests) ? data.settlement_requests : [],
+                accountBalance: Number(data.account_balance || 0)
             };
             html += '<div style="margin-top:8px; padding:8px 6px; border-top:2px solid #1769aa; font-weight:bold; color:#1769aa; display:flex; justify-content:flex-end; gap:20px;">';
             html += '<span>Gesamtsumme (Ausgaben + Einzahlungen):</span>';
@@ -717,7 +630,7 @@
         }
 
         /**
-         * POST form fields to config.endpoints[name], then reload the current Spieltag.
+         * POST form fields to config.endpoints[name]; returns the JSON response, throws on an error.
          */
         async function postForm(name, fields, errorMessage) {
             if (!hasEndpoint(name)) {
@@ -748,30 +661,22 @@
                 throw new Error('Kein Spieltag ausgewählt.');
             }
 
-            var settlement = state.settlementPreview || { refunds: [], debtors: [], totalRefund: 0, accountBalance: 0, canSettle: false };
-
-            if (
-                (Array.isArray(settlement.refunds) && settlement.refunds.length > 0)
-                || (Array.isArray(settlement.debtors) && settlement.debtors.length > 0)
-            ) {
-                var approved = await openSettlementPopup(settlement);
-                if (!approved) {
+            var settlement = state.settlementPreview || { requests: [], accountBalance: 0 };
+            var requests = [];
+            if (settlement.requests.length > 0) {
+                requests = await openSettlementPopup(settlement.requests);
+                if (requests === null) {
                     return;
                 }
-                if (state.selectedRefundPayload && state.selectedRefundPayload.length > 0) {
-                    settlement = Object.assign({}, settlement, { refunds: state.selectedRefundPayload });
-                } else {
-                    settlement = Object.assign({}, settlement, { refunds: [] });
-                }
-            } else if (Number(settlement.accountBalance || 0) < 0) {
+            } else if (settlement.accountBalance < 0) {
                 throw new Error('Der Kontostand ist negativ. Bitte zuerst einen Ausgleich festlegen.');
             } else if (!window.confirm('Abrechnung für diesen Spieltag wirklich beenden?')) {
                 return;
             }
 
             var closeFields = { team_event_id: state.currentEventId };
-            if (Array.isArray(settlement.refunds) && settlement.refunds.length > 0) {
-                closeFields.settlement_refunds = JSON.stringify(settlement.refunds);
+            if (requests.length > 0) {
+                closeFields.settlement_refunds = JSON.stringify(requests);
             }
             await postForm('closeEvent', closeFields, 'Fehler beim Schließen der Abrechnung.');
 
@@ -928,50 +833,15 @@
             });
         }
 
-        function openSettlementPopup(settlement) {
+        /**
+         * Settlement popup for the proposed transfers ([{receiver_user_id, name, amount}]): the
+         * entered amounts go to the settlementPreview endpoint, which returns the transfers the
+         * server would book. Resolves with the entered amounts, or null on cancel.
+         */
+        function openSettlementPopup(requests) {
             var popup = ensureSettlementPopup();
             if (!popup.overlay || !popup.body || !popup.title || !popup.okBtn || !popup.cancelBtn) {
-                return Promise.resolve(false);
-            }
-
-            var refunds = Array.isArray(settlement && settlement.refunds) ? settlement.refunds : [];
-            var debtors = Array.isArray(settlement && settlement.debtors) ? settlement.debtors : [];
-            var dayBalance = (settlement && typeof settlement.dayBalance !== 'undefined')
-                ? Number(settlement.dayBalance || 0)
-                : 0;
-            var accountBalance = Number(settlement && settlement.accountBalance ? settlement.accountBalance : 0);
-
-            var settlementRows = [];
-            for (var rfi = 0; rfi < refunds.length; rfi++) {
-                var refundRow = refunds[rfi] || {};
-                var refundUid = parseInt(refundRow.receiver_user_id || 0, 10);
-                var refundMax = roundMoney(Math.abs(Number(refundRow.amount || 0)));
-                if (refundUid <= 0 || refundMax <= 0) continue;
-                settlementRows.push({
-                    receiver_user_id: refundUid,
-                    name: String(refundRow.name || refundRow.receiver_name || ('User ' + refundUid)),
-                    minAmount: 0,
-                    maxAmount: null,
-                    requestedAmount: refundMax
-                });
-            }
-            for (var dbi = 0; dbi < debtors.length; dbi++) {
-                var debtorRow = debtors[dbi] || {};
-                var debtorUid = parseInt(debtorRow.receiver_user_id || 0, 10);
-                var debtorMaxCharge = roundMoney(Math.abs(Number(debtorRow.amount || 0)));
-                if (debtorUid <= 0 || debtorMaxCharge <= 0) continue;
-                settlementRows.push({
-                    receiver_user_id: debtorUid,
-                    name: String(debtorRow.name || debtorRow.receiver_name || ('User ' + debtorUid)),
-                    minAmount: null,
-                    maxAmount: null,
-                    requestedAmount: 0 - debtorMaxCharge
-                });
-            }
-
-            if (settlementRows.length === 0) {
-                state.selectedRefundPayload = [];
-                return Promise.resolve(true);
+                return Promise.resolve(null);
             }
 
             popup.title.textContent = 'Abrechnung beenden und Ausgleichszahlungen auslösen';
@@ -984,233 +854,118 @@
             bodyHtml += '<th style="text-align:right; padding:4px 8px; color:#222;">Rückzahlung</th>';
             bodyHtml += '<th style="text-align:right; padding:4px 8px; color:#222;">Auszahlung</th>';
             bodyHtml += '</tr>';
-            for (var i = 0; i < settlementRows.length; i++) {
-                var sRow = settlementRows[i] || {};
-                var minAttr = (sRow.minAmount === null || typeof sRow.minAmount === 'undefined') ? '' : String(Number(sRow.minAmount));
-                var maxAttr = (sRow.maxAmount === null || typeof sRow.maxAmount === 'undefined') ? '' : String(Number(sRow.maxAmount));
+            for (var i = 0; i < requests.length; i++) {
+                var request = requests[i] || {};
                 bodyHtml += '<tr>';
-                bodyHtml += '<td style="padding:4px 8px; color:#222;">' + escapeHtml(String(sRow.name || '')) + '</td>';
+                bodyHtml += '<td style="padding:4px 8px; color:#222;">' + escapeHtml(String(request.name || '')) + '</td>';
                 bodyHtml += '<td style="text-align:right; padding:4px 8px;">';
-                bodyHtml += '<input type="number" class="settlement-request-input" data-settlement-index="' + i + '" data-min="' + escapeHtml(minAttr) + '" data-max="' + escapeHtml(maxAttr) + '" step="0.01" value="' + Number(sRow.requestedAmount || 0).toFixed(2) + '" style="width:120px; text-align:right; padding:3px 6px; border:1px solid #c8d6e5; border-radius:6px;">';
+                bodyHtml += '<input type="number" class="settlement-request-input" data-settlement-index="' + i + '"' + (Number(request.amount) > 0 ? ' min="0"' : '') + ' step="0.01" value="' + Number(request.amount || 0).toFixed(2) + '" style="width:120px; text-align:right; padding:3px 6px; border:1px solid #c8d6e5; border-radius:6px;">';
                 bodyHtml += '</td>';
-                bodyHtml += '<td style="text-align:right; padding:4px 8px; color:#222;" data-payout-cell="' + i + '">0,00 €</td>';
+                bodyHtml += '<td style="text-align:right; padding:4px 8px; color:#222;" data-payout-cell="' + i + '">–</td>';
                 bodyHtml += '</tr>';
             }
             bodyHtml += '</table>';
             bodyHtml += '<div id="settlement-summary" style="display:grid; gap:6px; padding-top:2px; border-top:1px solid #e6edf5;">';
-            bodyHtml += '<div style="display:flex; justify-content:space-between; gap:12px; color:#222;"><span>Gewünschte Rückzahlung</span><strong id="settlement-selected-total" style="color:#c62828;">0,00 €</strong></div>';
-            bodyHtml += '<div style="display:flex; justify-content:space-between; gap:12px; color:#222;"><span>Gewünschte Belastung</span><strong id="settlement-charge-total" style="color:#2e7d32;">0,00 €</strong></div>';
-            bodyHtml += '<div style="display:flex; justify-content:space-between; gap:12px; color:#222;"><span>Auszuzahlen</span><strong id="settlement-distributed-total" style="color:#c62828;">0,00 €</strong></div>';
-            bodyHtml += '<div style="display:flex; justify-content:space-between; gap:12px; color:#222;"><span>Einzuziehen</span><strong id="settlement-collected-total" style="color:#2e7d32;">0,00 €</strong></div>';
-            bodyHtml += '<div style="display:flex; justify-content:space-between; gap:12px; color:#222;"><span>Spieltagssaldo</span><strong id="settlement-day-balance" style="color:' + amountColor(dayBalance) + ';">' + formatCurrency(dayBalance) + '</strong></div>';
-            bodyHtml += '<div style="display:flex; justify-content:space-between; gap:12px; color:#222;"><span>Danach</span><strong id="settlement-remaining" style="color:' + amountColor(dayBalance) + ';">' + formatCurrency(dayBalance) + '</strong></div>';
-            bodyHtml += '<div style="border-top:1px solid #e6edf5; margin-top:2px; padding-top:6px;"></div>';
-            bodyHtml += '<div style="display:flex; justify-content:space-between; gap:12px; color:#222;"><span>Kontostand</span><strong id="settlement-balance" style="color:' + amountColor(accountBalance) + ';">' + formatCurrency(accountBalance) + '</strong></div>';
-            bodyHtml += '<div style="display:flex; justify-content:space-between; gap:12px; color:#222;"><span>Kontostand danach</span><strong id="settlement-account-remaining" style="color:' + amountColor(accountBalance) + ';">' + formatCurrency(accountBalance) + '</strong></div>';
+            [
+                ['Gewünschte Rückzahlung', 'requested_refund'],
+                ['Gewünschte Belastung', 'requested_charge'],
+                ['Auszuzahlen', 'payout_total'],
+                ['Einzuziehen', 'collected_total'],
+                ['Spieltagssaldo', 'day_balance'],
+                ['Danach', 'remaining'],
+                null,
+                ['Kontostand', 'account_balance'],
+                ['Kontostand danach', 'account_after']
+            ].forEach(function(line) {
+                if (!line) {
+                    bodyHtml += '<div style="border-top:1px solid #e6edf5; margin-top:2px; padding-top:6px;"></div>';
+                    return;
+                }
+                bodyHtml += '<div style="display:flex; justify-content:space-between; gap:12px; color:#222;"><span>' + line[0] + '</span><strong data-settlement-total="' + line[1] + '">–</strong></div>';
+            });
+            bodyHtml += '<div data-settlement-error style="color:#c62828; display:none;"></div>';
             bodyHtml += '</div>';
             popup.body.innerHTML = bodyHtml;
 
-            state.settlementRefundsData = {
-                all: settlementRows,
-                dayBalance: dayBalance,
-                accountBalance: accountBalance
-            };
+            var enteredRequests = [];
+            var previewTimer = null;
+            var previewSequence = 0;
 
-            function updateSettlementSummary() {
-                var requestedRows = [];
+            function readEnteredRequests() {
+                var entered = [];
                 popup.body.querySelectorAll('.settlement-request-input').forEach(function(input) {
-                    var idx = parseInt(input.getAttribute('data-settlement-index') || -1, 10);
-                    if (idx < 0 || idx >= settlementRows.length) {
-                        return;
-                    }
-                    var minAttr = input.getAttribute('data-min');
-                    var maxAttr = input.getAttribute('data-max');
-                    var minAmount = (minAttr === null || minAttr === '') ? null : Number(minAttr);
-                    var maxAmount = (maxAttr === null || maxAttr === '') ? null : Number(maxAttr);
-                    var rawValue = String(input.value || '').replace(',', '.');
-                    var amount = roundMoney(Number(rawValue || 0));
-                    if (!isFinite(amount)) amount = 0;
-                    if (minAmount !== null && isFinite(minAmount) && amount < minAmount) amount = minAmount;
-                    if (maxAmount !== null && isFinite(maxAmount) && amount > maxAmount) amount = maxAmount;
-                    requestedRows.push({
-                        index: idx,
-                        receiver_user_id: parseInt(settlementRows[idx].receiver_user_id || 0, 10),
-                        name: String(settlementRows[idx].name || ''),
-                        requested_amount: amount
+                    var request = requests[parseInt(input.getAttribute('data-settlement-index'), 10)] || {};
+                    entered.push({
+                        receiver_user_id: parseInt(request.receiver_user_id || 0, 10),
+                        amount: String(input.value || '0').replace(',', '.')
                     });
                 });
+                return entered;
+            }
 
-                var requestedRefundTotal = 0;
-                var requestedChargeTotal = 0;
-                var positiveRows = [];
-                var negativeRows = [];
-                for (var q = 0; q < requestedRows.length; q++) {
-                    var requestedAmountSigned = roundMoney(Number(requestedRows[q].requested_amount || 0));
-                    if (requestedAmountSigned > 0) {
-                        requestedRefundTotal = roundMoney(requestedRefundTotal + requestedAmountSigned);
-                        positiveRows.push({
-                            index: requestedRows[q].index,
-                            receiver_user_id: requestedRows[q].receiver_user_id,
-                            name: requestedRows[q].name,
-                            amount: requestedAmountSigned
-                        });
-                    } else if (requestedAmountSigned < 0) {
-                        requestedChargeTotal = roundMoney(requestedChargeTotal + Math.abs(requestedAmountSigned));
-                        negativeRows.push({
-                            index: requestedRows[q].index,
-                            receiver_user_id: requestedRows[q].receiver_user_id,
-                            name: requestedRows[q].name,
-                            amount: requestedAmountSigned
-                        });
-                    }
-                }
-
-                var payoutBudget = roundMoney(Math.max(0, dayBalance + requestedChargeTotal));
-                var payoutTarget = roundMoney(Math.min(requestedRefundTotal, payoutBudget));
-
-                var allocationsByIndex = {};
-                var positiveAllocations = [];
-                if (positiveRows.length > 0 && requestedRefundTotal > 0 && payoutTarget > 0) {
-                    var payoutCentsTarget = Math.round(payoutTarget * 100);
-                    var consumedCents = 0;
-                    for (var pr = 0; pr < positiveRows.length; pr++) {
-                        var requestedAmountPositive = Number(positiveRows[pr].amount || 0);
-                        var exactCents = (requestedAmountPositive / requestedRefundTotal) * payoutCentsTarget;
-                        var floorCents = Math.floor(exactCents + 1e-9);
-                        consumedCents += floorCents;
-                        positiveAllocations.push({
-                            index: positiveRows[pr].index,
-                            receiver_user_id: positiveRows[pr].receiver_user_id,
-                            name: positiveRows[pr].name,
-                            requested_amount: requestedAmountPositive,
-                            floor_cents: floorCents,
-                            fraction: exactCents - floorCents
-                        });
-                    }
-
-                    var remainingCents = payoutCentsTarget - consumedCents;
-                    positiveAllocations.sort(function(a, b) {
-                        if (b.fraction !== a.fraction) {
-                            return b.fraction - a.fraction;
-                        }
-                        return a.index - b.index;
-                    });
-                    for (var rc = 0; rc < positiveAllocations.length && remainingCents > 0; rc++) {
-                        positiveAllocations[rc].floor_cents += 1;
-                        remainingCents -= 1;
-                    }
-
-                    for (var pa = 0; pa < positiveAllocations.length; pa++) {
-                        allocationsByIndex[positiveAllocations[pa].index] = roundMoney(positiveAllocations[pa].floor_cents / 100);
-                    }
-                }
-
-                for (var nr = 0; nr < negativeRows.length; nr++) {
-                    allocationsByIndex[negativeRows[nr].index] = roundMoney(Number(negativeRows[nr].amount || 0));
-                }
-
-                var payoutTotal = 0;
-                var collectedTotal = 0;
-                var payload = [];
-                for (var ri = 0; ri < settlementRows.length; ri++) {
-                    var signedAmount = roundMoney(Number(allocationsByIndex[ri] || 0));
-                    if (signedAmount > 0) {
-                        payoutTotal = roundMoney(payoutTotal + signedAmount);
-                    } else if (signedAmount < 0) {
-                        collectedTotal = roundMoney(collectedTotal + Math.abs(signedAmount));
-                    }
-                    if (signedAmount !== 0) {
-                        payload.push({
-                            receiver_user_id: parseInt(settlementRows[ri].receiver_user_id || 0, 10),
-                            name: String(settlementRows[ri].name || ''),
-                            amount: signedAmount
-                        });
-                    }
-                }
-
-                state.selectedRefundPayload = payload;
-                var remainingBalance = roundMoney(dayBalance + collectedTotal - payoutTotal);
-                var accountRemainingBalance = roundMoney(accountBalance + collectedTotal - payoutTotal);
-                var summaryEl = popup.body.querySelector('#settlement-selected-total');
-                if (summaryEl) {
-                    summaryEl.textContent = formatCurrency(requestedRefundTotal);
-                    summaryEl.style.color = amountColor(requestedRefundTotal);
-                }
-                var chargeEl = popup.body.querySelector('#settlement-charge-total');
-                if (chargeEl) {
-                    chargeEl.textContent = formatCurrency(requestedChargeTotal);
-                    chargeEl.style.color = amountColor(requestedChargeTotal);
-                }
-                var distributedEl = popup.body.querySelector('#settlement-distributed-total');
-                if (distributedEl) {
-                    distributedEl.textContent = formatCurrency(payoutTotal);
-                    distributedEl.style.color = amountColor(payoutTotal);
-                }
-                var collectedEl = popup.body.querySelector('#settlement-collected-total');
-                if (collectedEl) {
-                    collectedEl.textContent = formatCurrency(collectedTotal);
-                    collectedEl.style.color = amountColor(collectedTotal);
-                }
-                var balanceEl = popup.body.querySelector('#settlement-balance');
-                if (balanceEl) {
-                    balanceEl.textContent = formatCurrency(accountBalance);
-                    balanceEl.style.color = amountColor(accountBalance);
-                }
-                var dayBalanceEl = popup.body.querySelector('#settlement-day-balance');
-                if (dayBalanceEl) {
-                    dayBalanceEl.textContent = formatCurrency(dayBalance);
-                    dayBalanceEl.style.color = amountColor(dayBalance);
-                }
-                var remainingEl = popup.body.querySelector('#settlement-remaining');
-                if (remainingEl) {
-                    remainingEl.textContent = formatCurrency(remainingBalance);
-                    remainingEl.style.color = amountColor(remainingBalance);
-                }
-                var accountRemainingEl = popup.body.querySelector('#settlement-account-remaining');
-                if (accountRemainingEl) {
-                    accountRemainingEl.textContent = formatCurrency(accountRemainingBalance);
-                    accountRemainingEl.style.color = amountColor(accountRemainingBalance);
-                }
+            function showPreview(preview) {
+                popup.body.querySelectorAll('[data-settlement-total]').forEach(function(el) {
+                    var value = Number(preview[el.getAttribute('data-settlement-total')] || 0);
+                    el.textContent = formatCurrency(value);
+                    el.style.color = amountColor(value);
+                });
                 popup.body.querySelectorAll('[data-payout-cell]').forEach(function(cell) {
-                    var idx = parseInt(cell.getAttribute('data-payout-cell') || '-1', 10);
-                    var payoutAmount = roundMoney(Number(allocationsByIndex[idx] || 0));
-                    var requestedAmount = 0;
-                    for (var c = 0; c < requestedRows.length; c++) {
-                        if (requestedRows[c].index === idx) {
-                            requestedAmount = roundMoney(Number(requestedRows[c].requested_amount || 0));
-                            break;
-                        }
-                    }
-                    cell.textContent = formatCurrency(payoutAmount);
-                    if (payoutAmount > 0.00001) {
-                        cell.style.color = '#2e7d32';
-                    } else if (payoutAmount < -0.00001) {
-                        cell.style.color = '#c62828';
-                    } else {
-                        cell.style.color = '#222';
-                    }
+                    var row = preview.rows[parseInt(cell.getAttribute('data-payout-cell'), 10)] || { amount: 0 };
+                    cell.textContent = formatCurrency(row.amount);
+                    cell.style.color = amountColor(row.amount);
                 });
-                popup.okBtn.disabled = remainingBalance < -0.00001;
+                popup.okBtn.disabled = Number(preview.remaining) < 0;
+            }
+
+            function showError(message) {
+                var errorEl = popup.body.querySelector('[data-settlement-error]');
+                errorEl.textContent = message;
+                errorEl.style.display = message ? '' : 'none';
+            }
+
+            async function updatePreview() {
+                var sequence = ++previewSequence;
+                enteredRequests = readEnteredRequests();
+                popup.okBtn.disabled = true;
+                try {
+                    var preview = await postForm('settlementPreview', {
+                        team_event_id: state.currentEventId,
+                        settlement_refunds: JSON.stringify(enteredRequests)
+                    }, 'Vorschau der Ausgleichszahlungen fehlgeschlagen.');
+                    if (sequence === previewSequence) {
+                        showError('');
+                        showPreview(preview);
+                    }
+                } catch (error) {
+                    if (sequence === previewSequence) {
+                        showError(error.message);
+                    }
+                }
             }
 
             popup.body.querySelectorAll('.settlement-request-input').forEach(function(input) {
-                input.addEventListener('input', updateSettlementSummary);
-                input.addEventListener('change', updateSettlementSummary);
+                input.addEventListener('input', function() {
+                    popup.okBtn.disabled = true;
+                    clearTimeout(previewTimer);
+                    previewTimer = setTimeout(updatePreview, 300);
+                });
             });
-            updateSettlementSummary();
+            updatePreview();
 
             return new Promise(function(resolve) {
                 var done = false;
                 function finish(result) {
                     if (done) return;
                     done = true;
+                    clearTimeout(previewTimer);
+                    previewSequence++;
                     popup.overlay.style.display = 'none';
                     popup.okBtn.onclick = null;
                     popup.cancelBtn.onclick = null;
-                    resolve(!!result);
+                    resolve(result);
                 }
-                popup.okBtn.onclick = function() { finish(true); };
-                popup.cancelBtn.onclick = function() { finish(false); };
+                popup.okBtn.onclick = function() { finish(enteredRequests); };
+                popup.cancelBtn.onclick = function() { finish(null); };
                 popup.overlay.style.display = 'flex';
             });
         }
@@ -1785,7 +1540,6 @@
                     return parseInt(event.id, 10) === parseInt(data.team_event_id || 0, 10);
                 })[0] || null;
                 state.currentEventId = parseInt(data.team_event_id || 0, 10);
-                state.teamAdminUserId = selectedEvent ? parseInt(selectedEvent.team_admin_user_id || 0, 10) : 0;
                 state.teamAlias = selectedEvent ? String(selectedEvent.team_alias || '') : String(data.team_alias || '');
                 state.userRole = selectedEvent ? selectedEvent.role : '';
                 state.memberCandidates = Array.isArray(data.member_candidates) ? data.member_candidates : [];

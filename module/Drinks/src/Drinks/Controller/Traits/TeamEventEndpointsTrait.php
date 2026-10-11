@@ -236,8 +236,30 @@ trait TeamEventEndpointsTrait
     }
 
     /**
-     * Close a Spieltag and pay out / collect the settlement transfers the modal sent, in one
-     * transaction: if a transfer fails, the Spieltag stays open and no transfer is booked.
+     * Settlement popup: the transfers the server would book for the entered amounts
+     * (settlement_refunds: JSON [{receiver_user_id, amount}, ...]).
+     */
+    protected function handleSettlementPreviewRequest()
+    {
+        if ($error = $this->rejectNonPost()) {
+            return $error;
+        }
+        $context = $this->resolveManagedTeamEvent($this->params()->fromPost('team_event_id', 0), true);
+        if (!is_array($context)) {
+            return $context;
+        }
+        list($teamAdminUserId, $teamEvent) = $context;
+        $requests = json_decode((string)$this->params()->fromPost('settlement_refunds', '[]'), true);
+        return $this->jsonResponse(array_merge(
+            ['success' => true],
+            $this->previewTeamEventSettlement($teamAdminUserId, $teamEvent, is_array($requests) ? $requests : [])
+        ));
+    }
+
+    /**
+     * Close a Spieltag and book its settlement for the amounts entered in the popup (the server
+     * computes the transfers, see processTeamEventSettlementRefunds()), in one transaction: if
+     * a transfer fails, the Spieltag stays open and no transfer is booked.
      */
     protected function handleCloseTeamEventRequest()
     {
@@ -262,7 +284,7 @@ trait TeamEventEndpointsTrait
             $closeResult = $this->closeTeamEvent($teamAdminUserId, $teamEventId);
             $settlementResult = ['success' => true, 'total_refund' => 0.0, 'transfers' => []];
             if (!empty($closeResult['success']) && !empty($settlementRefunds) && is_array($settlementRefunds)) {
-                $settlementResult = $this->processTeamEventSettlementRefunds($teamAdminUserId, $teamEventId, $settlementRefunds, true);
+                $settlementResult = $this->processTeamEventSettlementRefunds($teamAdminUserId, $teamEventId, $settlementRefunds);
             }
             if (empty($closeResult['success']) || empty($settlementResult['success'])) {
                 $connection->rollback();

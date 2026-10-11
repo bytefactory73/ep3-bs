@@ -3,6 +3,7 @@
 namespace Drinks\Controller\Traits;
 
 use Base\Service\MoneyCalculator;
+use Drinks\Accounting\Settlement;
 use Drinks\Service\DbSchema;
 
 /**
@@ -521,7 +522,7 @@ trait TeamEventTrait
         $teamEventLabel = $this->normalizeTeamEventLabel($teamEventLabel);
         $selectedTeamEventId = (int)$selectedTeamEventId;
         if ($teamAdminUserId <= 0 || $teamEventLabel === '') {
-            return ['rows' => [], 'total_sum' => 0.0, 'extra_costs' => [], 'guest_donations' => []];
+            return ['rows' => [], 'total_sum' => 0.0, 'extra_costs' => [], 'guest_donations' => [], 'guest_donation_total' => 0.0];
         }
 
         $activeMemberNamesById = [];
@@ -630,12 +631,17 @@ trait TeamEventTrait
         foreach ($rows as $row) {
             $totalSum = MoneyCalculator::add($totalSum, $row['total_price']);
         }
+        $guestDonationTotal = 0.0;
+        foreach ($guestDonations as $guestDonation) {
+            $guestDonationTotal = MoneyCalculator::add($guestDonationTotal, $guestDonation['amount']);
+        }
 
         return [
             'rows' => $rows,
             'total_sum' => $totalSum,
             'extra_costs' => $extraCosts,
             'guest_donations' => $guestDonations,
+            'guest_donation_total' => $guestDonationTotal,
         ];
     }
 
@@ -786,115 +792,90 @@ trait TeamEventTrait
         return $this->getTeamEventLedger()->balance($teamAdminUserId, $teamEventId, $teamEventLabel);
     }
 
-    protected function processTeamEventSettlementRefunds($teamAdminUserId, $teamEventId, array $refunds, $allowClosed = false)
+    /**
+     * Settlement of a Spieltag for the amounts entered in the settlement popup
+     * ([['receiver_user_id', 'amount'], ...]), see Settlement::allocate(). Only members of the
+     * proposal count, in its order; a proposed refund cannot be turned into a charge. Adds
+     * 'account_balance' and 'account_after' of the team account.
+     */
+    protected function previewTeamEventSettlement($teamAdminUserId, $teamEvent, array $requests)
     {
-        $teamAdminUserId = (int)$teamAdminUserId;
-        $teamEventId = (int)$teamEventId;
-        if ($teamAdminUserId <= 0 || $teamEventId <= 0) {
-            return ['success' => false, 'error' => 'invalid_input'];
+        $teamEventId = (int)$teamEvent['id'];
+        $teamEventLabel = trim((string)$teamEvent['comment']);
+        $stats = $this->buildTeamStatsPayload($teamAdminUserId, $teamEventLabel, ['team_event_id' => $teamEventId]);
+
+        $requestedByUid = [];
+        foreach ($requests as $request) {
+            if (is_array($request) && isset($request['receiver_user_id'], $request['amount'])) {
+                $requestedByUid[(int)$request['receiver_user_id']] = MoneyCalculator::roundMoney(str_replace(',', '.', trim((string)$request['amount'])));
+            }
+        }
+        $allowedRequests = [];
+        foreach ($stats['settlement_requests'] as $proposal) {
+            $uid = $proposal['receiver_user_id'];
+            if (isset($requestedByUid[$uid])) {
+                $amount = $proposal['amount'] > 0 ? max(0.0, $requestedByUid[$uid]) : $requestedByUid[$uid];
+                $allowedRequests[] = ['receiver_user_id' => $uid, 'amount' => $amount];
+            }
         }
 
+        $preview = Settlement::allocate($stats['event_balance'], $allowedRequests);
+        $accountBalance = $this->getServiceLocator()->get('Drinks\Accounting\AccountLedger')->balance($teamAdminUserId);
+        $preview['account_balance'] = $accountBalance;
+        $preview['account_after'] = MoneyCalculator::subtract(MoneyCalculator::add($accountBalance, $preview['collected_total']), $preview['payout_total']);
+        return $preview;
+    }
+
+    /**
+     * Book the settlement of a Spieltag (see previewTeamEventSettlement()): money transfers
+     * between the team account and the members, allowed below the minimum balance and on the
+     * closed Spieltag. Fails without booking anything if the Spieltag would end below 0 €.
+     */
+    protected function processTeamEventSettlementRefunds($teamAdminUserId, $teamEventId, array $requests)
+    {
         $teamEvent = $this->getTeamEventById($teamAdminUserId, $teamEventId);
         if (!$teamEvent) {
             return ['success' => false, 'error' => 'not_found'];
         }
-        if ($this->isTeamEventClosedRow($teamEvent) && !$allowClosed) {
-            return ['success' => false, 'error' => 'already_closed'];
+
+        $preview = $this->previewTeamEventSettlement($teamAdminUserId, $teamEvent, $requests);
+        if ($preview['remaining'] < 0) {
+            return array_merge($preview, ['success' => false, 'error' => 'insufficient_settlement_balance']);
         }
 
-        $allowedMemberIds = array_fill_keys($this->getTeamEventMemberUserIds($teamEventId), true);
-        $validRefunds = [];
-        foreach ($refunds as $refundRow) {
-            if (!is_array($refundRow)) {
-                continue;
-            }
-            $receiverUserId = isset($refundRow['receiver_user_id']) ? (int)$refundRow['receiver_user_id'] : 0;
-            $amountRaw = isset($refundRow['amount']) ? (string)$refundRow['amount'] : '0';
-            $amountRaw = str_replace(',', '.', trim($amountRaw));
-            $amount = MoneyCalculator::roundMoney((float)$amountRaw);
-            if ($receiverUserId <= 0 || $amount == 0.0) {
-                continue;
-            }
-            if (!isset($allowedMemberIds[$receiverUserId])) {
-                continue;
-            }
-
-            $validRefunds[] = [
-                'receiver_user_id' => $receiverUserId,
-                'amount' => $amount,
-            ];
-        }
-
-        if (empty($validRefunds)) {
-            return ['success' => true, 'total_refund' => 0.0, 'transfers' => []];
-        }
-
-        $teamEventLabel = isset($teamEvent['comment']) ? trim((string)$teamEvent['comment']) : '';
-        $eventBalance = 0.0;
-        if ($teamEventLabel !== '') {
-            $eventBalance = (float)$this->calculateTeamEventBalance($teamAdminUserId, $teamEventId, $teamEventLabel);
-        }
-        $totalRefund = 0.0;
-        $totalCharge = 0.0;
-        foreach ($validRefunds as $refundRow) {
-            $amount = MoneyCalculator::roundMoney((float)$refundRow['amount']);
-            if ($amount > 0) {
-                $totalRefund = MoneyCalculator::add($totalRefund, $amount);
-            } else {
-                $totalCharge = MoneyCalculator::add($totalCharge, abs($amount));
-            }
-        }
-        // Settlement is valid when event balance after requested charges/payouts is non-negative.
-        $eventRemaining = MoneyCalculator::add($eventBalance, MoneyCalculator::subtract($totalCharge, $totalRefund));
-        if (MoneyCalculator::roundMoney($eventRemaining) < 0) {
-            return [
-                'success' => false,
-                'error' => 'insufficient_settlement_balance',
-                'event_balance' => $eventBalance,
-                'event_remaining' => $eventRemaining,
-                'total_refund' => $totalRefund,
-                'total_charge' => $totalCharge,
-            ];
-        }
-
-        // Settlement always goes through: closed Spieltag, members may drop below the minimum balance
         $settlementOptions = ['allow_closed_event' => true, 'ignore_minimum_balance' => true];
         $transfers = [];
-        foreach ($validRefunds as $refundRow) {
-            $receiverUserId = (int)$refundRow['receiver_user_id'];
-            $amount = MoneyCalculator::roundMoney((float)$refundRow['amount']);
-            if ($amount > 0) {
-                $transferResult = $this->executeMoneyTransfer($teamAdminUserId, $receiverUserId, $amount, $teamEventId, $settlementOptions);
-                $direction = 'team_to_member';
-                $effectiveAmount = $amount;
-            } else {
-                $transferResult = $this->executeMoneyTransfer($receiverUserId, $teamAdminUserId, abs($amount), $teamEventId, $settlementOptions);
-                $direction = 'member_to_team';
-                $effectiveAmount = 0.0 - abs($amount);
+        foreach ($preview['rows'] as $row) {
+            $receiverUserId = $row['receiver_user_id'];
+            $amount = $row['amount'];
+            if ($amount == 0) {
+                continue;
             }
-            $statusCode = isset($transferResult['statusCode']) ? (int)$transferResult['statusCode'] : 500;
+            $transferResult = $amount > 0
+                ? $this->executeMoneyTransfer($teamAdminUserId, $receiverUserId, $amount, $teamEventId, $settlementOptions)
+                : $this->executeMoneyTransfer($receiverUserId, $teamAdminUserId, abs($amount), $teamEventId, $settlementOptions);
             $payload = isset($transferResult['payload']) && is_array($transferResult['payload']) ? $transferResult['payload'] : [];
-            if ($statusCode !== 200 || empty($payload['success'])) {
+            if ((isset($transferResult['statusCode']) ? (int)$transferResult['statusCode'] : 500) !== 200 || empty($payload['success'])) {
                 return [
                     'success' => false,
                     'error' => 'transfer_failed',
                     'receiver_user_id' => $receiverUserId,
-                    'amount' => $effectiveAmount,
+                    'amount' => $amount,
                     'transfer_result' => $payload,
                     'transfers' => $transfers,
                 ];
             }
             $transfers[] = [
                 'receiver_user_id' => $receiverUserId,
-                'amount' => $effectiveAmount,
-                'direction' => $direction,
+                'amount' => $amount,
+                'direction' => $amount > 0 ? 'team_to_member' : 'member_to_team',
             ];
         }
 
         return [
             'success' => true,
-            'total_refund' => $totalRefund,
-            'total_charge' => $totalCharge,
+            'total_refund' => $preview['payout_total'],
+            'total_charge' => $preview['collected_total'],
             'transfers' => $transfers,
         ];
     }
@@ -1432,6 +1413,10 @@ trait TeamEventTrait
                 'can_close_team_event' => false,
                 'rows' => [],
                 'total_sum' => '0.00',
+                'event_balance' => 0.0,
+                'contributions_total' => 0.0,
+                'guest_donation_total' => 0.0,
+                'settlement_requests' => [],
                 'active_members' => [],
                 'guest_donations' => [],
                 'extra_costs' => [],
@@ -1446,6 +1431,12 @@ trait TeamEventTrait
             ? $this->getTeamEventMembersWithContribution($teamAdminUserId, $selectedTeamEventId, $teamEventLabel)
             : [];
         $stats = $this->getTeamEventOrderRowsAndTotal($teamAdminUserId, $teamEventLabel, $selectedTeamEventId, $contributionRows);
+        $eventBalance = $this->calculateTeamEventBalance($teamAdminUserId, $selectedTeamEventId, $teamEventLabel);
+        $settlement = Settlement::proposal($stats['rows'], $stats['guest_donations'], $contributionRows, $teamAdminUserId);
+        foreach ($contributionRows as $index => $member) {
+            $memberSettlement = isset($settlement['members'][$member['uid']]) ? $settlement['members'][$member['uid']] : ['due' => null, 'rest' => null];
+            $contributionRows[$index] = array_merge($member, $memberSettlement);
+        }
 
         return array_merge([
             'spieltag' => $teamEventLabel,
@@ -1454,6 +1445,11 @@ trait TeamEventTrait
             'can_close_team_event' => true,
             'rows' => $stats['rows'],
             'total_sum' => $stats['total_sum'],
+            'event_balance' => $eventBalance,
+            // Contributions minus refunds of all members: the balance without the costs
+            'contributions_total' => MoneyCalculator::subtract($eventBalance, $stats['total_sum']),
+            'guest_donation_total' => $stats['guest_donation_total'],
+            'settlement_requests' => $settlement['requests'],
             'active_members' => $contributionRows,
             'guest_donations' => $stats['guest_donations'],
             'extra_costs' => $stats['extra_costs'],

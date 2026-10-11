@@ -476,6 +476,11 @@ class SimpleLoginController extends AbstractActionController
         return $this->handleCloseTeamEventRequest();
     }
 
+    public function settlementPreviewAction()
+    {
+        return $this->handleSettlementPreviewRequest();
+    }
+
     /**
      * Resolve a Spieltag of the logged-in team account.
      * Returns [teamAdminUserId, teamEventRow, actorUserId], or a JSON error response.

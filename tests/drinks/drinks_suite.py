@@ -243,6 +243,7 @@ JSON_ENDPOINTS = [
     ('POST', 'user/teamlead-delete-extra-cost'), ('GET', 'user/teamlead-guest-donation'),
     ('POST', 'user/teamlead-guest-donation'), ('POST', 'user/teamlead-update-guest-donation'),
     ('POST', 'user/teamlead-delete-guest-donation'), ('POST', 'user/teamlead-close-team-event'),
+    ('POST', 'user/teamlead-settlement-preview'),
     ('POST', 'user/drinks-admin/party-mode-save'),
     ('GET', 'user/simple-order/team-stats'), ('GET', 'user/simple-order/spieltag'),
     ('POST', 'user/simple-order/submit-order'), ('POST', 'user/simple-order/drop-order'),
@@ -251,6 +252,7 @@ JSON_ENDPOINTS = [
     ('POST', 'user/simple-order/team-update-extra-cost'), ('POST', 'user/simple-order/team-delete-extra-cost'),
     ('POST', 'user/simple-order/team-guest-donation'), ('POST', 'user/simple-order/team-update-guest-donation'),
     ('POST', 'user/simple-order/team-delete-guest-donation'), ('POST', 'user/simple-order/close-team-event'),
+    ('POST', 'user/simple-order/settlement-preview'),
 ]
 
 
@@ -462,6 +464,16 @@ def check_stats_payload(data):
     expect(not (candidate_uids & member_uids), 'active members offered as candidates')
     for row in data['rows']:
         expect(row['relevant_member_count'] == len(row['relevant_members']), 'relevant_member_count mismatch')
+    # Kostenübersicht total = costs + contributions = Spieltag balance
+    net_paid = sum(money(m['total_paid']) - money(m['total_refunded']) for m in data['active_members'])
+    expect(money(net_paid) == money(data['contributions_total']), 'contributions %.2f != contributions_total %s' % (net_paid, data['contributions_total']))
+    expect(money(data['total_sum'] + data['contributions_total']) == money(data['event_balance']), 'costs + contributions != event_balance')
+    for m in data['active_members']:
+        if m['is_member']:
+            expect(money(m['due'] + m['total_paid'] - m['total_refunded']) == money(m['rest']), 'rest of %d != due + paid - refunded' % m['uid'])
+    rests = {m['uid']: money(m['rest']) for m in data['active_members'] if m['is_member']}
+    for request in data['settlement_requests']:
+        expect(money(request['amount']) == rests.get(request['receiver_user_id']) != 0, 'settlement request does not match the rest: %s' % request)
 
 
 def stats_facts(data):
@@ -489,6 +501,23 @@ def read_team_stats_admin(ctx):
         expect(all(e['can_manage_members'] == 1 for e in data['events']), 'admins manage every Spieltag')
         facts[str(event['id'])] = stats_facts(data)
     return facts
+
+
+@test('read')
+def read_settlement_preview(ctx):
+    """The settlement popup preview of the open Spieltag: proposal as entered, then a payout cut to the balance."""
+    event = ctx.open_team_events()[0]
+    data = ctx.team_stats(event['id'])
+    preview = ctx.admin.post_json('user/teamlead-settlement-preview', {
+        'team_event_id': event['id'], 'settlement_refunds': json.dumps(data['settlement_requests'])})
+    expect(money(preview['day_balance']) == money(data['event_balance']), 'preview day_balance != event_balance')
+    expect([r['receiver_user_id'] for r in preview['rows']] == [r['receiver_user_id'] for r in data['settlement_requests']], 'preview rows != proposal')
+    expect(money(preview['remaining']) == money(preview['day_balance'] + preview['collected_total'] - preview['payout_total']), 'remaining mismatch')
+    expect(money(preview['account_after'] - preview['account_balance']) == money(preview['collected_total'] - preview['payout_total']), 'account_after mismatch')
+    unknown = ctx.admin.post_json('user/teamlead-settlement-preview', {
+        'team_event_id': event['id'], 'settlement_refunds': json.dumps([{'receiver_user_id': 99999999, 'amount': 5}])})
+    expect(unknown['rows'] == [] and unknown['payout_total'] == 0, 'request for a non-member was accepted')
+    return {'shape': shape(preview), 'rows': len(preview['rows']), '~remaining': money(preview['remaining'])}
 
 
 @test('read')

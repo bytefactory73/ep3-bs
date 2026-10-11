@@ -31,6 +31,17 @@ final class MoneyCalculator
         return ((float)$amount) < 0 ? (0.0 - $share) : $share;
     }
 
+    /**
+     * Round to cents away from zero: -3.333 becomes -3.34, 3.331 becomes 3.34.
+     */
+    public static function roundAwayFromZero($amount)
+    {
+        $amount = (float)$amount;
+        // Drop float noise first: 1.1 * 100 is 110.00000000000001 and ceil() would make it 111
+        $cents = ceil(round(abs($amount) * 100, 6));
+        return $amount < 0 ? self::fromCents(0 - $cents) : self::fromCents($cents);
+    }
+
     public static function toCents($amount)
     {
         return (int)round(self::roundMoney($amount, 2) * 100);
