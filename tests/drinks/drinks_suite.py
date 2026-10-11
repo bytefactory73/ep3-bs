@@ -37,7 +37,7 @@ REFERENCE_FILE = os.path.join(HERE, 'reference.json')
 # Test data on bookingtest (see README.md)
 ADMIN_UID = 1          # session user; thekenadmin and backend admin
 PEER_UID = 4           # receiver of test money transfers
-TEAM_UID = 962         # team account "D50" with open Spieltage
+TEAM_UID = int(os.environ.get('EP3_TEAM_UID', 962))  # team account "D50" with open Spieltage (989 in the production data)
 MARK = 'SMOKETEST'     # comment / label of everything the suite creates
 CENT = 0.01
 
@@ -964,7 +964,10 @@ def theke_order_page_and_spieltag(ctx):
     facts['member_team_stats'] = stats.status
     team = Theke(ctx, TEAM_UID)
     spieltag = team.client.get_json('user/simple-order/spieltag')
-    expect(spieltag['current_spieltag'] in spieltag['open_spieltage'], 'current Spieltag not among the open ones')
+    if spieltag['open_spieltage']:
+        expect(spieltag['current_spieltag'] in spieltag['open_spieltage'], 'current Spieltag not among the open ones')
+    else:
+        expect(spieltag['current_spieltag'] == '', 'current Spieltag set although none is open')
     open_labels = [e['label'] for e in ctx.open_team_events()]
     expect(spieltag['open_spieltage'] == open_labels, 'Theke Spieltage %s != open Spieltage %s' % (spieltag['open_spieltage'], open_labels))
     facts['team_page'] = page_facts(team.client.get('user/simple-order'))
