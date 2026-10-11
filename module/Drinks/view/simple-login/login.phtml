@@ -188,11 +188,12 @@ if (!empty($this->quickLoginUsers) && is_array($this->quickLoginUsers) && count(
 </script>
 
 <script>
-// Reload every 5 minutes (party mode, recent orders, quick logins); never while someone is typing
-// a Theken-ID or reading the manual. A GET reload, so a failed login is not posted again.
+// Reload when the page is older than 5 minutes (party mode, recent orders, quick logins); never while
+// someone is typing a Theken-ID or reading the manual. Measured by the clock and re-checked when the
+// page becomes visible again: sleeping tablets freeze timers. A GET reload, so a failed login is not posted again.
 (function() {
-    var REFRESH_MS = 5 * 60 * 1000;
-    var RETRY_MS = 30 * 1000;
+    var MAX_AGE_MS = 5 * 60 * 1000;
+    var loadedAt = Date.now();
     function isBusy() {
         var maskInput = document.getElementById('alias-mask');
         var overlay = document.getElementById('bedienungsanleitung-overlay');
@@ -200,14 +201,16 @@ if (!empty($this->quickLoginUsers) && is_array($this->quickLoginUsers) && count(
             || (overlay && overlay.style.display !== 'none')
             || document.hidden;
     }
-    function refresh() {
-        if (isBusy()) {
-            setTimeout(refresh, RETRY_MS);
-            return;
+    function refreshIfStale() {
+        if (Date.now() - loadedAt >= MAX_AGE_MS && !isBusy()) {
+            window.location.replace(window.location.pathname);
         }
-        window.location.replace(window.location.pathname);
     }
-    setTimeout(refresh, REFRESH_MS);
+    setInterval(refreshIfStale, 30 * 1000);
+    document.addEventListener('visibilitychange', refreshIfStale);
+    window.addEventListener('focus', refreshIfStale);
+    // Restored from the back/forward cache: the old timers and loadedAt belong to the earlier visit
+    window.addEventListener('pageshow', function(e) { if (e.persisted) { refreshIfStale(); } });
 })();
 </script>
 
