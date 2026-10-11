@@ -315,6 +315,14 @@
     "26": {
       "~extra_costs": 0,
       "~guest_donations": 0
+    },
+    "32": {
+      "~extra_costs": 0,
+      "~guest_donations": 0
+    },
+    "33": {
+      "~extra_costs": 0,
+      "~guest_donations": 0
     }
   },
   "read_invalid_parameters": {
@@ -480,6 +488,8 @@
   },
   "read_team_deposits_data": {
     "team_event_ids": [
+      33,
+      32,
       26,
       17,
       16
@@ -495,13 +505,17 @@
     "~team_event_balances": {
       "16": -22.0,
       "17": 0.0,
-      "26": -13.0
+      "26": -13.0,
+      "32": 0.0,
+      "33": 0.0
     }
   },
   "read_team_stats_admin": {
     "16": {
       "can_close_team_event": true,
       "event_ids": [
+        33,
+        32,
         26,
         17,
         16
@@ -564,6 +578,8 @@
     "17": {
       "can_close_team_event": true,
       "event_ids": [
+        33,
+        32,
         26,
         17,
         16
@@ -620,6 +636,8 @@
     "26": {
       "can_close_team_event": true,
       "event_ids": [
+        33,
+        32,
         26,
         17,
         16
@@ -684,11 +702,113 @@
         ]
       ],
       "~total_sum": -13.0
+    },
+    "32": {
+      "can_close_team_event": true,
+      "event_ids": [
+        33,
+        32,
+        26,
+        17,
+        16
+      ],
+      "event_shape": [
+        "can_manage_members",
+        "closed",
+        "id",
+        "label",
+        "role",
+        "team_admin_user_id",
+        "team_alias"
+      ],
+      "shape": [
+        "account_balance",
+        "active_members",
+        "can_close_team_event",
+        "can_manage_members",
+        "events",
+        "extra_costs",
+        "guest_donations",
+        "is_editable",
+        "member_candidates",
+        "members",
+        "open_spieltage",
+        "rows",
+        "spieltag",
+        "spieltage",
+        "success",
+        "team_alias",
+        "team_event_closed",
+        "team_event_id",
+        "team_uid",
+        "total_sum",
+        "user_role"
+      ],
+      "spieltag": "SMOKETEST A4 2026-10-10 22:50:49",
+      "team_alias": "D50",
+      "~account_balance": -35.0,
+      "~active_members": [
+        1
+      ],
+      "~rows": [],
+      "~total_sum": 0.0
+    },
+    "33": {
+      "can_close_team_event": true,
+      "event_ids": [
+        33,
+        32,
+        26,
+        17,
+        16
+      ],
+      "event_shape": [
+        "can_manage_members",
+        "closed",
+        "id",
+        "label",
+        "role",
+        "team_admin_user_id",
+        "team_alias"
+      ],
+      "shape": [
+        "account_balance",
+        "active_members",
+        "can_close_team_event",
+        "can_manage_members",
+        "events",
+        "extra_costs",
+        "guest_donations",
+        "is_editable",
+        "member_candidates",
+        "members",
+        "open_spieltage",
+        "rows",
+        "spieltag",
+        "spieltage",
+        "success",
+        "team_alias",
+        "team_event_closed",
+        "team_event_id",
+        "team_uid",
+        "total_sum",
+        "user_role"
+      ],
+      "spieltag": "SMOKETEST A4 2026-10-10 22:51:06",
+      "team_alias": "D50",
+      "~account_balance": -35.0,
+      "~active_members": [
+        1
+      ],
+      "~rows": [],
+      "~total_sum": 0.0
     }
   },
   "read_team_stats_member_view": {
     "status": 200,
     "~events": [
+      33,
+      32,
       27,
       25,
       23,
@@ -698,7 +818,9 @@
   "read_team_stats_teamlead_matches_admin": {
     "16": "identical",
     "17": "identical",
-    "26": "identical"
+    "26": "identical",
+    "32": "identical",
+    "33": "identical"
   },
   "read_user_deposits_data": {
     "entry_shape_deposit": [

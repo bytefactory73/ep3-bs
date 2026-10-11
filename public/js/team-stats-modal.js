@@ -143,8 +143,9 @@
             var overlay = document.createElement('div');
             overlay.id = config.modalId;
             overlay.style.cssText = 'display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:100010; align-items:center; justify-content:center;';
+            // Own text color: admin pages set a white body color, which the cells would inherit
             overlay.innerHTML =
-                '<div style="position:relative; width:min(980px,96vw); height:90vh; max-height:90vh; background:#fff; border-radius:10px; box-shadow:0 10px 28px rgba(0,0,0,0.25); overflow:auto; padding:18px 16px 16px 16px;">'
+                '<div style="position:relative; width:min(980px,96vw); height:90vh; max-height:90vh; background:#fff; color:#333; border-radius:10px; box-shadow:0 10px 28px rgba(0,0,0,0.25); overflow:auto; padding:18px 16px 16px 16px;">'
                 + '<button type="button" data-close style="position:absolute;top:10px;right:12px;z-index:10;background:#eee;border:none;border-radius:50%;width:34px;height:34px;font-size:20px;cursor:pointer;">&times;</button>'
                 + '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin:2px 42px 12px 4px; flex-wrap:wrap;">'
                 + '<h2 id="' + config.titleId + '" style="margin:0; color:#1769aa;">Kostenübersicht</h2>'
