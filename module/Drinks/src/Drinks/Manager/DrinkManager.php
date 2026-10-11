@@ -27,27 +27,23 @@ class DrinkManager
 
     /**
      * Calculates the current drink account balance for a user (sum deposits - sum orders).
+     * MySQL sums the DECIMAL columns exactly; the result is rounded to cents, so a balance of
+     * zero never comes out as -0.00000000000000005.
      * @param int $userId
      * @param object $serviceManager
      * @return float
      */
     public function calculateUserDrinkBalance($userId, $serviceManager)
     {
-        $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
-        $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
-        $drinkDeposits = iterator_to_array($drinkDepositManager->getByUser($userId));
-        $allOrdersForBalance = iterator_to_array($drinkOrderManager->getByUser($userId));
-        $depositSum = 0;
-        foreach ($drinkDeposits as $deposit) {
-            $depositSum += $deposit['amount'];
-        }
-        $orderSum = 0;
-        foreach ($allOrdersForBalance as $order) {
-            if (empty($order['deleted'])) {
-                $orderSum += $order['quantity'] * $order['price'];
-            }
-        }
-        return $depositSum - $orderSum;
+        $row = $this->dbAdapter->query(
+            'SELECT
+                (SELECT COALESCE(SUM(amount), 0) FROM drink_deposits
+                 WHERE user_id = ? AND (deleted IS NULL OR deleted = 0)) AS deposit_sum,
+                (SELECT COALESCE(SUM(quantity * price), 0) FROM drink_orders
+                 WHERE user_id = ? AND (deleted IS NULL OR deleted = 0)) AS order_sum',
+            [(int)$userId, (int)$userId]
+        )->current();
+        return round((float)$row['deposit_sum'] - (float)$row['order_sum'], 2);
     }
 
     public function getMinimumAccountBalance($serviceManager)
@@ -312,7 +308,7 @@ class DrinkManager
         if ($userId) {
             $sql = 'SELECT d.*, COALESCE(SUM(do.quantity), 0) AS user_total_count '
                 . 'FROM drinks d '
-                . 'LEFT JOIN drink_orders do ON d.id = do.drink_id AND do.user_id = ? '
+                . 'LEFT JOIN drink_orders do ON d.id = do.drink_id AND do.user_id = ? AND do.deleted = 0 '
                 . 'LEFT JOIN drink_categories c ON d.category = c.id '
                 . 'GROUP BY d.id '
                 . 'ORDER BY c.sort_priority ASC, c.name ASC, d.name ASC';
@@ -416,7 +412,8 @@ class DrinkManager
         foreach ($drinkCounts as $drinkId => $quantity) {
             $drinkId = (int)$drinkId;
             $quantity = (int)$quantity;
-            $drink = ($drinkId > 0 && $quantity > 0) ? $this->get($drinkId) : null;
+            // "Sonstiges" needs a custom price: only the admin books it (addDrinkBookingAction)
+            $drink = ($drinkId > 0 && $quantity > 0 && !self::isCustomPriceDrink($drinkId)) ? $this->get($drinkId) : null;
             if ($drink) {
                 $orderItems[] = ['id' => $drinkId, 'name' => $drink['name'], 'quantity' => $quantity, 'total' => $quantity * (float)$drink['price']];
                 $orderTotal += $quantity * (float)$drink['price'];

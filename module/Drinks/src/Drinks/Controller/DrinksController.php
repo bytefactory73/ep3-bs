@@ -1381,67 +1381,21 @@ class DrinksController extends AbstractActionController
             }
         }
 
-        // All deposits and orders: the balance after a deposit needs the full history, the date
-        // range and the transfer switch only filter the rows shown.
-        $allDepositRows = iterator_to_array($dbAdapter->query(
-            'SELECT * FROM drink_deposits WHERE (deleted IS NULL OR deleted = 0) ORDER BY deposit_time ASC, id ASC',
-            []
-        ));
-        $orderRows = iterator_to_array($dbAdapter->query(
-            'SELECT * FROM drink_orders WHERE (deleted IS NULL OR deleted = 0) ORDER BY order_time ASC, id ASC',
-            []
-        ));
-
-        $ordersByUser = [];
-        foreach ($orderRows as $orderRow) {
-            $uid = isset($orderRow['user_id']) ? (int)$orderRow['user_id'] : 0;
-            if ($uid <= 0) {
-                continue;
-            }
-            $ordersByUser[$uid][] = $orderRow;
+        $depositSql = 'SELECT * FROM drink_deposits WHERE (deleted IS NULL OR deleted = 0)';
+        $depositParams = [];
+        if (!$showTransfers && DbSchema::hasColumn($dbAdapter, 'drink_deposits', 'transfer_reference')) {
+            $depositSql .= ' AND (transfer_reference IS NULL OR transfer_reference = "")';
         }
-
-        $orderPositions = [];
-        $orderSums = [];
-        $depositSums = [];
-        $balanceAfterByDepositId = [];
-        foreach ($allDepositRows as $depositRow) {
-            $uid = isset($depositRow['user_id']) ? (int)$depositRow['user_id'] : 0;
-            if ($uid <= 0) {
-                continue;
-            }
-            if (!isset($orderPositions[$uid])) {
-                $orderPositions[$uid] = 0;
-                $orderSums[$uid] = 0.0;
-                $depositSums[$uid] = 0.0;
-            }
-
-            $depositTime = isset($depositRow['deposit_time']) ? $depositRow['deposit_time'] : '';
-            if (isset($ordersByUser[$uid])) {
-                while (isset($ordersByUser[$uid][$orderPositions[$uid]])
-                    && strcmp($ordersByUser[$uid][$orderPositions[$uid]]['order_time'], $depositTime) <= 0
-                ) {
-                    $entry = $ordersByUser[$uid][$orderPositions[$uid]];
-                    $orderSums[$uid] += (float)$entry['quantity'] * (float)$entry['price'];
-                    $orderPositions[$uid]++;
-                }
-            }
-
-            $depositSums[$uid] += (float)$depositRow['amount'];
-            $balanceAfterByDepositId[(int)$depositRow['id']] = round($depositSums[$uid] - $orderSums[$uid], 2);
+        if ($fromFilterSql !== '') {
+            $depositSql .= ' AND deposit_time >= ?';
+            $depositParams[] = $fromFilterSql;
         }
-
-        $hideTransfers = !$showTransfers && DbSchema::hasColumn($dbAdapter, 'drink_deposits', 'transfer_reference');
-        $depositRows = array_filter($allDepositRows, function ($depositRow) use ($hideTransfers, $fromFilterSql, $toFilterSql) {
-            $depositTime = isset($depositRow['deposit_time']) ? (string)$depositRow['deposit_time'] : '';
-            if ($hideTransfers && trim((string)($depositRow['transfer_reference'] ?? '')) !== '') {
-                return false;
-            }
-            if ($fromFilterSql !== '' && strcmp($depositTime, $fromFilterSql) < 0) {
-                return false;
-            }
-            return $toFilterSql === '' || strcmp($depositTime, $toFilterSql) <= 0;
-        });
+        if ($toFilterSql !== '') {
+            $depositSql .= ' AND deposit_time <= ?';
+            $depositParams[] = $toFilterSql;
+        }
+        $depositSql .= ' ORDER BY deposit_time ASC, id ASC';
+        $depositRows = iterator_to_array($dbAdapter->query($depositSql, $depositParams));
 
         $depositEntries = [];
         $depositPaypalInfo = [];
@@ -1495,7 +1449,6 @@ class DrinksController extends AbstractActionController
             $comment = isset($depositRow['comment']) ? trim((string)$depositRow['comment']) : '';
 
             $depositId = isset($depositRow['id']) ? (int)$depositRow['id'] : 0;
-            $balanceAfter = isset($balanceAfterByDepositId[$depositId]) ? $balanceAfterByDepositId[$depositId] : null;
             $paypalInfo = isset($depositPaypalInfo[$depositId]) ? $depositPaypalInfo[$depositId] : null;
             $depositEntries[] = [
                 'id' => $depositId,
@@ -1504,7 +1457,6 @@ class DrinksController extends AbstractActionController
                 'email' => $userMap[$uid]['email'],
                 'date' => $depositTime,
                 'amount' => (float)$depositRow['amount'],
-                'balance_after' => $balanceAfter,
                 'comment' => $comment,
                 'is_paypal_deposit' => $paypalInfo !== null ? 1 : 0,
                 'is_paypal_transaction' => 0,
@@ -1583,7 +1535,6 @@ class DrinksController extends AbstractActionController
                     'email' => $displayEmail,
                     'date' => $date,
                     'amount' => isset($p['amount']) ? (float)$p['amount'] : 0.0,
-                    'balance_after' => null,
                     'comment' => $comment,
                     'is_paypal_deposit' => 0,
                     'is_paypal_transaction' => 1,

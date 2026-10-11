@@ -1239,7 +1239,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     var html = '<h2>Buchungs- und Einzahlungsverlauf</h2>' +
                         '<div style="margin-bottom:10px;"><label><input type="checkbox" id="show-storno-checkbox"' + (showStorno ? ' checked' : '') + '> Zeige Storno</label></div>';
-                    // Calculate running balance in chronological order and attach to each entry
+                    // All entries, oldest first: the per-day Kontostand below sums them up
                     var allEntries = [];
                     for (var day of history) {
                         for (var entry of day.entries) {
@@ -1252,21 +1252,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         var bd = (b.datetime || b.date || '');
                         return ad.localeCompare(bd);
                     });
-                    var runningBalance = 0;
-                    for (const entry of allEntries) {
-                        var amount = parseFloat(entry.amount);
-                        if (isNaN(amount)) amount = 0;
-                        if (entry.type === 'Einzahlung') {
-                            if (!entry.deleted) {
-                                runningBalance += amount;
-                            }
-                        } else {
-                            if (!entry.deleted || showStorno) {
-                                runningBalance += amount;
-                            }
-                        }
-                        entry.displayBalance = runningBalance;
-                    }
                     // Reverse days for display
                     var reversedDays = history.slice().reverse();
                     for (var day of reversedDays) {

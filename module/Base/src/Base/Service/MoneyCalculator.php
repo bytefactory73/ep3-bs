@@ -4,14 +4,8 @@ namespace Base\Service;
 
 final class MoneyCalculator
 {
-    private static $serializationConfigured = false;
-
     public static function roundMoney($amount, $precision = 2)
     {
-        if (!self::$serializationConfigured) {
-            ini_set('serialize_precision', '-1');
-            self::$serializationConfigured = true;
-        }
         return round((float)$amount, (int)$precision);
     }
 
@@ -29,8 +23,8 @@ final class MoneyCalculator
             return self::roundMoney($amount, 2);
         }
 
-        $absoluteAmount = abs((float)$amount);
-        $absoluteCents = (int)ceil($absoluteAmount * 100);
+        // Round to cents first: 1.1 * 100 is 110.00000000000001 and ceil() would make it 111
+        $absoluteCents = abs(self::toCents($amount));
         $shareCents = (int)ceil($absoluteCents / $parts);
         $share = self::fromCents($shareCents);
 

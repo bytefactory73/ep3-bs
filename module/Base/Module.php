@@ -39,6 +39,10 @@ class Module implements AutoloaderProviderInterface, BootstrapListenerInterface,
             Charon::carry('application', 'configuration', 1);
         }
 
+        /* Shortest float representation in json_encode/var_export: 12.3, not 12.300000000000001 */
+
+        ini_set('serialize_precision', '-1');
+
         /* Set global validator translator */
 
         $translator = $serviceManager->get('Translator');
