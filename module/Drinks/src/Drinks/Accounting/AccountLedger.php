@@ -96,13 +96,14 @@ class AccountLedger
      */
     public function history($userId, array $options = [])
     {
-        $filterSql = '';
+        $depositFilterSql = '';
+        $orderFilterSql = '';
         $filterParams = [];
         $teamEventLabel = isset($options['team_event_label']) ? trim((string)$options['team_event_label']) : '';
         if ($teamEventLabel !== '') {
-            $teamEventId = isset($options['team_event_id']) ? (int)$options['team_event_id'] : 0;
-            $filterSql = ' AND (%1$steamevent_id = ? OR ((%1$steamevent_id IS NULL OR %1$steamevent_id = 0) AND TRIM(COALESCE(%1$scomment, "")) = ?))';
-            $filterParams = [$teamEventId > 0 ? $teamEventId : -1, $teamEventLabel];
+            $depositFilterSql = ' AND ' . TeamEventLedger::rowConditionSql();
+            $orderFilterSql = ' AND ' . TeamEventLedger::rowConditionSql('do');
+            $filterParams = TeamEventLedger::rowConditionParams(isset($options['team_event_id']) ? $options['team_event_id'] : 0, $teamEventLabel);
         }
 
         $depositSql = 'SELECT * FROM drink_deposits WHERE user_id = ?';
@@ -110,12 +111,11 @@ class AccountLedger
             $depositSql .= ' AND (deleted IS NULL OR deleted = 0)';
         }
         $depositRows = $this->dbAdapter->query(
-            $depositSql . sprintf($filterSql, ''),
+            $depositSql . $depositFilterSql,
             array_merge([(int)$userId], $filterParams)
         )->toArray();
         $orderRows = $this->dbAdapter->query(
-            'SELECT do.*, d.name FROM drink_orders do JOIN drinks d ON do.drink_id = d.id WHERE do.user_id = ?'
-                . sprintf($filterSql, 'do.'),
+            'SELECT do.*, d.name FROM drink_orders do JOIN drinks d ON do.drink_id = d.id WHERE do.user_id = ?' . $orderFilterSql,
             array_merge([(int)$userId], $filterParams)
         )->toArray();
 

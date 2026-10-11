@@ -252,35 +252,35 @@
   "read_admin_pages": {
     "user/balance-list": {
       "status": 200,
-      "title": "Kontostände Übersicht &middot; STC Tennisplatz-Buchung"
+      "title": "Kontostände Übersicht &middot; STC Tennisplatz-Buchung (TEST)"
     },
     "user/deposit-overview": {
       "status": 200,
-      "title": "Einzahlungsübersicht &middot; STC Tennisplatz-Buchung"
+      "title": "Einzahlungsübersicht &middot; STC Tennisplatz-Buchung (TEST)"
     },
     "user/deposits": {
       "status": 200,
-      "title": "Benutzer Ein-/Auszahlungen &middot; STC Tennisplatz-Buchung"
+      "title": "Benutzer Ein-/Auszahlungen &middot; STC Tennisplatz-Buchung (TEST)"
     },
     "user/drinks-admin": {
       "status": 200,
-      "title": "Drinks Verwaltung &middot; STC Tennisplatz-Buchung"
+      "title": "Drinks Verwaltung &middot; STC Tennisplatz-Buchung (TEST)"
     },
     "user/drinks-admin/paypal-settings": {
       "status": 200,
-      "title": "PayPal Einstellungen &middot; STC Tennisplatz-Buchung"
+      "title": "PayPal Einstellungen &middot; STC Tennisplatz-Buchung (TEST)"
     },
     "user/drinks-admin/spieltage-overview": {
       "status": 200,
-      "title": "Spieltage-Übersicht &middot; STC Tennisplatz-Buchung"
+      "title": "Spieltage-Übersicht &middot; STC Tennisplatz-Buchung (TEST)"
     },
     "user/drinks-summary": {
       "status": 200,
-      "title": "Gesamtauswertung &middot; STC Tennisplatz-Buchung"
+      "title": "Gesamtauswertung &middot; STC Tennisplatz-Buchung (TEST)"
     },
     "user/manage-drinks": {
       "status": 200,
-      "title": "Manage Drinks &middot; STC Tennisplatz-Buchung"
+      "title": "Manage Drinks &middot; STC Tennisplatz-Buchung (TEST)"
     }
   },
   "read_deposit_overview_variants": {
@@ -292,7 +292,7 @@
   },
   "read_drinks_page": {
     "status": 200,
-    "title": "Drinks &middot; STC Tennisplatz-Buchung",
+    "title": "Drinks &middot; STC Tennisplatz-Buchung (TEST)",
     "~drink_buttons": 70
   },
   "read_drinks_summary_groupings_agree": {

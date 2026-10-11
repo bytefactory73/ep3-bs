@@ -804,7 +804,7 @@ class DrinksController extends AbstractActionController
         $teamEvents = [];
         $currentTeamEventId = null;
         if ($isTeam) {
-            $teamEvents = $this->getTeamEventsWithBalances($uid, true, true);
+            $teamEvents = $this->getTeamEventsWithBalances($uid, true);
             $teamEventIds = array_column($teamEvents, 'id');
             $preferredTeamEventId = (int)$this->params()->fromQuery('selected_teamevent_id', 0);
             if (in_array($preferredTeamEventId, $teamEventIds, true)) {
@@ -1497,7 +1497,7 @@ class DrinksController extends AbstractActionController
         ));
         $teamNames = $this->getTeamDisplayNames($teamUserIds);
         $allEvents = [];
-        foreach ($this->getTeamEventsWithBalances($teamUserIds, true, true) as $event) {
+        foreach ($this->getTeamEventsWithBalances($teamUserIds, true) as $event) {
             $teamUserId = $event['team_admin_user_id'];
             $allEvents[] = [
                 'id' => $event['id'],

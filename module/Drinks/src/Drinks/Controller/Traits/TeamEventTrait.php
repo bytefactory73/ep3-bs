@@ -52,6 +52,14 @@ trait TeamEventTrait
         return @$this->getServiceLocator()->get('Zend\Db\Adapter\Adapter');
     }
 
+    /**
+     * @return \Drinks\Accounting\TeamEventLedger
+     */
+    protected function getTeamEventLedger()
+    {
+        return @$this->getServiceLocator()->get('Drinks\Accounting\TeamEventLedger');
+    }
+
     protected function normalizeTeamEventLabel($value)
     {
         $value = trim((string)$value);
@@ -375,6 +383,12 @@ trait TeamEventTrait
         return $result;
     }
 
+    /**
+     * Members and contributors of a Spieltag (members first, then by name; payers of extra costs
+     * last): [['uid', 'name', 'email', 'total_paid', 'total_refunded', 'is_member', 'deposit_comment']].
+     * Contributions and refunds come from TeamEventLedger; payers of extra costs (money paid
+     * outside the booking system) count as contributors too.
+     */
     protected function getTeamEventMembersWithContribution($teamAdminUserId, $teamEventId, $teamEventLabel)
     {
         $teamAdminUserId = (int)$teamAdminUserId;
@@ -384,190 +398,23 @@ trait TeamEventTrait
             return [];
         }
 
-        // Get members (current and former) with their contributions.
-        // Resolve payer per deposit in PHP for robust cross-install behavior.
         $dbAdapter = $this->getTeamEventDbAdapter();
-
         $memberRows = $dbAdapter->query(
             'SELECT m.user_id AS uid, u.alias, u.email
              FROM drinks_teamevent_members m
              JOIN bs_users u ON u.uid = m.user_id
-             WHERE m.team_event_id = ?
-             ORDER BY u.alias ASC, m.user_id ASC',
+             WHERE m.team_event_id = ?',
             [$teamEventId]
         )->toArray();
-
         $memberUids = [];
         $userInfoByUid = [];
-        foreach ($memberRows as $mr) {
-            $uid = isset($mr['uid']) ? (int)$mr['uid'] : 0;
-            if ($uid <= 0) {
-                continue;
-            }
-            $memberUids[$uid] = true;
-            $userInfoByUid[$uid] = [
-                'alias' => isset($mr['alias']) ? trim((string)$mr['alias']) : '',
-                'email' => isset($mr['email']) ? trim((string)$mr['email']) : '',
-            ];
+        foreach ($memberRows as $row) {
+            $memberUids[(int)$row['uid']] = true;
+            $userInfoByUid[(int)$row['uid']] = ['alias' => trim((string)$row['alias']), 'email' => trim((string)$row['email'])];
         }
 
-        $aliasRows = $dbAdapter->query(
-            'SELECT uid, alias FROM bs_users WHERE alias IS NOT NULL AND TRIM(alias) <> ""',
-            []
-        )->toArray();
-        $aliasToUid = [];
-        foreach ($aliasRows as $ar) {
-            $uid = isset($ar['uid']) ? (int)$ar['uid'] : 0;
-            $alias = isset($ar['alias']) ? strtolower(trim((string)$ar['alias'])) : '';
-            if ($uid > 0 && $alias !== '' && !isset($aliasToUid[$alias])) {
-                $aliasToUid[$alias] = $uid;
-            }
-        }
+        $contributions = $this->getTeamEventLedger()->contributions($teamAdminUserId, $teamEventId, $teamEventLabel);
 
-        // Also map drink aliases because transfer comments can use those display names.
-        try {
-            $drinkAliasRows = $dbAdapter->query(
-                'SELECT user_id AS uid, alias FROM drink_aliases WHERE alias IS NOT NULL AND TRIM(alias) <> ""',
-                []
-            )->toArray();
-            foreach ($drinkAliasRows as $dar) {
-                $uid = isset($dar['uid']) ? (int)$dar['uid'] : 0;
-                $alias = isset($dar['alias']) ? strtolower(trim((string)$dar['alias'])) : '';
-                if ($uid > 0 && $alias !== '' && !isset($aliasToUid[$alias])) {
-                    $aliasToUid[$alias] = $uid;
-                }
-            }
-        } catch (\Exception $e) {
-            // Optional table/column differences should not break stats.
-        }
-
-        $eventTransferRefs = [];
-        try {
-            $eventTransferRows = $dbAdapter->query(
-                'SELECT DISTINCT transfer_reference
-                 FROM drink_orders
-                 WHERE (deleted IS NULL OR deleted = 0)
-                   AND drink_id = -1
-                   AND transfer_reference IS NOT NULL
-                   AND transfer_reference <> ""
-                   AND ' . $this->teamEventRowConditionSql(),
-                [$teamEventId, $teamEventLabel]
-            )->toArray();
-            foreach ($eventTransferRows as $etr) {
-                $ref = isset($etr['transfer_reference']) ? trim((string)$etr['transfer_reference']) : '';
-                if ($ref !== '') {
-                    $eventTransferRefs[$ref] = true;
-                }
-            }
-        } catch (\Exception $e) {
-            $eventTransferRefs = [];
-        }
-
-        $refValues = array_keys($eventTransferRefs);
-        $refCondition = empty($refValues) ? '' : ' OR transfer_reference IN (' . implode(',', array_fill(0, count($refValues), '?')) . ')';
-        $depositRows = $dbAdapter->query(
-            'SELECT id, user_id, createdbyuserid, amount, comment, transfer_reference
-             FROM drink_deposits
-             WHERE (deleted IS NULL OR deleted = 0)
-               AND (' . $this->teamEventRowConditionSql() . $refCondition . ')',
-            array_merge([$teamEventId, $teamEventLabel], $refValues)
-        )->toArray();
-
-        $transferRefs = [];
-        foreach ($depositRows as $dr) {
-            $ref = isset($dr['transfer_reference']) ? trim((string)$dr['transfer_reference']) : '';
-            if ($ref !== '' && !isset($transferRefs[$ref])) {
-                $transferRefs[$ref] = true;
-            }
-        }
-
-        $payerByTransferRef = [];
-        if (!empty($transferRefs)) {
-            $refValues = array_keys($transferRefs);
-            $refPlaceholders = implode(',', array_fill(0, count($refValues), '?'));
-            try {
-                $transferRows = $dbAdapter->query(
-                    'SELECT transfer_reference, MAX(user_id) AS payer_user_id
-                     FROM drink_orders
-                     WHERE transfer_reference IN (' . $refPlaceholders . ')
-                       AND drink_id = -1
-                       AND (deleted IS NULL OR deleted = 0)
-                     GROUP BY transfer_reference',
-                    $refValues
-                )->toArray();
-                foreach ($transferRows as $tr) {
-                    $ref = isset($tr['transfer_reference']) ? trim((string)$tr['transfer_reference']) : '';
-                    $payerUid = isset($tr['payer_user_id']) ? (int)$tr['payer_user_id'] : 0;
-                    if ($ref !== '' && $payerUid > 0) {
-                        $payerByTransferRef[$ref] = $payerUid;
-                    }
-                }
-            } catch (\Exception $e) {
-                // Older installations may not have transfer_reference columns.
-                $payerByTransferRef = [];
-            }
-        }
-
-        $paidByUid = [];
-        $depositCommentByUid = [];
-        foreach ($depositRows as $dr) {
-            $amount = isset($dr['amount']) ? (float)$dr['amount'] : 0.0;
-            if ($amount <= 0) {
-                continue;
-            }
-
-            $payerUid = 0;
-            $comment = isset($dr['comment']) ? trim((string)$dr['comment']) : '';
-            $commentLower = strtolower($comment);
-            $createdBy = isset($dr['createdbyuserid']) ? (int)$dr['createdbyuserid'] : 0;
-            $receiverUid = isset($dr['user_id']) ? (int)$dr['user_id'] : 0;
-            $ref = isset($dr['transfer_reference']) ? trim((string)$dr['transfer_reference']) : '';
-
-            if ($ref !== '' && isset($payerByTransferRef[$ref])) {
-                $payerUid = (int)$payerByTransferRef[$ref];
-            } elseif (strpos($commentLower, 'geld empfangen von ') === 0) {
-                $senderAlias = trim(substr($comment, strlen('Geld empfangen von ')));
-                $senderAliasLower = strtolower($senderAlias);
-                if ($senderAliasLower !== '' && isset($aliasToUid[$senderAliasLower])) {
-                    $payerUid = (int)$aliasToUid[$senderAliasLower];
-                }
-                if ($payerUid <= 0 && $createdBy > 0 && $createdBy !== $teamAdminUserId) {
-                    $payerUid = $createdBy;
-                }
-            } elseif ($createdBy > 0) {
-                $payerUid = $createdBy;
-            }
-
-            if ($payerUid <= 0 && $receiverUid > 0 && $receiverUid !== $teamAdminUserId) {
-                $payerUid = $receiverUid;
-            }
-
-            if ($payerUid <= 0) {
-                continue;
-            }
-
-            // Refund transfers from the team account to members must not count
-            // as additional member contributions for this event.
-            if (
-                $receiverUid > 0
-                && $receiverUid !== $teamAdminUserId
-                && $payerUid === $teamAdminUserId
-                && strpos($commentLower, 'geld empfangen von ') === 0
-            ) {
-                continue;
-            }
-
-            if (!isset($paidByUid[$payerUid])) {
-                $paidByUid[$payerUid] = 0.0;
-            }
-            $paidByUid[$payerUid] += $amount;
-
-            if (!isset($memberUids[$payerUid]) && !isset($depositCommentByUid[$payerUid]) && $comment !== '') {
-                $depositCommentByUid[$payerUid] = $comment;
-            }
-        }
-
-        // Payers of extra costs (money paid outside the booking system) count as contributors too.
         $extraPaidByUid = [];
         foreach ($this->getTeamEventExtraCosts($teamEventId) as $extraCost) {
             $payerUid = isset($extraCost['payer_user_id']) ? (int)$extraCost['payer_user_id'] : 0;
@@ -577,8 +424,7 @@ trait TeamEventTrait
             }
         }
 
-        // Depositors and members first (members on top, then by alias); payers of extra costs only after them.
-        $allUids = array_values(array_unique(array_merge(array_keys($paidByUid), array_keys($memberUids))));
+        $allUids = array_values(array_unique(array_merge(array_keys($contributions), array_keys($memberUids))));
         $extraOnlyUids = array_values(array_diff(array_keys($extraPaidByUid), $allUids));
 
         $missingUids = array_values(array_diff(array_merge($allUids, $extraOnlyUids), array_keys($userInfoByUid)));
@@ -588,13 +434,10 @@ trait TeamEventTrait
                 $missingUids
             )->toArray();
             foreach ($missingRows as $row) {
-                $userInfoByUid[(int)$row['uid']] = [
-                    'alias' => isset($row['alias']) ? trim((string)$row['alias']) : '',
-                    'email' => isset($row['email']) ? trim((string)$row['email']) : '',
-                ];
+                $userInfoByUid[(int)$row['uid']] = ['alias' => trim((string)$row['alias']), 'email' => trim((string)$row['email'])];
             }
         }
-        // A payer of extra costs without user row is left out; a depositor is shown as "User <uid>".
+        // A payer of extra costs without user row is left out; a contributor is shown as "User <uid>".
         $extraOnlyUids = array_values(array_filter($extraOnlyUids, function ($uid) use ($userInfoByUid) {
             return isset($userInfoByUid[$uid]);
         }));
@@ -613,82 +456,19 @@ trait TeamEventTrait
         $result = [];
         foreach (array_merge($allUids, $extraOnlyUids) as $uid) {
             $info = isset($userInfoByUid[$uid]) ? $userInfoByUid[$uid] : ['alias' => '', 'email' => ''];
-            $isExtraOnly = !isset($paidByUid[$uid]) && !isset($memberUids[$uid]);
-            $totalPaid = MoneyCalculator::roundMoney(isset($paidByUid[$uid]) ? (float)$paidByUid[$uid] : 0.0);
-            if (isset($extraPaidByUid[$uid])) {
-                $totalPaid = MoneyCalculator::add($totalPaid, $extraPaidByUid[$uid]);
-            }
+            $contribution = isset($contributions[$uid]) ? $contributions[$uid] : ['paid' => 0.0, 'refunded' => 0.0, 'comment' => ''];
+            $isExtraOnly = !isset($contributions[$uid]) && !isset($memberUids[$uid]);
             $result[] = [
                 'uid' => $uid,
                 'name' => $info['alias'] !== '' ? $info['alias'] : ('User ' . $uid),
                 'email' => $info['email'],
-                'total_paid' => $totalPaid,
-                'total_refunded' => 0.0,
+                'total_paid' => MoneyCalculator::add($contribution['paid'], isset($extraPaidByUid[$uid]) ? $extraPaidByUid[$uid] : 0.0),
+                'total_refunded' => $contribution['refunded'],
                 'is_member' => isset($memberUids[$uid]),
-                'deposit_comment' => $isExtraOnly ? 'Extrakosten' : (isset($depositCommentByUid[$uid]) ? trim((string)$depositCommentByUid[$uid]) : ''),
+                'deposit_comment' => $isExtraOnly ? 'Extrakosten' : (isset($memberUids[$uid]) ? '' : $contribution['comment']),
             ];
         }
-
-        // Reduce contributed amount by refunds paid out from the team account for this event.
-        $resultUids = array_column($result, 'uid');
-        if (!empty($resultUids)) {
-            $placeholders = implode(',', array_fill(0, count($resultUids), '?'));
-            $refundTotalsByUid = [];
-
-            try {
-                $refundRows = $dbAdapter->query(
-                    'SELECT d.user_id AS uid, COALESCE(SUM(d.amount), 0) AS total_refunded
-                     FROM drink_deposits d
-                     JOIN drink_orders o ON o.transfer_reference = d.transfer_reference
-                     WHERE d.user_id IN (' . $placeholders . ')
-                       AND d.createdbyuserid = ?
-                       AND (d.deleted IS NULL OR d.deleted = 0)
-                       AND o.user_id = ?
-                       AND o.drink_id = -1
-                       AND (o.deleted IS NULL OR o.deleted = 0)
-                       AND ' . $this->teamEventRowConditionSql('o') . '
-                     GROUP BY d.user_id',
-                    array_merge($resultUids, [$teamAdminUserId, $teamAdminUserId, $teamEventId, $teamEventLabel])
-                )->toArray();
-            } catch (\Exception $e) {
-                // Fallback for installations without transfer_reference columns.
-                $refundRows = $dbAdapter->query(
-                    'SELECT d.user_id AS uid, COALESCE(SUM(d.amount), 0) AS total_refunded
-                     FROM drink_deposits d
-                     WHERE d.user_id IN (' . $placeholders . ')
-                       AND d.createdbyuserid = ?
-                       AND (d.deleted IS NULL OR d.deleted = 0)
-                       AND ' . $this->teamEventRowConditionSql('d') . '
-                       AND LOWER(TRIM(COALESCE(d.comment, ""))) LIKE ?
-                     GROUP BY d.user_id',
-                    array_merge($resultUids, [$teamAdminUserId, $teamEventId, $teamEventLabel, 'geld empfangen von %'])
-                )->toArray();
-            }
-
-            foreach ($refundRows as $refundRow) {
-                $uid = isset($refundRow['uid']) ? (int)$refundRow['uid'] : 0;
-                $totalRefunded = MoneyCalculator::roundMoney(isset($refundRow['total_refunded']) ? (float)$refundRow['total_refunded'] : 0.0);
-                if ($uid > 0 && $totalRefunded > 0) {
-                    $refundTotalsByUid[$uid] = $totalRefunded;
-                }
-            }
-
-            foreach ($result as $index => $row) {
-                $result[$index]['total_refunded'] = isset($refundTotalsByUid[$row['uid']]) ? $refundTotalsByUid[$row['uid']] : 0.0;
-            }
-        }
-
         return $result;
-    }
-
-    /**
-     * SQL condition for rows of a Spieltag: its teamevent_id, or legacy rows without one whose
-     * comment is the Spieltag label. Binds [teamEventId, teamEventLabel].
-     */
-    protected function teamEventRowConditionSql($tableAlias = '')
-    {
-        $p = $tableAlias !== '' ? $tableAlias . '.' : '';
-        return '(' . $p . 'teamevent_id = ? OR (' . $p . 'teamevent_id IS NULL AND TRIM(COALESCE(' . $p . 'comment, "")) = ?))';
     }
 
     /**
@@ -735,7 +515,7 @@ trait TeamEventTrait
      * Cost rows of a Spieltag. $contributionRows: result of getTeamEventMembersWithContribution()
      * for that Spieltag (the caller needs it too).
      */
-    protected function getTeamEventOrderRowsAndTotal($teamAdminUserId, $teamEventLabel, $memberUserIds, $selectedTeamEventId, array $contributionRows)
+    protected function getTeamEventOrderRowsAndTotal($teamAdminUserId, $teamEventLabel, $selectedTeamEventId, array $contributionRows)
     {
         $teamAdminUserId = (int)$teamAdminUserId;
         $teamEventLabel = $this->normalizeTeamEventLabel($teamEventLabel);
@@ -753,45 +533,10 @@ trait TeamEventTrait
         }
         $storedRelevanceByRowKey = $selectedTeamEventId > 0 ? $this->getTeamEventOrderRelevanceMap($selectedTeamEventId) : [];
 
-        // Orders of the team account and of all members
-        $orderUserIds = [$teamAdminUserId];
-        foreach ((array)$memberUserIds as $mid) {
-            $midInt = (int)$mid;
-            if ($midInt > 0 && !in_array($midInt, $orderUserIds, true)) {
-                $orderUserIds[] = $midInt;
-            }
-        }
-        $userIdsPlaceholder = implode(', ', array_fill(0, count($orderUserIds), '?'));
-
-        $orderRows = $this->getTeamEventDbAdapter()->query(
-            'SELECT
-                o.drink_id,
-                o.price AS unit_price,
-                COALESCE(c.name, "") AS category_name,
-                COALESCE(c.sort_priority, 0) AS category_sort,
-                d.name AS article,
-                SUM(o.quantity) AS quantity,
-                (0 - o.price) AS single_price,
-                (0 - SUM(o.quantity * o.price)) AS total_price
-             FROM drink_orders o
-             JOIN drinks d ON d.id = o.drink_id
-             LEFT JOIN drink_categories c ON c.id = d.category
-             WHERE o.user_id IN (' . $userIdsPlaceholder . ')
-              AND (o.deleted IS NULL OR o.deleted = 0)
-              AND o.drink_id <> -1
-              AND ' . $this->teamEventRowConditionSql('o') . '
-             GROUP BY o.drink_id, d.name, o.price, c.name, c.sort_priority
-             ORDER BY category_sort ASC, category_name ASC, d.name ASC, o.price ASC',
-            // Without a Spieltag row only legacy rows (label as comment) can match
-            array_merge($orderUserIds, [$selectedTeamEventId > 0 ? $selectedTeamEventId : -1, $teamEventLabel])
-        )->toArray();
-
         $rows = [];
-        foreach ($orderRows as $orderRow) {
-            $totalPrice = isset($orderRow['total_price']) ? (float)$orderRow['total_price'] : 0.0;
-            $drinkId = isset($orderRow['drink_id']) ? (int)$orderRow['drink_id'] : 0;
-            $unitPrice = isset($orderRow['unit_price']) ? round((float)$orderRow['unit_price'], 2) : 0.0;
-            $rowKey = $drinkId . '|' . number_format($unitPrice, 2, '.', '');
+        foreach ($this->getTeamEventLedger()->orderLines($teamAdminUserId, $selectedTeamEventId, $teamEventLabel) as $line) {
+            $totalPrice = 0.0 - $line['total'];
+            $rowKey = $line['drink_id'] . '|' . number_format($line['unit_price'], 2, '.', '');
             list(, $rowRelevantMembers) = $this->resolveRelevantMembers(
                 isset($storedRelevanceByRowKey[$rowKey]) ? $storedRelevanceByRowKey[$rowKey] : [],
                 $activeMemberNamesById
@@ -799,16 +544,16 @@ trait TeamEventTrait
             $rowRelevantMemberCount = count($rowRelevantMembers);
             $rows[] = [
                 'row_type' => 'order',
-                'drink_id' => $drinkId,
-                'unit_price' => $unitPrice,
-                'category' => isset($orderRow['category_name']) ? (string)$orderRow['category_name'] : '',
-                'article' => isset($orderRow['article']) ? (string)$orderRow['article'] : '',
-                'quantity' => isset($orderRow['quantity']) ? (int)$orderRow['quantity'] : 0,
-                'single_price' => MoneyCalculator::roundMoney(isset($orderRow['single_price']) ? (float)$orderRow['single_price'] : 0.0),
-                'total_price' => MoneyCalculator::roundMoney($totalPrice),
+                'drink_id' => $line['drink_id'],
+                'unit_price' => $line['unit_price'],
+                'category' => $line['category'],
+                'article' => $line['article'],
+                'quantity' => $line['quantity'],
+                'single_price' => 0.0 - $line['unit_price'],
+                'total_price' => $totalPrice,
                 'relevant_members' => $rowRelevantMembers,
                 'relevant_member_count' => $rowRelevantMemberCount,
-                'share_per_member' => $rowRelevantMemberCount > 0 ? ((float)$totalPrice / (float)$rowRelevantMemberCount) : 0.0,
+                'share_per_member' => $rowRelevantMemberCount > 0 ? ($totalPrice / $rowRelevantMemberCount) : 0.0,
             ];
         }
 
@@ -1029,45 +774,16 @@ trait TeamEventTrait
         return null;
     }
 
-    protected function calculateTeamEventBalance($teamAdminUserId, $teamEventId, $teamEventLabel, $includeTransferOrders = false)
+    /**
+     * Balance of a Spieltag, see TeamEventLedger::balance().
+     */
+    protected function calculateTeamEventBalance($teamAdminUserId, $teamEventId, $teamEventLabel)
     {
-        $teamAdminUserId = (int)$teamAdminUserId;
-        $teamEventId = (int)$teamEventId;
         $teamEventLabel = $this->normalizeTeamEventLabel($teamEventLabel);
-        $includeTransferOrders = (bool)$includeTransferOrders;
-        if ($teamAdminUserId <= 0 || $teamEventId <= 0 || $teamEventLabel === '') {
+        if ((int)$teamAdminUserId <= 0 || (int)$teamEventId <= 0 || $teamEventLabel === '') {
             return 0.0;
         }
-
-        $dbAdapter = $this->getTeamEventDbAdapter();
-        $depositRow = $dbAdapter->query(
-            'SELECT COALESCE(SUM(amount), 0) AS total
-             FROM drink_deposits
-             WHERE user_id = ?
-               AND (deleted IS NULL OR deleted = 0)
-               AND ' . $this->teamEventRowConditionSql(),
-            [$teamAdminUserId, $teamEventId, $teamEventLabel]
-        )->current();
-
-        $orderSql =
-            'SELECT COALESCE(SUM(quantity * price), 0) AS total
-             FROM drink_orders
-             WHERE user_id = ?
-               AND (deleted IS NULL OR deleted = 0)';
-        if (!$includeTransferOrders) {
-            $orderSql .= ' AND drink_id <> -1';
-        }
-        $orderSql .=
-            ' AND ' . $this->teamEventRowConditionSql();
-
-        $orderRow = $dbAdapter->query(
-            $orderSql,
-            [$teamAdminUserId, $teamEventId, $teamEventLabel]
-        )->current();
-
-        $depositTotal = $depositRow && isset($depositRow['total']) ? (float)$depositRow['total'] : 0.0;
-        $orderTotal = $orderRow && isset($orderRow['total']) ? (float)$orderRow['total'] : 0.0;
-        return MoneyCalculator::subtract($depositTotal, $orderTotal);
+        return $this->getTeamEventLedger()->balance($teamAdminUserId, $teamEventId, $teamEventLabel);
     }
 
     protected function processTeamEventSettlementRefunds($teamAdminUserId, $teamEventId, array $refunds, $allowClosed = false)
@@ -1187,7 +903,7 @@ trait TeamEventTrait
      * Spieltage of one or more team accounts with their balance, newest first:
      * [['id', 'label', 'balance', 'closed', 'team_admin_user_id'], ...].
      */
-    protected function getTeamEventsWithBalances($teamAdminUserIds, $includeClosed = false, $includeTransferOrders = false)
+    protected function getTeamEventsWithBalances($teamAdminUserIds, $includeClosed = false)
     {
         $teamAdminUserIds = array_values(array_filter(array_map('intval', (array)$teamAdminUserIds)));
         if (empty($teamAdminUserIds)) {
@@ -1210,7 +926,7 @@ trait TeamEventTrait
             }
 
             try {
-                $balance = $this->calculateTeamEventBalance($teamAdminUserId, $teamEventId, $teamEventLabel, $includeTransferOrders);
+                $balance = $this->calculateTeamEventBalance($teamAdminUserId, $teamEventId, $teamEventLabel);
             } catch (\Exception $e) {
                 $balance = 0.0;
             }
@@ -1726,13 +1442,10 @@ trait TeamEventTrait
         $selectedTeamEvent = $this->findTeamEventRow($teamAdminUserId, isset($extra['team_event_id']) ? $extra['team_event_id'] : 0, $teamEventLabel);
         $selectedTeamEventId = $selectedTeamEvent ? (int)$selectedTeamEvent['id'] : 0;
 
-        $memberUserIds = isset($extra['member_user_ids']) && is_array($extra['member_user_ids'])
-            ? $extra['member_user_ids']
-            : ($selectedTeamEventId > 0 ? $this->getTeamEventMemberUserIds($selectedTeamEventId) : []);
         $contributionRows = $selectedTeamEventId > 0
             ? $this->getTeamEventMembersWithContribution($teamAdminUserId, $selectedTeamEventId, $teamEventLabel)
             : [];
-        $stats = $this->getTeamEventOrderRowsAndTotal($teamAdminUserId, $teamEventLabel, $memberUserIds, $selectedTeamEventId, $contributionRows);
+        $stats = $this->getTeamEventOrderRowsAndTotal($teamAdminUserId, $teamEventLabel, $selectedTeamEventId, $contributionRows);
 
         return array_merge([
             'spieltag' => $teamEventLabel,
