@@ -2,6 +2,8 @@
 
 namespace Drinks\Controller;
 
+use Base\Service\MoneyCalculator;
+use Drinks\Accounting\AccountLedger;
 use Drinks\Controller\Traits\JsonResponseTrait;
 use Drinks\Controller\Traits\MoneyTransferTrait;
 use Drinks\Controller\Traits\OrderResponseTrait;
@@ -758,9 +760,9 @@ class DrinksController extends AbstractActionController
                 if (!$drink) {
                     continue;
                 }
-                $lineTotal = $count * ($isCustomPrice ? (float)$customPrice : (float)$drink['price']);
+                $lineTotal = AccountLedger::lineTotal($count, $isCustomPrice ? $customPrice : $drink['price']);
                 $lines[] = DrinkManager::formatOrderLine($drinkId, $drink['name'], $count, $comment, $lineTotal);
-                $total += $lineTotal;
+                $total = MoneyCalculator::add($total, $lineTotal);
             }
 
             $balance = $drinkManager->calculateUserDrinkBalance($uid, $serviceManager);
@@ -1204,62 +1206,27 @@ class DrinksController extends AbstractActionController
         if (!$this->getAdminUser()) {
             return $this->redirect()->toRoute('user/settings');
         }
-        $serviceManager = @$this->getServiceLocator();
-        $userManager = $serviceManager->get('User\Manager\UserManager');
-        $drinkOrderManager = $serviceManager->get('Drinks\Manager\DrinkOrderManager');
-        $drinkDepositManager = $serviceManager->get('Drinks\Manager\DrinkDepositManager');
-        $drinkManager = $this->getDrinkManager();
+        $summaries = $this->service('Drinks\Accounting\AccountLedger')->accountSummaries();
 
-        $users = $userManager->getAll('alias ASC');
         $userList = [];
-        foreach ($users as $u) {
-            $uid = $u->get('uid');
-            $balance = $drinkManager->calculateUserDrinkBalance($uid, $serviceManager);
-            $deposits = iterator_to_array($drinkDepositManager->getByUser($uid, true));
-            $lastDeposit = null;
-            foreach ($deposits as $d) {
-                if (empty($d['deleted'])) {
-                    if (!$lastDeposit || (isset($d['deposit_time']) && $d['deposit_time'] > $lastDeposit)) {
-                        $lastDeposit = $d['deposit_time'];
-                    }
-                }
+        $totalBalance = 0.0;
+        foreach ($this->service('User\Manager\UserManager')->getAll('alias ASC') as $u) {
+            $uid = (int)$u->get('uid');
+            if (!isset($summaries[$uid])) {
+                continue;
             }
-            $orders = iterator_to_array($drinkOrderManager->getByUser($uid));
-            $lastOrder = null;
-            $ordersTotal = 0.0;
-            foreach ($orders as $o) {
-                if (empty($o['deleted'])) {
-                    if ((int)($o['drink_id'] ?? 0) === -1) {
-                        continue;
-                    }
-                    if (!$lastOrder || (isset($o['order_time']) && $o['order_time'] > $lastOrder)) {
-                        $lastOrder = $o['order_time'];
-                    }
-                    if (isset($o['price'])) {
-                        $qty = isset($o['quantity']) ? (float)$o['quantity'] : 1;
-                        $ordersTotal += ((float)$o['price']) * $qty;
-                    }
-                }
-            }
-            $lastActivity = null;
-            if ($lastDeposit && $lastOrder) {
-                $lastActivity = max($lastDeposit, $lastOrder);
-            } elseif ($lastDeposit) {
-                $lastActivity = $lastDeposit;
-            } elseif ($lastOrder) {
-                $lastActivity = $lastOrder;
-            }
-            if (count($deposits) > 0 || count($orders) > 0) {
-                $userList[] = [
-                    'uid' => $u->get('uid'),
-                    'alias' => $u->get('alias'),
-                    'name' => $u->get('name'),
-                    'email' => $u->get('email'),
-                    'balance' => $balance,
-                    'last_activity' => $lastActivity,
-                    'orders_total' => $ordersTotal,
-                ];
-            }
+            $summary = $summaries[$uid];
+            $userList[] = [
+                'uid' => $uid,
+                'alias' => $u->get('alias'),
+                'name' => $u->get('name'),
+                'email' => $u->get('email'),
+                'balance' => $summary['balance'],
+                // DATETIME strings compare chronologically; max() of a date and null is the date
+                'last_activity' => max($summary['last_deposit'], $summary['last_order']),
+                'orders_total' => $summary['orders_total'],
+            ];
+            $totalBalance = MoneyCalculator::add($totalBalance, $summary['balance']);
         }
 
         usort($userList, function($a, $b) {
@@ -1268,7 +1235,7 @@ class DrinksController extends AbstractActionController
 
         $viewModel = new ViewModel([
             'users' => $userList,
-            'total_balance' => array_sum(array_column($userList, 'balance')),
+            'total_balance' => $totalBalance,
         ]);
         $viewModel->setTemplate('balance-list.phtml');
         return $viewModel;

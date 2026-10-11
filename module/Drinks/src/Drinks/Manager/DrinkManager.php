@@ -2,6 +2,8 @@
 
 namespace Drinks\Manager;
 
+use Base\Service\MoneyCalculator;
+use Drinks\Accounting\AccountLedger;
 use Zend\Db\Adapter\Adapter;
 
 class DrinkManager
@@ -26,24 +28,14 @@ class DrinkManager
     }
 
     /**
-     * Calculates the current drink account balance for a user (sum deposits - sum orders).
-     * MySQL sums the DECIMAL columns exactly; the result is rounded to cents, so a balance of
-     * zero never comes out as -0.00000000000000005.
+     * Current drink account balance of a user, see AccountLedger::balance().
      * @param int $userId
      * @param object $serviceManager
      * @return float
      */
     public function calculateUserDrinkBalance($userId, $serviceManager)
     {
-        $row = $this->dbAdapter->query(
-            'SELECT
-                (SELECT COALESCE(SUM(amount), 0) FROM drink_deposits
-                 WHERE user_id = ? AND (deleted IS NULL OR deleted = 0)) AS deposit_sum,
-                (SELECT COALESCE(SUM(quantity * price), 0) FROM drink_orders
-                 WHERE user_id = ? AND (deleted IS NULL OR deleted = 0)) AS order_sum',
-            [(int)$userId, (int)$userId]
-        )->current();
-        return round((float)$row['deposit_sum'] - (float)$row['order_sum'], 2);
+        return $serviceManager->get('Drinks\Accounting\AccountLedger')->balance($userId);
     }
 
     public function getMinimumAccountBalance($serviceManager)
@@ -356,7 +348,7 @@ class DrinkManager
                     isset($order['drink_name']) ? $order['drink_name'] : ('ID ' . $order['drink_id']),
                     $order['quantity'],
                     isset($order['comment']) ? $order['comment'] : '',
-                    $order['quantity'] * $order['price']
+                    AccountLedger::lineTotal($order['quantity'], $order['price'])
                 ),
                 '---------------------',
                 sprintf(call_user_func($tCallback, 'Storniert am:') . ' %s', date('d.m.Y H:i')),
@@ -415,8 +407,9 @@ class DrinkManager
             // "Sonstiges" needs a custom price: only the admin books it (addDrinkBookingAction)
             $drink = ($drinkId > 0 && $quantity > 0 && !self::isCustomPriceDrink($drinkId)) ? $this->get($drinkId) : null;
             if ($drink) {
-                $orderItems[] = ['id' => $drinkId, 'name' => $drink['name'], 'quantity' => $quantity, 'total' => $quantity * (float)$drink['price']];
-                $orderTotal += $quantity * (float)$drink['price'];
+                $lineTotal = AccountLedger::lineTotal($quantity, $drink['price']);
+                $orderItems[] = ['id' => $drinkId, 'name' => $drink['name'], 'quantity' => $quantity, 'total' => $lineTotal];
+                $orderTotal = MoneyCalculator::add($orderTotal, $lineTotal);
             }
         }
         if (empty($orderItems)) {
@@ -500,11 +493,11 @@ class DrinkManager
                     $drinkSums[$key] = ['drink_id' => $order['drink_id'], 'name' => $name, 'comment' => $order['comment'], 'quantity' => 0, 'total' => 0.0];
                 }
                 $drinkSums[$key]['quantity'] += $order['quantity'];
-                $drinkSums[$key]['total'] += $order['quantity'] * $order['price'];
+                $drinkSums[$key]['total'] = MoneyCalculator::add($drinkSums[$key]['total'], AccountLedger::lineTotal($order['quantity'], $order['price']));
             }
             foreach ($drinkSums as $sum) {
                 $lines[] = self::formatOrderLine($sum['drink_id'], $sum['name'], $sum['quantity'], $sum['comment'], $sum['total']);
-                $totalSum += $sum['total'];
+                $totalSum = MoneyCalculator::add($totalSum, $sum['total']);
             }
             $lines[] = '';
         }

@@ -103,6 +103,7 @@ return [
     ],
     'service_manager' => [
         'factories' => [
+            'Drinks\Accounting\AccountLedger' => 'Drinks\Accounting\AccountLedgerFactory',
             'Drinks\Manager\DrinkManager' => 'Drinks\Manager\DrinkManagerFactory',
             'Drinks\Manager\DrinkOrderManager' => 'Drinks\Manager\DrinkOrderManagerFactory',
             'Drinks\Manager\DrinkDepositManager' => 'Drinks\Manager\DrinkDepositManagerFactory',
