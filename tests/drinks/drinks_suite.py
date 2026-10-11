@@ -504,6 +504,27 @@ def read_team_stats_admin(ctx):
 
 
 @test('read')
+def read_history_balances(ctx):
+    """Balance after every history entry = previous balance + amount; the last one = account balance."""
+    facts = {}
+    for uid in [ADMIN_UID, PEER_UID, TEAM_UID]:
+        data = ctx.user_data(uid)
+        entries = [e for day in data['history'] for e in day['entries'] if not e['deleted']]
+        expect([e['datetime'] for e in entries] == sorted(e['datetime'] for e in entries), 'history of %d not oldest first' % uid)
+        balance = 0.0
+        for entry in entries:
+            balance = money(balance + float(entry['amount']))
+            expect(money(entry['balance']) == balance, 'user %d %s #%s: balance %s, expected %.2f' % (uid, entry['type'], entry['id'], entry['balance'], balance))
+        for day in data['history']:
+            active = [e for e in day['entries'] if not e['deleted']]
+            if active:
+                expect(money(day['balance']) == money(active[-1]['balance']), 'user %d day %s: balance != last entry' % (uid, day['date']))
+        expect(balance == money(data['balance']), 'user %d: last balance %.2f != account balance %s' % (uid, balance, data['balance']))
+        facts[str(uid)] = {'~entries': len(entries), '~balance': balance}
+    return facts
+
+
+@test('read')
 def read_settlement_preview(ctx):
     """The settlement popup preview of the open Spieltag: proposal as entered, then a payout cut to the balance."""
     event = ctx.open_team_events()[0]
@@ -924,33 +945,43 @@ def destructive_create_and_close_spieltag(ctx):
 
 @test('destructive')
 def destructive_close_spieltag_with_settlement(ctx):
-    """Closing and settling is one transaction: a failing settlement leaves the Spieltag open, a valid
-    one closes it and books the transfer. Leaves a closed test Spieltag; money is cancelled again."""
+    """Closing and settling is one transaction, computed by the server: a settlement that leaves the
+    Spieltag below 0 € is refused and the Spieltag stays open; a payout is capped at the Spieltag
+    balance; a valid charge closes it and books the transfer. Leaves a closed test Spieltag; money
+    is cancelled again."""
     label = '%s A4 %s' % (MARK, time.strftime('%Y-%m-%d %H:%M:%S'))
     event_id = ctx.admin.post_json('user/create-team-event', {'uid': TEAM_UID, 'label': label})['team_event_id']
-    ctx.admin.post('user/deposits', {'add_deposit': 1, 'deposit_user_id': TEAM_UID, 'deposit_amount': CENT,
-                                     'deposit_comment': MARK, 'deposit_teamevent_id': event_id})
     teamlead_post(ctx, 'team-members', {'team_event_id': event_id, 'member_user_id': ADMIN_UID, 'operation': 'add'})
-    refund = lambda amount: {'team_event_id': event_id, 'settlement_refunds': json.dumps([{'receiver_user_id': ADMIN_UID, 'amount': amount}])}
-    transfers_before = len([e for e in ctx.history_entries(ADMIN_UID) if e.get('teamevent_id') == event_id and not e['deleted']])
+    # Admin pays 0.03 in, the Spieltag costs 0.05: balance -0.02, the admin (only member) owes 0.02
+    ctx.admin.post('user/deposits', {'add_deposit': 1, 'deposit_user_id': TEAM_UID, 'deposit_amount': 0.03,
+                                     'deposit_comment': MARK, 'deposit_teamevent_id': event_id})
+    ctx.admin.post_json('user/add-drink-booking', json_body={'uid': TEAM_UID, 'team_event_id': event_id,
+                                                             'orders': [{'drink_id': 1, 'count': 1, 'price': 0.05, 'comment': MARK}]})
+    stats = ctx.team_stats(event_id)
+    expect(money(stats['event_balance']) == -0.02, 'Spieltag balance %s, expected -0.02' % stats['event_balance'])
+    expect(stats['settlement_requests'] == [{'receiver_user_id': ADMIN_UID, 'name': stats['settlement_requests'][0]['name'], 'amount': -0.02}],
+           'proposal: %s' % stats['settlement_requests'])
+    request = lambda amount: {'team_event_id': event_id, 'settlement_refunds': json.dumps([{'receiver_user_id': ADMIN_UID, 'amount': amount}])}
 
-    too_much = teamlead_post(ctx, 'close-team-event', refund(1.00), expect_status=400)
-    after_fail = ctx.team_stats(event_id)
-    expect(too_much.get('error_code') == 'insufficient_settlement_balance', 'unexpected error: %s' % too_much)
-    expect(not after_fail['team_event_closed'], 'failed settlement left the Spieltag closed')
+    payout = teamlead_post(ctx, 'settlement-preview', request(1.00))
+    expect(payout['payout_total'] == 0 and money(payout['remaining']) == -0.02, 'payout from a negative Spieltag: %s' % payout)
+    refused = teamlead_post(ctx, 'close-team-event', request(0), expect_status=400)
+    expect(refused.get('error_code') == 'insufficient_settlement_balance', 'unexpected error: %s' % refused)
+    expect(not ctx.team_stats(event_id)['team_event_closed'], 'refused settlement left the Spieltag closed')
 
-    closed = teamlead_post(ctx, 'close-team-event', refund(CENT))
+    closed = teamlead_post(ctx, 'close-team-event', request(-0.02))
     after = ctx.team_stats(event_id)
     expect(after['team_event_closed'] and closed['already_closed'] is False, 'Spieltag not closed')
-    expect(len(closed['settlement']['transfers']) == 1, 'settlement transfers: %s' % closed['settlement'])
-    received = [e for e in ctx.history_entries(ADMIN_UID)
-                if e['type'] == 'Einzahlung' and e.get('teamevent_id') == event_id and not e['deleted']]
-    expect(len(received) == transfers_before + 1, 'settlement transfer not booked for user %d' % ADMIN_UID)
+    expect(closed['settlement']['transfers'] == [{'receiver_user_id': ADMIN_UID, 'amount': -0.02, 'direction': 'member_to_team'}],
+           'settlement transfers: %s' % closed['settlement'])
+    expect(money(after['event_balance']) == 0, 'Spieltag balance after settlement: %s' % after['event_balance'])
 
-    # Cancel the money again (the transfer's counterpart is cancelled with it)
-    ctx.toggle('deposit', received[-1]['id'])
-    ctx.toggle('deposit', ctx.newest_entry(TEAM_UID, 'Einzahlung', MARK)['id'])
-    return {'failed_settlement_keeps_open': True, 'closed': True, 'transfers': 1}
+    # Cancel the money again (a transfer's counterpart is cancelled with it)
+    for entry in ctx.history_entries(TEAM_UID):
+        if entry.get('teamevent_id') == event_id and not entry['deleted']:
+            ctx.toggle('deposit' if entry['type'] == 'Einzahlung' else 'order', entry['id'])
+    expect(money(ctx.team_stats(event_id)['event_balance']) == 0, 'test money not cancelled')
+    return {'refused_keeps_open': True, 'payout_capped': True, 'closed': True, 'transfers': 1}
 
 
 # --------------------------------------------------------------------------- Theke
@@ -1033,6 +1064,23 @@ def theke_team_stats_match_admin(ctx):
         expect(not diff, 'Theke and admin payload differ in %s' % diff)
         facts[str(event['id'])] = 'identical'
     return facts
+
+
+@test('theke')
+def theke_team_balance_is_spieltag_balance(ctx):
+    """The balance column of the Theke team history (selected Spieltag) shows the Spieltag balance."""
+    team = Theke(ctx, TEAM_UID)
+    label = team.client.get_json('user/simple-order/spieltag')['current_spieltag']
+    if not label:
+        raise Skip('team %d has no open Spieltag' % TEAM_UID)
+    event = next(e for e in ctx.open_team_events() if e['label'] == label)
+    html = team.client.get('user/simple-order').text
+    shown = re.search(r'<b>(-?[\d.]*\d,\d\d)\s€</b>', html[html.find('Kontostand'):])
+    expect(shown, 'no balance in the Theke team history')
+    shown = money(shown.group(1).replace('.', '').replace(',', '.'))
+    expected = money(ctx.team_stats(event['id'])['event_balance'])
+    expect(shown == expected, 'Theke shows %.2f, Spieltag balance is %.2f' % (shown, expected))
+    return {'~balance': shown}
 
 
 @test('theke')

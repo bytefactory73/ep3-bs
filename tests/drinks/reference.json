@@ -309,6 +309,20 @@
       "~guest_donations": 0
     }
   },
+  "read_history_balances": {
+    "1": {
+      "~balance": 0.0,
+      "~entries": 0
+    },
+    "4": {
+      "~balance": 26.9,
+      "~entries": 101
+    },
+    "992": {
+      "~balance": -11.0,
+      "~entries": 2
+    }
+  },
   "read_invalid_parameters": {
     "GET add-drink-booking": [
       405,
@@ -644,6 +658,9 @@
     "missing_password": "Bitte Passwort eingeben.",
     "theke_recipient_events": true,
     "wrong_password": "Passwort ist falsch."
+  },
+  "theke_team_balance_is_spieltag_balance": {
+    "~balance": -11.0
   },
   "theke_team_stats_match_admin": {
     "18": "identical"
