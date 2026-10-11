@@ -700,8 +700,28 @@ function postForm(url, fields, onSuccess, onFailure) {
                         <?= $deposit['comment'] !== '' ? $this->escapeHtml($deposit['comment']) : '&ndash;' ?>
                     <?php endif; ?>
                 </td>
-                <td style="text-align:right; font-weight:bold;">
+                <td style="text-align:right; font-weight:bold; white-space:nowrap;">
+                    <?php $paypalAmounts = $deposit['paypal_amounts'] ?? null; ?>
+                    <?php $paypalCorrection = $deposit['paypal_correction'] ?? null; ?>
+                    <?php if ($paypalCorrection): ?>
+                        <button type="button" class="paypal-fix-btn"
+                            data-paypal-id="<?= $this->escapeHtmlAttr($deposit['drinks_paypal_id']) ?>"
+                            data-amount="<?= $this->escapeHtmlAttr(number_format($deposit['amount'], 2, ',', '.')) ?>"
+                            data-new-amount="<?= $this->escapeHtmlAttr(number_format($paypalCorrection['new_amount'], 2, ',', '.')) ?>"
+                            data-fee="<?= $this->escapeHtmlAttr(number_format($paypalAmounts['fee'], 2, ',', '.')) ?>"
+                            data-difference="<?= $this->escapeHtmlAttr(number_format($paypalCorrection['difference'], 2, ',', '.')) ?>"
+                            data-spieltag="<?= $this->escapeHtmlAttr($deposit['closed_spieltag'] ?? '') ?>"
+                            title="<?= $this->escapeHtmlAttr('PayPal netto ' . number_format($paypalCorrection['new_amount'], 2, ',', '.') . ' €, gutgeschrieben ' . number_format($deposit['amount'], 2, ',', '.') . ' € – klicken zum Korrigieren') ?>"
+                            style="border:none; background:none; padding:0 4px 0 0; cursor:pointer; vertical-align:middle;">
+                            <svg width="18" height="16" viewBox="0 0 24 21" aria-label="PayPal-Betrag passt nicht"><path d="M12 1.5 L23 19.5 H1 Z" fill="#fbc02d" stroke="#c49000" stroke-width="1.5" stroke-linejoin="round"/><rect x="11" y="7" width="2" height="7" fill="#333"/><rect x="11" y="15.5" width="2" height="2" fill="#333"/></svg>
+                        </button>
+                    <?php endif; ?>
                     <?= number_format($deposit['amount'], 2, ',', '.') ?> €
+                    <?php if ($paypalAmounts && $paypalAmounts['fee'] > 0): ?>
+                        <div style="font-size:0.8em; font-weight:normal; color:#888;" title="<?= $this->escapeHtmlAttr('PayPal brutto ' . number_format($paypalAmounts['gross'], 2, ',', '.') . ' €, netto ' . number_format($paypalAmounts['net'], 2, ',', '.') . ' €') ?>">
+                            Gebühr <?= number_format($paypalAmounts['fee'], 2, ',', '.') ?> €
+                        </div>
+                    <?php endif; ?>
                 </td>
             </tr>
         <?php endforeach; ?>
@@ -876,6 +896,26 @@ function postForm(url, fields, onSuccess, onFailure) {
         }, function() {
             btn.disabled = false;
             btn.textContent = '<?= $this->t('Ignorieren') ?>';
+        });
+    });
+
+    // Warning triangle: set the deposit to the PayPal net amount
+    document.addEventListener('click', function(e) {
+        var btn = e.target.closest ? e.target.closest('.paypal-fix-btn') : null;
+        if (!btn) return;
+        var question = 'Einzahlung von ' + btn.getAttribute('data-amount') + ' € auf den PayPal-Nettobetrag '
+            + btn.getAttribute('data-new-amount') + ' € korrigieren (PayPal-Gebühr ' + btn.getAttribute('data-fee') + ' €)?';
+        if (btn.getAttribute('data-spieltag')) {
+            question += '\n\nDie Einzahlung gehört zum abgeschlossenen Spieltag „' + btn.getAttribute('data-spieltag')
+                + '“. Dessen Saldo ändert sich um ' + btn.getAttribute('data-difference') + ' €.';
+        }
+        if (!window.confirm(question)) return;
+        btn.disabled = true;
+        postForm('<?= $this->url('user/fix-paypal-deposit') ?>', { paypal_id: btn.getAttribute('data-paypal-id') }, function() {
+            location.reload();
+        }, function(error) {
+            btn.disabled = false;
+            alert(error === null ? 'Unerwartete Antwort vom Server.' : (error || 'Korrektur fehlgeschlagen.'));
         });
     });
 

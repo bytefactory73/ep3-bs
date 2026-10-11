@@ -158,8 +158,9 @@ class PaypalTransactionManager
             return null;
         }
         try {
-            $row = $this->dbAdapter->query('SELECT * FROM drinks_paypal WHERE id = ? LIMIT 1', [$id])->current();
-            return $row ?: null;
+            // toArray(): a plain array (current() would be an ArrayObject)
+            $rows = $this->dbAdapter->query('SELECT * FROM drinks_paypal WHERE id = ? LIMIT 1', [$id])->toArray();
+            return $rows ? $rows[0] : null;
         } catch (\Throwable $e) {
             return null;
         }
@@ -380,7 +381,7 @@ class PaypalTransactionManager
              AND LOWER(COALESCE(d.comment, "")) LIKE "%paypal%"
              ORDER BY ABS(TIMESTAMPDIFF(SECOND, d.deposit_time, ?)) ASC
              LIMIT 1',
-            [(int)$userId, (float)$transaction['amount'], $this->grossAmount($transaction), $receivedAt, $receivedAt, $receivedAt]
+            [(int)$userId, (float)$transaction['amount'], $this->amountsOf($transaction)['gross'], $receivedAt, $receivedAt, $receivedAt]
         )->current();
         return ($row && !empty($row['id'])) ? $row : null;
     }
@@ -398,16 +399,17 @@ class PaypalTransactionManager
             'SELECT d.id FROM drink_deposits d WHERE ' . self::UNCLAIMED_DEPOSIT_NEAR_SQL . '
              AND LOWER(COALESCE(d.comment, "")) NOT LIKE "%paypal%"
              LIMIT 1',
-            [(int)$userId, (float)$transaction['amount'], $this->grossAmount($transaction), $receivedAt, $receivedAt]
+            [(int)$userId, (float)$transaction['amount'], $this->amountsOf($transaction)['gross'], $receivedAt, $receivedAt]
         )->current();
         return ($row && !empty($row['id']));
     }
 
     /**
-     * What the payer sent before PayPal's fee ('amount' is the net credit), from the stored
-     * Reporting API data or the PayPal email; the net amount if neither tells.
+     * Amounts of a PayPal transaction row: ['gross' (what the payer sent), 'fee' (positive),
+     * 'net' (what the club received), 'synced' (true if they come from the PayPal account, i.e.
+     * the Reporting API data; otherwise from the email or the stored amount)].
      */
-    private function grossAmount(array $transaction)
+    public function amountsOf(array $transaction)
     {
         $json = json_decode((string)$transaction['transaction_json'], true);
         $detail = null;
@@ -417,18 +419,73 @@ class PaypalTransactionManager
             $detail = $this->getMatchingReportingTransactionDetail($json['paypal_api_data']['data'], trim((string)$transaction['paypal_transaction_id']));
         }
         if ($detail !== null) {
-            $gross = $this->extractReportingFields($detail)['gross'];
-            if ($gross !== null) {
-                return MoneyCalculator::roundMoney($gross);
+            $fields = $this->extractReportingFields($detail);
+            if ($fields['gross'] !== null) {
+                return $this->amounts($fields['gross'], abs($fields['fee']), true);
             }
         }
         if (isset($json['body'])) {
             $gross = $this->findAmount($json['body']);
             if ($gross !== null) {
-                return $gross;
+                return $this->amounts($gross, $this->findFee($json['body']), false);
             }
         }
-        return MoneyCalculator::roundMoney($transaction['amount']);
+        return $this->amounts($transaction['amount'], 0.0, false);
+    }
+
+    private function amounts($gross, $fee, $synced)
+    {
+        $gross = MoneyCalculator::roundMoney($gross);
+        $fee = MoneyCalculator::roundMoney($fee);
+        return ['gross' => $gross, 'fee' => $fee, 'net' => MoneyCalculator::subtract($gross, $fee), 'synced' => $synced];
+    }
+
+    /**
+     * Set the deposit linked to a PayPal transaction to the net amount from the PayPal account
+     * (deposits credited gross before fees were taken into account). Returns ['success',
+     * 'deposit_id', 'old_amount', 'new_amount'] or ['success' => false, 'error' =>
+     * 'not_found' | 'not_linked' | 'not_synced' | 'deposit_not_found' | 'already_correct'].
+     */
+    public function correctLinkedDeposit($paypalId)
+    {
+        $row = $this->getById($paypalId);
+        if (!$row) {
+            return ['success' => false, 'error' => 'not_found'];
+        }
+        $depositId = (int)$row['linked_deposit_id'];
+        if ($depositId <= 0) {
+            return ['success' => false, 'error' => 'not_linked'];
+        }
+        $amounts = $this->amountsOf($row);
+        if (!$amounts['synced']) {
+            return ['success' => false, 'error' => 'not_synced'];
+        }
+        $deposit = $this->dbAdapter->query(
+            'SELECT amount FROM drink_deposits WHERE id = ? AND (deleted IS NULL OR deleted = 0)',
+            [$depositId]
+        )->current();
+        if (!$deposit) {
+            return ['success' => false, 'error' => 'deposit_not_found'];
+        }
+        $oldAmount = MoneyCalculator::roundMoney($deposit['amount']);
+        if (MoneyCalculator::toCents($oldAmount) === MoneyCalculator::toCents($amounts['net'])) {
+            return ['success' => false, 'error' => 'already_correct'];
+        }
+
+        $connection = $this->dbAdapter->getDriver()->getConnection();
+        $connection->beginTransaction();
+        try {
+            $this->dbAdapter->query('UPDATE drink_deposits SET amount = ? WHERE id = ?', [$amounts['net'], $depositId]);
+            $this->dbAdapter->query(
+                'UPDATE drinks_paypal SET amount = ?, transaction_note = ?, processed_at = NOW() WHERE id = ?',
+                [$amounts['net'], $this->appendFeeNote((string)$row['transaction_note'], $amounts['fee']), (int)$row['id']]
+            );
+            $connection->commit();
+        } catch (\Throwable $e) {
+            $connection->rollback();
+            throw $e;
+        }
+        return ['success' => true, 'deposit_id' => $depositId, 'old_amount' => $oldAmount, 'new_amount' => $amounts['net']];
     }
 
     /**

@@ -77,6 +77,7 @@ return [
                     'paypal-history-import' => $route('/paypal-history-import', 'triggerPaypalHistoryImport'),
                     'emails-import' => $route('/emails-import', 'triggerEmailsImport'),
                     'create-deposit-from-paypal' => $route('/create-deposit-from-paypal', 'createDepositFromPaypal'),
+                    'fix-paypal-deposit' => $route('/fix-paypal-deposit', 'fixPaypalDeposit'),
                     'reassign-paypal-transaction' => $route('/reassign-paypal-transaction', 'reassignPaypalTransaction'),
                     'ignore-paypal-transaction' => $route('/ignore-paypal-transaction', 'ignorePaypalTransaction'),
 

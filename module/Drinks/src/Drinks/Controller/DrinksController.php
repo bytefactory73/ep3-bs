@@ -1308,6 +1308,15 @@ class DrinksController extends AbstractActionController
         $depositSql .= ' ORDER BY deposit_time ASC, id ASC';
         $depositRows = iterator_to_array($dbAdapter->query($depositSql, $depositParams));
 
+        $paypalManager = $serviceManager->get('Drinks\\Manager\\PaypalTransactionManager');
+        // Closed Spieltage: correcting one of their deposits changes a settled balance
+        $closedTeamEventLabels = [];
+        if (DbSchema::hasTeamEventClosedColumn($dbAdapter)) {
+            foreach ($dbAdapter->query('SELECT id, comment FROM drinks_teamevents WHERE closed = 1', []) as $teamEventRow) {
+                $closedTeamEventLabels[(int)$teamEventRow['id']] = trim((string)$teamEventRow['comment']);
+            }
+        }
+
         $depositEntries = [];
         $depositPaypalInfo = [];
         $depositIds = [];
@@ -1320,10 +1329,11 @@ class DrinksController extends AbstractActionController
         if (!empty($depositIds)) {
             $placeholders = implode(',', array_fill(0, count($depositIds), '?'));
             try {
-                $paypalLinkedRows = iterator_to_array($dbAdapter->query(
-                    'SELECT id, linked_deposit_id, payer_email, linked_user_id, state, transaction_status, paypal_transaction_id, transaction_note FROM drinks_paypal WHERE linked_deposit_id IN (' . $placeholders . ')',
+                // toArray(): plain arrays, as amountsOf() expects (iterating yields ArrayObjects)
+                $paypalLinkedRows = $dbAdapter->query(
+                    'SELECT id, linked_deposit_id, payer_email, linked_user_id, state, transaction_status, paypal_transaction_id, transaction_note, transaction_json, amount FROM drinks_paypal WHERE linked_deposit_id IN (' . $placeholders . ')',
                     $depositIds
-                ));
+                )->toArray();
                 foreach ($paypalLinkedRows as $paypalLinkedRow) {
                     $linkedDepositId = isset($paypalLinkedRow['linked_deposit_id']) ? (int)$paypalLinkedRow['linked_deposit_id'] : 0;
                     if ($linkedDepositId > 0 && !isset($depositPaypalInfo[$linkedDepositId])) {
@@ -1342,6 +1352,7 @@ class DrinksController extends AbstractActionController
                             'paypal_status' => isset($paypalLinkedRow['transaction_status']) ? trim((string)$paypalLinkedRow['transaction_status']) : '',
                             'paypal_transaction_id' => isset($paypalLinkedRow['paypal_transaction_id']) ? trim((string)$paypalLinkedRow['paypal_transaction_id']) : null,
                             'transaction_note' => trim((string)($paypalLinkedRow['transaction_note'] ?? '')),
+                            'amounts' => $paypalManager->amountsOf($paypalLinkedRow),
                         ];
                     }
                 }
@@ -1361,6 +1372,15 @@ class DrinksController extends AbstractActionController
 
             $depositId = isset($depositRow['id']) ? (int)$depositRow['id'] : 0;
             $paypalInfo = isset($depositPaypalInfo[$depositId]) ? $depositPaypalInfo[$depositId] : null;
+            // Deposit that differs from the net amount the PayPal account reports (credited gross)
+            $paypalCorrection = null;
+            if ($paypalInfo !== null && $paypalInfo['amounts']['synced']
+                && MoneyCalculator::toCents($depositRow['amount']) !== MoneyCalculator::toCents($paypalInfo['amounts']['net'])) {
+                $paypalCorrection = [
+                    'new_amount' => $paypalInfo['amounts']['net'],
+                    'difference' => MoneyCalculator::subtract($paypalInfo['amounts']['net'], $depositRow['amount']),
+                ];
+            }
             $depositEntries[] = [
                 'id' => $depositId,
                 'user_id' => $uid,
@@ -1378,12 +1398,15 @@ class DrinksController extends AbstractActionController
                 'paypal_match_user_ids' => $paypalInfo !== null ? ($paypalInfo['paypal_match_user_ids'] ?? []) : [],
                 'paypal_transaction_id' => $paypalInfo !== null ? $paypalInfo['paypal_transaction_id'] : null,
                 'paypal_note' => $paypalInfo !== null ? ($paypalInfo['transaction_note'] ?? '') : '',
+                'paypal_amounts' => $paypalInfo !== null ? $paypalInfo['amounts'] : null,
+                'paypal_correction' => $paypalCorrection,
+                'closed_spieltag' => isset($closedTeamEventLabels[(int)$depositRow['teamevent_id']]) ? $closedTeamEventLabels[(int)$depositRow['teamevent_id']] : '',
             ];
         }
 
         // Append PayPal transactions: show those linked to a user as additional deposit rows
         try {
-            foreach ($serviceManager->get('Drinks\\Manager\\PaypalTransactionManager')->getUnlinked(500) as $p) {
+            foreach ($paypalManager->getUnlinked(500) as $p) {
                 $linkedUid = isset($p['linked_user_id']) ? (int)$p['linked_user_id'] : 0;
                 $payerEmail = isset($p['payer_email']) ? trim((string)$p['payer_email']) : '';
                 $matchUserIds = [];
@@ -1453,6 +1476,7 @@ class DrinksController extends AbstractActionController
                     'paypal_status' => isset($p['transaction_status']) ? trim((string)$p['transaction_status']) : '',
                     'payer_email' => $payerEmail,
                     'paypal_note' => $transactionNote,
+                    'paypal_amounts' => $paypalManager->amountsOf($p),
                 ];
             }
         } catch (\Throwable $e) {
@@ -1840,6 +1864,30 @@ class DrinksController extends AbstractActionController
         $this->getDrinkManager()->notifyDeposit($userId, $creditResult['amount'], $creditResult['comment'], @$this->getServiceLocator());
 
         return $this->jsonResponse(['success' => true, 'deposit_id' => $creditResult['deposit_id']]);
+    }
+
+    /**
+     * Thekenadmin AJAX: set the deposit of a PayPal transaction to the net amount from the
+     * PayPal account (deposits credited gross before PayPal fees were taken into account)
+     */
+    public function fixPaypalDepositAction()
+    {
+        if ($error = $this->rejectNonThekenadmin() ?: $this->rejectNonPost()) {
+            return $error;
+        }
+        $result = $this->service('Drinks\Manager\PaypalTransactionManager')->correctLinkedDeposit((int)$this->params()->fromPost('paypal_id', 0));
+        if (empty($result['success'])) {
+            $messages = [
+                'not_found' => [404, 'PayPal-Zahlung nicht gefunden.'],
+                'not_linked' => [409, 'PayPal-Zahlung ist keiner Einzahlung zugeordnet.'],
+                'not_synced' => [409, 'PayPal-Zahlung ist noch nicht mit dem PayPal-Konto abgeglichen.'],
+                'deposit_not_found' => [409, 'Die zugeordnete Einzahlung gibt es nicht mehr.'],
+                'already_correct' => [409, 'Die Einzahlung stimmt bereits mit dem PayPal-Nettobetrag überein.'],
+            ];
+            list($status, $message) = $messages[$result['error']];
+            return $this->jsonError($status, $message);
+        }
+        return $this->jsonResponse($result);
     }
 
     /**

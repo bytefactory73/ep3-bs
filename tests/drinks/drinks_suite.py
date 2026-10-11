@@ -233,7 +233,7 @@ JSON_ENDPOINTS = [
     ('POST', 'user/set-user-drinks-settings'), ('GET', 'user/get-user-deposits-data'),
     ('GET', 'user/get-user-team-event-stats-data'), ('POST', 'user/update-user-history-team-event'),
     ('POST', 'user/create-team-event'), ('POST', 'user/paypal-fetch'), ('POST', 'user/paypal-history-import'),
-    ('POST', 'user/emails-import'), ('POST', 'user/create-deposit-from-paypal'),
+    ('POST', 'user/emails-import'), ('POST', 'user/create-deposit-from-paypal'), ('POST', 'user/fix-paypal-deposit'),
     ('POST', 'user/reassign-paypal-transaction'), ('POST', 'user/ignore-paypal-transaction'),
     ('POST', 'user/send-money'), ('GET', 'user/money-recipient-team-events'),
     ('POST', 'user/bookings/submit-order'), ('POST', 'user/bookings/drop-order'),
@@ -404,6 +404,12 @@ def read_deposit_overview_variants(ctx):
         expect(resp.status == 200, 'deposit-overview %s: HTTP %d' % (query, resp.status))
         page_facts(resp)
         facts[json.dumps(query)] = resp.status
+    # PayPal deposits keep their label (the PayPal part fails quietly, only logged), and deposits
+    # that differ from the PayPal net amount get a correction button
+    year = ctx.admin.get('user/deposit-overview', **{'from': '2026-01-01', 'to': '2026-12-31'}).text
+    expect('class="paypal-badge"' in year, 'no PayPal labels in the deposit overview')
+    facts['~paypal_labels'] = year.count('class="paypal-badge"')
+    facts['~paypal_corrections'] = year.count('class="paypal-fix-btn"')
     return facts
 
 
