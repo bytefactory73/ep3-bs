@@ -6,29 +6,8 @@ final class MoneyCalculator
 {
     public static function roundMoney($amount, $precision = 2)
     {
-        return round((float)$amount, (int)$precision);
-    }
-
-    public static function floorMoney($amount, $precision = 2)
-    {
-        $precision = (int)$precision;
-        $factor = pow(10, $precision);
-        return floor(((float)$amount) * $factor) / $factor;
-    }
-
-    public static function splitAwayFromZero($amount, $parts)
-    {
-        $parts = (int)$parts;
-        if ($parts <= 0) {
-            return self::roundMoney($amount, 2);
-        }
-
-        // Round to cents first: 1.1 * 100 is 110.00000000000001 and ceil() would make it 111
-        $absoluteCents = abs(self::toCents($amount));
-        $shareCents = (int)ceil($absoluteCents / $parts);
-        $share = self::fromCents($shareCents);
-
-        return ((float)$amount) < 0 ? (0.0 - $share) : $share;
+        // + 0.0 turns -0.0 into 0.0, which would be shown as "-0,00 €"
+        return round((float)$amount, (int)$precision) + 0.0;
     }
 
     /**

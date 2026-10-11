@@ -3,6 +3,7 @@
 namespace Drinks\Accounting;
 
 use Base\Service\MoneyCalculator;
+use Drinks\Service\DbSchema;
 use Zend\Db\Adapter\Adapter;
 
 /**
@@ -46,19 +47,19 @@ class AccountLedger
     }
 
     /**
-     * PayPal payments assigned to the account but not yet credited as deposit.
+     * PayPal payments assigned to the account but not yet credited as deposit (0 on
+     * installations without PayPal import).
      */
     public function pendingPaypal($userId)
     {
-        try {
-            $row = $this->dbAdapter->query(
-                'SELECT COALESCE(SUM(amount), 0) AS total FROM drinks_paypal WHERE linked_user_id = ? AND linked_deposit_id IS NULL AND state != ?',
-                [(int)$userId, 'ignored']
-            )->current();
-            return MoneyCalculator::roundMoney($row ? $row['total'] : 0);
-        } catch (\Exception $e) {
+        if (!DbSchema::hasTable($this->dbAdapter, 'drinks_paypal')) {
             return 0.0;
         }
+        $row = $this->dbAdapter->query(
+            'SELECT COALESCE(SUM(amount), 0) AS total FROM drinks_paypal WHERE linked_user_id = ? AND linked_deposit_id IS NULL AND state != ?',
+            [(int)$userId, 'ignored']
+        )->current();
+        return MoneyCalculator::roundMoney($row['total']);
     }
 
     /**

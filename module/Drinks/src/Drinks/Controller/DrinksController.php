@@ -4,6 +4,7 @@ namespace Drinks\Controller;
 
 use Base\Service\MoneyCalculator;
 use Drinks\Accounting\AccountLedger;
+use Drinks\Accounting\DrinkSummary;
 use Drinks\Controller\Traits\JsonResponseTrait;
 use Drinks\Controller\Traits\MoneyTransferTrait;
 use Drinks\Controller\Traits\OrderResponseTrait;
@@ -347,29 +348,19 @@ class DrinksController extends AbstractActionController
         }
         $sql .= ' GROUP BY grp, user_id, drink_id
                 ORDER BY min_time ASC, user_id ASC, drink_id ASC';
-        $statement = $dbAdapter->query($sql);
-        $orders = [];
-        foreach ($statement->execute($params) as $row) {
-            $orders[] = $row;
+        $orderRows = [];
+        foreach ($dbAdapter->query($sql)->execute($params) as $row) {
+            $orderRows[] = $row;
         }
-        $orderMap = [];
-        foreach ($orders as $row) {
-            $grp = $row['grp'];
-            $uid = $row['user_id'];
-            $did = $row['drink_id'];
-            $count = (int)$row['quantity'];
-            $amount = isset($row['total_amount']) ? (float)$row['total_amount'] : 0;
-            $orderMap[$grp][$uid][$did] = [
-                'count' => $count > 0 ? $count : '',
-                'amount' => $count > 0 ? number_format($amount, 2, ',', '.') : '',
-            ];
+        $userAliases = [];
+        foreach ($users as $user) {
+            $userAliases[(int)$user->need('uid')] = $user->get('alias');
         }
+        $mode = $this->params()->fromQuery('mode', 'count');
 
         $viewVars = [
-            'drinks' => $drinks,
-            'users' => $users,
-            'orders' => $orderMap,
-            'mode' => $this->params()->fromQuery('mode', 'count'),
+            'table' => DrinkSummary::table($orderRows, $drinks, $userAliases, $group, $mode === 'amount', $showUsers === '1', $showEmptyCols === '1'),
+            'mode' => $mode,
             'from' => $from,
             'to' => $to,
             'quick' => $quick,
@@ -1237,7 +1228,8 @@ class DrinksController extends AbstractActionController
                 $paypalLinkedUsersByEmail[$emailKey] = array_values(array_unique(array_map('intval', $linkedUserIds)));
             }
         } catch (\Throwable $e) {
-            // Keep the overview functional if historical links cannot be read.
+            // Keep the overview usable without PayPal data, but leave a trace
+            error_log('deposit overview, PayPal links: ' . $e->getMessage());
         }
 
         $showTransfers = $this->params()->fromQuery('showTransfers', '0') === '1';
@@ -1354,7 +1346,7 @@ class DrinksController extends AbstractActionController
                     }
                 }
             } catch (\Throwable $e) {
-                // ignore paypal lookup failures for deposit overview
+                error_log('deposit overview, PayPal deposits: ' . $e->getMessage());
             }
         }
 
@@ -1464,7 +1456,7 @@ class DrinksController extends AbstractActionController
                 ];
             }
         } catch (\Throwable $e) {
-            // ignore paypal errors to keep deposit overview stable
+            error_log('deposit overview, PayPal transactions: ' . $e->getMessage());
         }
 
         usort($depositEntries, function ($a, $b) {

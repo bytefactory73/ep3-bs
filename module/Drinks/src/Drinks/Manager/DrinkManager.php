@@ -45,13 +45,8 @@ class DrinkManager
 
     private function getMoneyOption($serviceManager, $key)
     {
-        try {
-            $optionManager = $serviceManager->get('Base\\Manager\\OptionManager');
-            $value = str_replace(',', '.', trim((string)$optionManager->get($key, '0')));
-            return round((float)$value, 2);
-        } catch (\Exception $e) {
-            return 0.0;
-        }
+        $value = $serviceManager->get('Base\\Manager\\OptionManager')->get($key, '0');
+        return MoneyCalculator::roundMoney(str_replace(',', '.', trim((string)$value)));
     }
 
     /**
@@ -68,15 +63,11 @@ class DrinkManager
 
     public function isTeamAccount($userId)
     {
-        try {
-            $row = $this->dbAdapter->query(
-                'SELECT is_team FROM drink_aliases WHERE user_id = ?',
-                [(int)$userId]
-            )->current();
-            return $row && !empty($row['is_team']);
-        } catch (\Exception $e) {
-            return false;
-        }
+        $row = $this->dbAdapter->query(
+            'SELECT is_team FROM drink_aliases WHERE user_id = ?',
+            [(int)$userId]
+        )->current();
+        return $row && !empty($row['is_team']);
     }
 
     public function isThekenadmin($userId)
@@ -509,7 +500,7 @@ class DrinkManager
             return false;
         }
 
-        $balance = round($this->calculateUserDrinkBalance($userId, $serviceManager), 2);
+        $balance = $this->calculateUserDrinkBalance($userId, $serviceManager);
         if ($balance >= $this->getMoneyOption($serviceManager, 'drinks.account_balance_reminder_threshold')) {
             return false;
         }

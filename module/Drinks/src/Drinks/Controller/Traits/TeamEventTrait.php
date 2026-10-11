@@ -906,16 +906,10 @@ trait TeamEventTrait
                 continue;
             }
 
-            try {
-                $balance = $this->calculateTeamEventBalance($teamAdminUserId, $teamEventId, $teamEventLabel);
-            } catch (\Exception $e) {
-                $balance = 0.0;
-            }
-
             $result[] = [
                 'id' => $teamEventId,
                 'label' => $teamEventLabel,
-                'balance' => $balance,
+                'balance' => $this->calculateTeamEventBalance($teamAdminUserId, $teamEventId, $teamEventLabel),
                 'closed' => $this->isTeamEventClosedRow($row) ? 1 : 0,
                 'team_admin_user_id' => $teamAdminUserId,
             ];

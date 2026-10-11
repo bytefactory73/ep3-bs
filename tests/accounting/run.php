@@ -13,9 +13,11 @@ require $root . '/module/Base/src/Base/Service/MoneyCalculator.php';
 require $root . '/module/Drinks/src/Drinks/Accounting/AccountLedger.php';
 require $root . '/module/Drinks/src/Drinks/Accounting/TeamEventLedger.php';
 require $root . '/module/Drinks/src/Drinks/Accounting/Settlement.php';
+require $root . '/module/Drinks/src/Drinks/Accounting/DrinkSummary.php';
 
 use Base\Service\MoneyCalculator;
 use Drinks\Accounting\AccountLedger;
+use Drinks\Accounting\DrinkSummary;
 use Drinks\Accounting\Settlement;
 use Drinks\Accounting\TeamEventLedger;
 
@@ -79,6 +81,7 @@ check('roundAwayFromZero(3.331) = 3.34', MoneyCalculator::roundAwayFromZero(3.33
 check('roundAwayFromZero(1.1) stays 1.10 (float noise)', MoneyCalculator::roundAwayFromZero(1.1), 1.1);
 check('roundAwayFromZero(-2.2 / 2) = -1.10', MoneyCalculator::roundAwayFromZero(-2.2 / 2), -1.1);
 check('roundAwayFromZero(0) = 0', MoneyCalculator::roundAwayFromZero(0), 0.0);
+check('no negative zero (shown as "-0,00 €")', [(string)MoneyCalculator::roundMoney(-0.001), (string)MoneyCalculator::fromCents(-0.0), (string)MoneyCalculator::roundMoney(-0.0)], ['0', '0', '0']);
 
 // ------------------------------------------------------------------ AccountLedger helpers
 
@@ -184,6 +187,40 @@ check('no requests', Settlement::allocate(3.0, []), [
     'rows' => [], 'requested_refund' => 0.0, 'requested_charge' => 0.0, 'payout_total' => 0.0,
     'collected_total' => 0.0, 'day_balance' => 3.0, 'remaining' => 3.0,
 ]);
+
+// ------------------------------------------------------------------ DrinkSummary
+
+$drinks = [['id' => 1, 'name' => 'Cola'], ['id' => 2, 'name' => 'Bier'], ['id' => 3, 'name' => 'Wasser']];
+$orderRow = function ($grp, $uid, $drinkId, $quantity, $total) {
+    return ['grp' => $grp, 'user_id' => $uid, 'drink_id' => $drinkId, 'quantity' => $quantity, 'total_amount' => $total];
+};
+$orderRows = [
+    $orderRow('2026-10-05', 1, 1, 3, '0.30'),   // Monday
+    $orderRow('2026-10-05', 2, 1, 1, '0.10'),
+    $orderRow('2026-10-06', 1, 2, 2, '0.20'),   // Tuesday
+    $orderRow('2026-10-12', 2, 2, 1, '2.50'),   // Monday
+];
+$users = [2 => 'Anna', 1 => 'Bernd'];
+
+$table = DrinkSummary::table($orderRows, $drinks, $users, 'date', true, true, false);
+check('summary: drinks without orders have no column', array_column($table['drinks'], 'id'), [1, 2]);
+check('summary: newest date first, users in given order', array_map(function ($row) {
+    return [$row['label'], $row['user']];
+}, $table['rows']), [['2026-10-12 (Mo)', 'Anna'], ['2026-10-06 (Di)', 'Bernd'], ['2026-10-05 (Mo)', 'Anna'], ['2026-10-05 (Mo)', 'Bernd']]);
+check('summary: amounts added in cents (0.10 + 0.20 + 0.30)', [$table['column_totals'], $table['total']], [[1 => 0.4, 2 => 2.7], 3.1]);
+
+$table = DrinkSummary::table($orderRows, $drinks, $users, 'date', false, false, true);
+check('summary: counts without users, empty columns kept', [array_column($table['drinks'], 'id'), array_column($table['rows'], 'total'), $table['total']], [[1, 2, 3], [1, 2, 4], 7]);
+check('summary: column total of an empty column', $table['column_totals'][3], 0);
+
+$table = DrinkSummary::table($orderRows, $drinks, $users, 'weekday', true, false, false);
+check('summary: weekday adds up all dates, Sunday first', array_map(function ($row) {
+    return [$row['label'], $row['cells'], $row['total']];
+}, $table['rows']), [['Mo', [1 => 0.4, 2 => 2.5], 2.9], ['Di', [2 => 0.2], 0.2]]);
+
+$table = DrinkSummary::table([$orderRow('2026-10', 1, 1, 2, '3.00'), $orderRow('2025-10', 1, 1, 1, '1.50')], $drinks, $users, 'month', true, true, false);
+check('summary: same month of different years stays apart', array_column($table['rows'], 'label'), ['2026-10', '2025-10']);
+check('summary: users not in the list get no row', DrinkSummary::table([$orderRow('2026-10-05', 9, 1, 1, '1.00')], $drinks, $users, 'date', true, true, false)['rows'], []);
 
 echo $failures === 0 ? "OK    $checks checks\n" : "$failures of $checks checks failed\n";
 exit($failures === 0 ? 0 : 1);
