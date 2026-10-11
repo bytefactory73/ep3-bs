@@ -96,6 +96,10 @@
       401,
       "Not authenticated."
     ],
+    "POST user/simple-order/settlement-preview": [
+      401,
+      "Not authenticated."
+    ],
     "POST user/simple-order/submit-order": [
       401,
       "Not authenticated."
@@ -153,6 +157,10 @@
       "Not authenticated."
     ],
     "POST user/teamlead-order-relevance": [
+      401,
+      "Not authenticated."
+    ],
+    "POST user/teamlead-settlement-preview": [
       401,
       "Not authenticated."
     ],
@@ -224,8 +232,18 @@
   },
   "destructive_close_spieltag_with_settlement": {
     "closed": true,
-    "failed_settlement_keeps_open": true,
+    "payout_capped": true,
+    "refused_keeps_open": true,
     "transfers": 1
+  },
+  "destructive_create_and_close_spieltag": {
+    "closed": true,
+    "create_closed_error": "Dieser Spieltag ist bereits abgeschlossen.",
+    "settlement": {
+      "success": true,
+      "total_refund": 0,
+      "transfers": []
+    }
   },
   "paypal_emails_import": {
     "result_keys": [
@@ -305,6 +323,18 @@
   },
   "read_extra_costs_and_guest_donations_lists": {
     "18": {
+      "~extra_costs": 0,
+      "~guest_donations": 0
+    },
+    "24": {
+      "~extra_costs": 0,
+      "~guest_donations": 0
+    },
+    "25": {
+      "~extra_costs": 0,
+      "~guest_donations": 0
+    },
+    "26": {
       "~extra_costs": 0,
       "~guest_donations": 0
     }
@@ -498,6 +528,9 @@
   },
   "read_team_deposits_data": {
     "team_event_ids": [
+      26,
+      25,
+      24,
       18
     ],
     "team_event_shape": [
@@ -509,13 +542,19 @@
     ],
     "~balance": -11.0,
     "~team_event_balances": {
-      "18": -11.0
+      "18": -11.0,
+      "24": 0.0,
+      "25": 0.0,
+      "26": 0.0
     }
   },
   "read_team_stats_admin": {
     "18": {
       "can_close_team_event": true,
       "event_ids": [
+        26,
+        25,
+        24,
         18
       ],
       "event_shape": [
@@ -573,16 +612,175 @@
         ]
       ],
       "~total_sum": -11.0
+    },
+    "24": {
+      "can_close_team_event": true,
+      "event_ids": [
+        26,
+        25,
+        24,
+        18
+      ],
+      "event_shape": [
+        "can_manage_members",
+        "closed",
+        "id",
+        "label",
+        "role",
+        "team_admin_user_id",
+        "team_alias"
+      ],
+      "shape": [
+        "account_balance",
+        "active_members",
+        "can_close_team_event",
+        "can_manage_members",
+        "contributions_total",
+        "event_balance",
+        "events",
+        "extra_costs",
+        "guest_donation_total",
+        "guest_donations",
+        "is_editable",
+        "member_candidates",
+        "members",
+        "open_spieltage",
+        "rows",
+        "settlement_requests",
+        "spieltag",
+        "spieltage",
+        "success",
+        "team_alias",
+        "team_event_closed",
+        "team_event_id",
+        "team_uid",
+        "total_sum",
+        "user_role"
+      ],
+      "spieltag": "SMOKETEST 2026-10-11 15:28:08",
+      "team_alias": "U18-1",
+      "~account_balance": -11.0,
+      "~active_members": [],
+      "~rows": [],
+      "~total_sum": 0.0
+    },
+    "25": {
+      "can_close_team_event": true,
+      "event_ids": [
+        26,
+        25,
+        24,
+        18
+      ],
+      "event_shape": [
+        "can_manage_members",
+        "closed",
+        "id",
+        "label",
+        "role",
+        "team_admin_user_id",
+        "team_alias"
+      ],
+      "shape": [
+        "account_balance",
+        "active_members",
+        "can_close_team_event",
+        "can_manage_members",
+        "contributions_total",
+        "event_balance",
+        "events",
+        "extra_costs",
+        "guest_donation_total",
+        "guest_donations",
+        "is_editable",
+        "member_candidates",
+        "members",
+        "open_spieltage",
+        "rows",
+        "settlement_requests",
+        "spieltag",
+        "spieltage",
+        "success",
+        "team_alias",
+        "team_event_closed",
+        "team_event_id",
+        "team_uid",
+        "total_sum",
+        "user_role"
+      ],
+      "spieltag": "SMOKETEST A4 2026-10-11 15:28:10",
+      "team_alias": "U18-1",
+      "~account_balance": -11.0,
+      "~active_members": [
+        1
+      ],
+      "~rows": [],
+      "~total_sum": 0.0
+    },
+    "26": {
+      "can_close_team_event": true,
+      "event_ids": [
+        26,
+        25,
+        24,
+        18
+      ],
+      "event_shape": [
+        "can_manage_members",
+        "closed",
+        "id",
+        "label",
+        "role",
+        "team_admin_user_id",
+        "team_alias"
+      ],
+      "shape": [
+        "account_balance",
+        "active_members",
+        "can_close_team_event",
+        "can_manage_members",
+        "contributions_total",
+        "event_balance",
+        "events",
+        "extra_costs",
+        "guest_donation_total",
+        "guest_donations",
+        "is_editable",
+        "member_candidates",
+        "members",
+        "open_spieltage",
+        "rows",
+        "settlement_requests",
+        "spieltag",
+        "spieltage",
+        "success",
+        "team_alias",
+        "team_event_closed",
+        "team_event_id",
+        "team_uid",
+        "total_sum",
+        "user_role"
+      ],
+      "spieltag": "SMOKETEST 2026-10-11 15:28:34",
+      "team_alias": "U18-1",
+      "~account_balance": -11.0,
+      "~active_members": [],
+      "~rows": [],
+      "~total_sum": 0.0
     }
   },
   "read_team_stats_member_view": {
     "status": 200,
     "~events": [
+      25,
       22
     ]
   },
   "read_team_stats_teamlead_matches_admin": {
-    "18": "identical"
+    "18": "identical",
+    "24": "identical",
+    "25": "identical",
+    "26": "identical"
   },
   "read_user_deposits_data": {
     "entry_shape_deposit": [
@@ -663,7 +861,10 @@
     "~balance": -11.0
   },
   "theke_team_stats_match_admin": {
-    "18": "identical"
+    "18": "identical",
+    "24": "identical",
+    "25": "identical",
+    "26": "identical"
   },
   "theke_team_writes_roundtrip": {
     "foreign_team_spieltag_error": "Spieltag nicht gefunden.",
