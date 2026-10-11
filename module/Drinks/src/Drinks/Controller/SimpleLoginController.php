@@ -1,6 +1,7 @@
 <?php
 namespace Drinks\Controller;
 
+use Drinks\Accounting\AccountLedger;
 use Drinks\Controller\Traits\JsonResponseTrait;
 use Drinks\Controller\Traits\MoneyTransferTrait;
 use Drinks\Controller\Traits\OrderResponseTrait;
@@ -196,57 +197,23 @@ class SimpleLoginController extends AbstractActionController
             $currentTeamEventId = isset($session->current_teamevent_id) ? (int)$session->current_teamevent_id : 0;
         }
 
-        $drinkHistory = [];
-        foreach ($this->service('Drinks\Manager\DrinkDepositManager')->getByUser($userId) as $deposit) {
-            $drinkHistory[] = [
-                'type' => 'deposit',
-                'amount' => $deposit['amount'],
-                'datetime' => $deposit['deposit_time'],
-                'id' => $deposit['id'],
-                'comment' => isset($deposit['comment']) ? trim((string)$deposit['comment']) : '',
-                'teamevent_id' => isset($deposit['teamevent_id']) ? (int)$deposit['teamevent_id'] : 0,
-            ];
-        }
-        foreach ($this->service('Drinks\Manager\DrinkOrderManager')->getByUser($userId) as $order) {
-            $drinkId = isset($order['drink_id']) ? (int)$order['drink_id'] : null;
-            $comment = isset($order['comment']) ? trim((string)$order['comment']) : '';
-            // Sonstiges / transfers without comment show the drink name
-            if (DrinkManager::isCustomPriceDrink($drinkId) && $comment === '') {
-                $comment = $order['name'];
-            }
-            $drinkHistory[] = [
-                'type' => 'order',
-                'drink_id' => $drinkId,
-                'name' => $order['name'],
-                'quantity' => $order['quantity'],
-                'price' => $order['price'],
-                'total' => $order['quantity'] * $order['price'],
-                'datetime' => $order['order_time'],
-                'id' => $order['id'],
-                'deleted' => $order['deleted'],
-                'comment' => $comment,
-                'teamevent_id' => isset($order['teamevent_id']) ? (int)$order['teamevent_id'] : 0,
-            ];
-        }
-        if ($isTeamAccount && $currentTeamEventLabel !== '') {
-            // Team accounts only see the selected Spieltag
-            $drinkHistory = array_values(array_filter($drinkHistory, function ($entry) use ($currentTeamEventId, $currentTeamEventLabel) {
-                if ($currentTeamEventId > 0 && $entry['teamevent_id'] > 0) {
-                    return $entry['teamevent_id'] === $currentTeamEventId;
-                }
-                // Legacy entries without teamevent_id carry the Spieltag label as comment
-                return $entry['teamevent_id'] === 0 && $entry['comment'] !== '' && $entry['comment'] === $currentTeamEventLabel;
-            }));
-        }
-        usort($drinkHistory, function($a, $b) {
-            return strcmp($b['datetime'], $a['datetime']);
-        });
+        // Team accounts only see the selected Spieltag, individual accounts their orders of the last 18 hours
+        $history = $this->service('Drinks\Accounting\AccountLedger')->history(
+            $userId,
+            $isTeamAccount ? ['team_event_id' => $currentTeamEventId, 'team_event_label' => $currentTeamEventLabel] : []
+        );
+        $historyEntries = $this->drinksPageEntries($history['entries']);
+        $historyGroups = $isTeamAccount
+            ? AccountLedger::purchaseGroups($historyEntries)
+            : AccountLedger::purchaseGroups($historyEntries, false, time() - 18 * 3600);
 
         $teamEventCount = $db->query('SELECT COUNT(*) AS cnt FROM drinks_teamevents WHERE team_admin_user_id = ?', [$userId])->current();
 
         $viewModel = new ViewModel([
             'drinks' => $drinkManager->getAll($userId),
-            'drinkHistory' => $drinkHistory,
+            'drinkHistory' => array_reverse($historyEntries),
+            'historyGroups' => $historyGroups,
+            'historyBalance' => $history['balance'],
             'userName' => $userManager->get($userId)->get('alias'),
             'pendingPaypalAmount' => $drinkManager->getPendingPaypalAmount($userId),
             'minimumAccountBalance' => $drinkManager->getMinimumAccountBalance($serviceManager),

@@ -1239,19 +1239,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     var html = '<h2>Buchungs- und Einzahlungsverlauf</h2>' +
                         '<div style="margin-bottom:10px;"><label><input type="checkbox" id="show-storno-checkbox"' + (showStorno ? ' checked' : '') + '> Zeige Storno</label></div>';
-                    // All entries, oldest first: the per-day Kontostand below sums them up
-                    var allEntries = [];
-                    for (var day of history) {
-                        for (var entry of day.entries) {
-                            allEntries.push(entry);
-                        }
-                    }
-                    // Sort all entries by date+time ascending (oldest first)
-                    allEntries.sort(function(a, b) {
-                        var ad = (a.datetime || a.date || '');
-                        var bd = (b.datetime || b.date || '');
-                        return ad.localeCompare(bd);
-                    });
                     // Reverse days for display
                     var reversedDays = history.slice().reverse();
                     for (var day of reversedDays) {
@@ -1260,23 +1247,8 @@ document.addEventListener('DOMContentLoaded', function() {
                             return (!e.deleted) || (showStorno && !!e.deleted);
                         });
                         if (!hasEntries) continue;
-                        var daySum = day.entries
-                            .filter(e => !e.deleted)
-                            .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
                         html += '<div style="margin-top:18px; margin-bottom:8px; font-weight:bold; color:#1769aa;">' + escapeHtml(day.date) + '</div>';
                         html += '<div style="margin-left:32px;">';
-                        // Calculate per-day Kontostand: sum all non-deleted entries up to and including this day
-                        var dayEnd = day.date + ' 23:59:59';
-                        var dayBalance = 0;
-                        for (var j = 0; j < allEntries.length; j++) {
-                            var entry = allEntries[j];
-                            if (entry.deleted) continue;
-                            if ((entry.datetime && entry.datetime <= dayEnd) || (entry.date && entry.date <= day.date)) {
-                                var amount = parseFloat(entry.amount);
-                                if (isNaN(amount)) amount = 0;
-                                dayBalance += amount;
-                            }
-                        }
                         html += '<table class="default-table" style="margin-bottom:4px; text-align:left; margin-left:0; padding-left:16px;">';
                         // Show deposits (Einzahlung) first, oldest first
                         for (var i = 0; i < day.entries.length; i++) {
@@ -1354,9 +1326,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                         html += '<tr style="font-weight:bold;background:#fafdff;">' +
                             '<td style="text-align:left;">Tagessumme</td>' +
-                            '<td style="text-align:left;">' + formatCurrency(daySum) + '</td>' +
+                            '<td style="text-align:left;">' + formatCurrency(day.total) + '</td>' +
                             '<td style="text-align:left;">';
-                        html += '<span style="color:#2196f3;">Kontostand: ' + formatCurrency(dayBalance) + '</span>';
+                        html += '<span style="color:#2196f3;">Kontostand: ' + formatCurrency(day.balance) + '</span>';
                         html += '</td></tr>';
                         html += '</table>';
                         html += '</div>';

@@ -2,6 +2,7 @@
 
 namespace Drinks\Controller\Traits;
 
+use Drinks\Manager\DrinkManager;
 use Drinks\Manager\DrinkOrderManager;
 
 /**
@@ -9,6 +10,25 @@ use Drinks\Manager\DrinkOrderManager;
  */
 trait OrderResponseTrait
 {
+    /**
+     * AccountLedger::history() entries prepared for drinks.phtml: "Sonstiges" and transfers
+     * without comment show the drink name; with $userManager deposits name their creator.
+     */
+    protected function drinksPageEntries(array $entries, $userManager = null)
+    {
+        foreach ($entries as $index => $entry) {
+            if ($entry['type'] === 'order') {
+                if (DrinkManager::isCustomPriceDrink($entry['drink_id']) && $entry['comment'] === '') {
+                    $entries[$index]['comment'] = $entry['name'];
+                }
+            } elseif ($userManager && $entry['createdbyuserid'] > 0) {
+                $creator = $userManager->get($entry['createdbyuserid'], false);
+                $entries[$index]['createdby'] = $creator ? ($creator->get('alias') ?: $creator->get('name')) : null;
+            }
+        }
+        return $entries;
+    }
+
     /**
      * JSON response for a DrinkManager::addOrdersAndNotify() result.
      */

@@ -30,14 +30,7 @@ if ($partyMode['active']) {
 
 // Balance of the history shown below (for team accounts: the selected Spieltag); the order
 // form checks bookings against it.
-$historyBalance = 0;
-foreach (is_array($this->drinkHistory ?? null) ? $this->drinkHistory : [] as $entry) {
-    if ($entry['type'] === 'deposit') {
-        $historyBalance += $entry['amount'];
-    } elseif ($entry['type'] === 'order' && empty($entry['deleted'])) {
-        $historyBalance -= $entry['total'];
-    }
-}
+$historyBalance = (float)($this->historyBalance ?? 0);
 ?>
 <script>window.DRINKS_PAGE = <?= json_encode([
     'simpleOrderMode' => (bool)$simpleOrderMode,
@@ -784,96 +777,17 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
                 <?php endif; ?>
             </tr>
             <?php
-            $drinkHistory = array_reverse($this->drinkHistory);
-            // Prepare a flat list of top-level entries: day groups and deposits, sorted newest to oldest
-            $entriesByDay = [];
-            $deposits = [];
-            foreach ($drinkHistory as $entry) {
-                if ($entry['type'] === 'deposit') {
-                    $deposits[] = $entry;
-                } else if ($entry['type'] === 'order') {
-                    $date = date('Y-m-d', strtotime($entry['datetime']));
-                    if (!isset($entriesByDay[$date])) {
-                        $entriesByDay[$date] = [];
-                    }
-                    $entriesByDay[$date][] = $entry;
-                }
-            }
-            // Build a flat list of top-level items (date group or deposit), sorted oldest to newest for math
-            $topLevel = [];
-            if ($simpleOrderMode) {
-                if ($isTeamAccount) {
-                    foreach ($entriesByDay as $date => $orders) {
-                        if (count($orders) > 0) {
-                            $topLevel[] = [ 'type' => 'day', 'date' => $date, 'orders' => $orders ];
-                        }
-                    }
-                    foreach ($deposits as $deposit) {
-                        $topLevel[] = [ 'type' => 'deposit', 'datetime' => $deposit['datetime'], 'entry' => $deposit ];
-                    }
-                } else {
-                    // Individual accounts at the Theke only see orders of the last 18 hours
-                    $cutoff = time() - 18 * 3600;
-                    foreach ($entriesByDay as $date => $orders) {
-                        // Filter orders in this group by the configured simple-order window
-                        $recentOrders = array_filter($orders, function($entry) use ($cutoff) {
-                            return strtotime($entry['datetime']) >= $cutoff;
-                        });
-                        if (count($recentOrders) > 0) {
-                            $topLevel[] = [ 'type' => 'day', 'date' => $date, 'orders' => $recentOrders ];
-                        }
-                    }
-                }
-            } else {
-                foreach ($entriesByDay as $date => $orders) {
-                    $topLevel[] = [ 'type' => 'day', 'date' => $date, 'orders' => $orders ];
-                }
-                foreach ($deposits as $deposit) {
-                    $topLevel[] = [ 'type' => 'deposit', 'datetime' => $deposit['datetime'], 'entry' => $deposit ];
-                }
-            }
-            // Sort by date/datetime ascending (oldest to newest)
-            usort($topLevel, function($a, $b) {
-                $aTime = ($a['type'] === 'day') ? strtotime($a['date'] . ' 23:59:59') : strtotime($a['entry']['datetime']);
-                $bTime = ($b['type'] === 'day') ? strtotime($b['date'] . ' 23:59:59') : strtotime($b['entry']['datetime']);
-                return $aTime <=> $bTime;
-            });
-            // Calculate balances for each top-level group
-            $balance = 0;
-            $groupBalances = [];
-            foreach ($topLevel as $idx => $item) {
-                if ($item['type'] === 'day') {
-                    $dayTotalAmount = 0;
-                    foreach ($item['orders'] as $entry) {
-                        if (!empty($entry['deleted'])) continue; // skip deleted orders for group balance
-                        $dayTotalAmount += $entry['total'];
-                    }
-                    $balance -= $dayTotalAmount;
-                    $groupBalances[$idx] = $balance;
-                } else if ($item['type'] === 'deposit') {
-                    $amount = $item['entry']['amount'];
-                    $balance += $amount;
-                    $groupBalances[$idx] = $balance;
-                }
-            }
-            // Now render from newest to oldest
-            $renderOrder = array_reverse(array_keys($topLevel));
+            // Day groups of orders and deposits, newest first, with their balances (AccountLedger::purchaseGroups)
             $groupIndex = 0;
-            foreach ($renderOrder as $i) {
-                $item = $topLevel[$i];
-                $balanceAfter = $groupBalances[$i];
+            foreach ($this->historyGroups ?? [] as $item) {
+                $balanceAfter = $item['balance'];
                 if ($item['type'] === 'day') {
                     $date = $item['date'];
                     $orders = $item['orders'];
                     $collapsedId = 'order-day-' . $groupIndex;
                     $isOpen = ($groupIndex === 0);
-                    $dayDrinkSum = 0;
-                    $dayTotalAmount = 0;
-                    foreach ($orders as $entry) {
-                        if (!empty($entry['deleted'])) continue; // skip deleted orders for day sum
-                        $dayDrinkSum += (int)$entry['quantity'];
-                        $dayTotalAmount += $entry['total'];
-                    }
+                    $dayDrinkSum = $item['quantity'];
+                    $dayTotalAmount = $item['total'];
                     echo '<tr class="order-day-header" style="background:#f5faff; cursor:pointer;" data-group="' . $collapsedId . '">';
                     echo '<td style="width:24px; text-align:center;">';
                     echo '<span class="collapse-toggle" data-group="' . $collapsedId . '" style="display:inline-block; width:20px; height:20px; line-height:20px; border-radius:50%; background:#2196f3; color:#fff; font-weight:bold; cursor:pointer;">' . ($isOpen ? '–' : '+') . '</span>';
@@ -884,12 +798,7 @@ $showHistory = isset($this->drinkHistory) && (count($this->drinkHistory) > 0);
                     echo '<td style="font-weight:bold;">' . $this->priceFormat(-$dayTotalAmount * 100.0, null, null, null, null, null, true, false, false) . '</td>';
                     if ($showBalanceColumn) echo '<td style="font-weight:bold;'.($balanceAfter < 0 ? ' color:#d32f2f;' : '').'">' . $this->priceFormat($balanceAfter * 100.0, null, null, null, null, null, true, true, false) . '</td>';
                     echo '</tr>';
-                    // Sort orders inside the group newest to oldest
-                    $ordersSorted = $orders;
-                    usort($ordersSorted, function($a, $b) {
-                        return strtotime($b['datetime']) <=> strtotime($a['datetime']);
-                    });
-                    foreach ($ordersSorted as $entry) {
+                    foreach ($orders as $entry) {
                         $time = date('H:i', strtotime($entry['datetime']));
                         $rowStyle = $isOpen ? '' : 'display:none;';
                         $isDeleted = $entry['deleted'];

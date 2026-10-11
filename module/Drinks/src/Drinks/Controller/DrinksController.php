@@ -43,49 +43,12 @@ class DrinksController extends AbstractActionController
         $userManager = $this->service('User\Manager\UserManager');
         $userId = $user->need('uid');
 
-        $drinkOrders = iterator_to_array($drinkOrderManager->getByUser($userId));
-        $drinkDeposits = iterator_to_array($this->service('Drinks\Manager\DrinkDepositManager')->getByUser($userId));
-
         $aliasRow = $this->service('Zend\Db\Adapter\Adapter')->query('SELECT enabled, thekenadmin FROM drink_aliases WHERE user_id = ?', [$userId])->current();
         $drinksEnabled = ($aliasRow && isset($aliasRow['enabled']) && (int)$aliasRow['enabled'] === 1);
         $thekenadmin = ($aliasRow && isset($aliasRow['thekenadmin']) && (int)$aliasRow['thekenadmin'] === 1);
 
-        // Merge and sort by date descending
-        $drinkHistory = [];
-        foreach ($drinkOrders as $order) {
-            $drinkId = isset($order['drink_id']) ? (int)$order['drink_id'] : null;
-            $quantity = isset($order['quantity']) ? (int)$order['quantity'] : 1;
-            $comment = isset($order['comment']) ? trim((string)$order['comment']) : '';
-            // Sonstiges / transfers without comment show the drink name
-            if (DrinkManager::isCustomPriceDrink($drinkId) && $comment === '') {
-                $comment = $order['name'];
-            }
-            $drinkHistory[] = [
-                'type' => 'order',
-                'id' => $order['id'],
-                'name' => $order['name'],
-                'drink_id' => $drinkId,
-                'quantity' => $quantity,
-                'price' => $order['price'],
-                'total' => $quantity * $order['price'],
-                'datetime' => $order['order_time'],
-                'deleted' => isset($order['deleted']) ? (int)$order['deleted'] : 0,
-                'comment' => $comment,
-            ];
-        }
-        foreach ($drinkDeposits as $deposit) {
-            $drinkHistory[] = [
-                'type' => 'deposit',
-                'amount' => $deposit['amount'],
-                'datetime' => $deposit['deposit_time'],
-                'createdby' => $this->getUserDisplayName($userManager, $deposit['createdbyuserid']),
-                'deleted' => isset($deposit['deleted']) ? (int)$deposit['deleted'] : 0,
-                'user_id_deleted' => isset($deposit['user_id_deleted']) ? $deposit['user_id_deleted'] : null,
-            ];
-        }
-        usort($drinkHistory, function($a, $b) {
-            return strcmp($b['datetime'], $a['datetime']);
-        });
+        $history = $this->service('Drinks\Accounting\AccountLedger')->history($userId);
+        $historyEntries = $this->drinksPageEntries($history['entries'], $userManager);
 
         $drinkStats = [];
         try {
@@ -104,7 +67,9 @@ class DrinksController extends AbstractActionController
             'now' => new \DateTime(),
             'drinks' => $drinkManager->getAll($userId),
             'drinkCategories' => $this->service('Drinks\Manager\DrinkCategoryManager')->getAll(),
-            'drinkHistory' => $drinkHistory,
+            'drinkHistory' => array_reverse($historyEntries),
+            'historyGroups' => AccountLedger::purchaseGroups($historyEntries),
+            'historyBalance' => $history['balance'],
             'drinkStats' => $drinkStats,
             'userId' => $userId,
             'userName' => $user->get('alias') ?: $user->get('name'),
@@ -851,20 +816,16 @@ class DrinksController extends AbstractActionController
         }
 
         $showStorno = $this->params()->fromQuery('showStorno') === '1';
-        $orders = iterator_to_array($this->service('Drinks\Manager\DrinkOrderManager')->getByUser($uid));
-        $deposits = iterator_to_array($this->service('Drinks\Manager\DrinkDepositManager')->getByUser($uid, $showStorno));
+        $history = $this->service('Drinks\Accounting\AccountLedger')->history($uid, ['cancelled_deposits' => $showStorno]);
 
         // Spieltag badges for entries of team and individual accounts (members pay into team Spieltage too)
-        $teamEventIds = array_filter(array_unique(array_map('intval', array_merge(
-            array_column($deposits, 'teamevent_id'),
-            array_column($orders, 'teamevent_id')
-        ))));
+        $teamEventIds = array_values(array_filter(array_unique(array_column($history['entries'], 'teamevent_id'))));
         $teamEventsById = [];
         if (!empty($teamEventIds)) {
             try {
                 $eventRows = $dbAdapter->query(
                     'SELECT ' . $this->getTeamEventSelectColumnsSql() . ' FROM drinks_teamevents WHERE id IN (' . implode(',', array_fill(0, count($teamEventIds), '?')) . ')',
-                    array_values($teamEventIds)
+                    $teamEventIds
                 )->toArray();
                 foreach ($eventRows as $eventRow) {
                     $label = trim((string)$eventRow['comment']);
@@ -876,65 +837,52 @@ class DrinksController extends AbstractActionController
                 // Keep history rendering stable even if event lookup fails.
             }
         }
-        $spieltagFields = function ($row) use ($teamEventsById) {
-            $teamEventId = isset($row['teamevent_id']) ? (int)$row['teamevent_id'] : 0;
-            return [
+
+        $toRow = function ($entry) use ($teamEventsById, $userManager) {
+            $teamEventId = $entry['teamevent_id'];
+            $row = [
+                'id' => $entry['id'],
+                'amount' => $entry['amount'],
+                'datetime' => $entry['datetime'],
+                'deleted' => $entry['deleted'],
                 'teamevent_id' => $teamEventId,
                 'spieltag_label' => isset($teamEventsById[$teamEventId]) ? $teamEventsById[$teamEventId]['label'] : '',
                 'spieltag_closed' => isset($teamEventsById[$teamEventId]) ? $teamEventsById[$teamEventId]['closed'] : false,
             ];
+            if ($entry['type'] === 'deposit') {
+                $row['type'] = 'Einzahlung';
+                $row['desc'] = $entry['comment'];
+                $row['createdby'] = $this->getUserDisplayName($userManager, $entry['createdbyuserid']);
+            } else {
+                $comment = $entry['comment'];
+                $desc = $entry['quantity'] . ' x ' . $entry['name'];
+                // Sonstiges / transfers without comment: drink name as description and comment
+                if (DrinkManager::isCustomPriceDrink($entry['drink_id']) && $comment === '') {
+                    $desc = $entry['name'];
+                    $comment = $entry['name'];
+                }
+                $row['type'] = $entry['deleted'] ? 'Storno' : 'Buchung';
+                $row['desc'] = $desc;
+                $row['comment'] = $comment;
+                $row['drink_id'] = $entry['drink_id'];
+                $row['quantity'] = $entry['quantity'];
+            }
+            if (!$entry['deleted']) {
+                $row['balance'] = $entry['balance_after'];
+            }
+            return $row;
         };
-
-        $history = [];
-        foreach ($deposits as $d) {
-            $history[] = array_merge([
-                'type' => 'Einzahlung',
-                'id' => isset($d['id']) ? (int)$d['id'] : null,
-                'amount' => $d['amount'],
-                'desc' => $d['comment'],
-                'datetime' => $d['deposit_time'],
-                'deleted' => isset($d['deleted']) ? (int)$d['deleted'] : 0,
-                'createdby' => $this->getUserDisplayName($userManager, $d['createdbyuserid']),
-            ], $spieltagFields($d));
-        }
-        foreach ($orders as $o) {
-            $drinkId = isset($o['drink_id']) ? (int)$o['drink_id'] : null;
-            $comment = isset($o['comment']) ? trim((string)$o['comment']) : '';
-            $drinkName = isset($o['name']) ? $o['name'] : '';
-            $desc = $o['quantity'] . ' x ' . $drinkName;
-            // Sonstiges / transfers without comment: drink name as description and comment
-            if (DrinkManager::isCustomPriceDrink($drinkId) && $comment === '') {
-                $desc = $drinkName;
-                $comment = $drinkName;
-            }
-            $history[] = array_merge([
-                'type' => empty($o['deleted']) ? 'Buchung' : 'Storno',
-                'id' => isset($o['id']) ? (int)$o['id'] : null,
-                'amount' => -1 * $o['quantity'] * $o['price'],
-                'desc' => $desc,
-                'datetime' => $o['order_time'],
-                'deleted' => empty($o['deleted']) ? 0 : 1,
-                'comment' => $comment,
-                'drink_id' => $drinkId,
-                'quantity' => isset($o['quantity']) ? (int)$o['quantity'] : null,
-            ], $spieltagFields($o));
-        }
-        usort($history, function($a, $b) { return strcmp($a['datetime'], $b['datetime']); });
-
-        // Group by day with running balance
-        $days = [];
-        $balance = 0;
-        foreach ($history as $entry) {
-            if (empty($entry['deleted'])) {
-                $balance += $entry['amount'];
-                $entry['balance'] = $balance;
-            }
-            $days[substr($entry['datetime'], 0, 10)][] = $entry;
-        }
+        // Days oldest first, each with its total and the balance at its end
         $userHistory = [];
-        foreach ($days as $date => $entries) {
-            $userHistory[] = ['date' => $date, 'entries' => $entries];
+        foreach (AccountLedger::dayGroups($history['entries']) as $day) {
+            $userHistory[] = [
+                'date' => $day['date'],
+                'entries' => array_map($toRow, $day['entries']),
+                'total' => $day['total'],
+                'balance' => $day['balance'],
+            ];
         }
+        $balance = $history['balance'];
 
         $orderEmailOption = ($aliasRow && $aliasRow['order_email_option'] !== null && $aliasRow['order_email_option'] !== '') ? $aliasRow['order_email_option'] : 'order';
         return $this->jsonResponse([
