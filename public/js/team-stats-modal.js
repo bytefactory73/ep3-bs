@@ -22,10 +22,9 @@
     function roundAwayFromZero(value) {
         var amount = Number(value || 0);
         if (amount === 0) return 0;
-        if (amount > 0) {
-            return Math.ceil(amount * 100) / 100;
-        }
-        return Math.floor(amount * 100) / 100;
+        // Drop float noise before rounding up: 1.1 * 100 is 110.00000000000001, not 110
+        var cents = Math.ceil(Number((Math.abs(amount) * 100).toFixed(6)));
+        return (amount > 0 ? cents : -cents) / 100;
     }
 
     function amountColor(value) {
@@ -566,7 +565,8 @@
             if (guestDonationTotal > 0 && activeMembers.length > 0) {
                 var totalSum = Math.abs(Number(data.total_sum || 0));
                 var poolAfterDonations = totalSum - guestDonationTotal;
-                var reductionFactor = poolAfterDonations / totalSum;  // e.g., 15/25 = 0.6
+                // Without expenses there are no shares to reduce (and no factor: 0 / 0)
+                var reductionFactor = totalSum > 0 ? poolAfterDonations / totalSum : 1;  // e.g., 15/25 = 0.6
 
                 // Reduce all member shares proportionally
                 for (var memberIdx = 0; memberIdx < activeMemberIds.length; memberIdx++) {
