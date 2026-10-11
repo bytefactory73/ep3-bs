@@ -2,6 +2,7 @@
 
 namespace Drinks\Manager;
 
+use Base\Service\MoneyCalculator;
 use Drinks\Service\DbSchema;
 use Zend\Db\Adapter\AdapterInterface;
 
@@ -18,10 +19,11 @@ class PaypalTransactionManager
     ];
 
     /**
-     * Active deposit of the user (?) with the amount (?) within ±14 days of the payment (?, ?)
-     * that no PayPal entry has claimed yet. Shared by findMatchingDeposit / hasAmbiguousDeposit.
+     * Active deposit of the user (?) with the net or gross amount of the payment (?, ?) within
+     * ±14 days of it (?, ?) that no PayPal entry has claimed yet. Shared by findMatchingDeposit /
+     * hasAmbiguousDeposit.
      */
-    const UNCLAIMED_DEPOSIT_NEAR_SQL = 'd.user_id = ? AND d.amount = ? AND (d.deleted IS NULL OR d.deleted = 0)
+    const UNCLAIMED_DEPOSIT_NEAR_SQL = 'd.user_id = ? AND d.amount IN (?, ?) AND (d.deleted IS NULL OR d.deleted = 0)
              AND d.deposit_time BETWEEN DATE_SUB(?, INTERVAL 14 DAY) AND DATE_ADD(?, INTERVAL 14 DAY)
              AND NOT EXISTS (SELECT 1 FROM drinks_paypal p WHERE p.linked_deposit_id = d.id)';
 
@@ -239,11 +241,11 @@ class PaypalTransactionManager
      * Returns ['success' => bool, 'deposit_id', 'amount', 'comment', 'deposit_time', 'error'];
      * error 'already_linked' means the transaction was credited before (no new deposit).
      *
-     * $requireCompleted: auto-assign passes true (only confirmed completed payments);
-     * a manual admin credit passes false and is only blocked for known pending/failed/reversed
-     * statuses, so email-only rows with an unrecognised status can still be credited by hand.
+     * Only payments the sync with the PayPal account confirmed as completed are credited, with
+     * the net amount from there: error 'not_synced' for a row known only from the email,
+     * 'not_completed' for any other status.
      */
-    public function createDepositForTransaction($paypalId, $userId, $depositManager, $createdByUserId = null, $requireCompleted = false)
+    public function createDepositForTransaction($paypalId, $userId, $depositManager, $createdByUserId = null)
     {
         $paypalId = (int)$paypalId;
         $userId = (int)$userId;
@@ -265,9 +267,12 @@ class PaypalTransactionManager
             if (!empty($row['linked_deposit_id'])) {
                 return ['success' => false, 'error' => 'already_linked', 'deposit_id' => (int)$row['linked_deposit_id']];
             }
+            // Only the PayPal account (Reporting API sync) decides what is booked, never the email
+            if ($row['state'] === 'emailreceived') {
+                return ['success' => false, 'error' => 'not_synced'];
+            }
             $transactionStatus = isset($row['transaction_status']) ? (string)$row['transaction_status'] : '';
-            $statusClass = self::classifyTransactionStatus($transactionStatus);
-            if ($statusClass !== 'completed' && ($requireCompleted || $statusClass !== 'unknown')) {
+            if (self::classifyTransactionStatus($transactionStatus) !== 'completed') {
                 return ['success' => false, 'error' => 'not_completed', 'status' => $transactionStatus];
             }
             $amount = isset($row['amount']) ? (float)$row['amount'] : 0.0;
@@ -367,14 +372,15 @@ class PaypalTransactionManager
      * same amount are never linked, so their money is not swallowed by the PayPal payment.
      * Returns the deposit row or null.
      */
-    private function findMatchingDeposit($userId, $amount, $receivedAt)
+    private function findMatchingDeposit($userId, array $transaction)
     {
+        $receivedAt = $transaction['received_at'];
         $row = $this->dbAdapter->query(
             'SELECT d.id FROM drink_deposits d WHERE ' . self::UNCLAIMED_DEPOSIT_NEAR_SQL . '
              AND LOWER(COALESCE(d.comment, "")) LIKE "%paypal%"
              ORDER BY ABS(TIMESTAMPDIFF(SECOND, d.deposit_time, ?)) ASC
              LIMIT 1',
-            [(int)$userId, $amount, $receivedAt, $receivedAt, $receivedAt]
+            [(int)$userId, (float)$transaction['amount'], $this->grossAmount($transaction), $receivedAt, $receivedAt, $receivedAt]
         )->current();
         return ($row && !empty($row['id'])) ? $row : null;
     }
@@ -385,15 +391,44 @@ class PaypalTransactionManager
      * neither linked nor auto-credited; it stays open for an admin to decide, to avoid both
      * swallowing a cash deposit and crediting the same money twice.
      */
-    private function hasAmbiguousDeposit($userId, $amount, $receivedAt)
+    private function hasAmbiguousDeposit($userId, array $transaction)
     {
+        $receivedAt = $transaction['received_at'];
         $row = $this->dbAdapter->query(
             'SELECT d.id FROM drink_deposits d WHERE ' . self::UNCLAIMED_DEPOSIT_NEAR_SQL . '
              AND LOWER(COALESCE(d.comment, "")) NOT LIKE "%paypal%"
              LIMIT 1',
-            [(int)$userId, $amount, $receivedAt, $receivedAt]
+            [(int)$userId, (float)$transaction['amount'], $this->grossAmount($transaction), $receivedAt, $receivedAt]
         )->current();
         return ($row && !empty($row['id']));
+    }
+
+    /**
+     * What the payer sent before PayPal's fee ('amount' is the net credit), from the stored
+     * Reporting API data or the PayPal email; the net amount if neither tells.
+     */
+    private function grossAmount(array $transaction)
+    {
+        $json = json_decode((string)$transaction['transaction_json'], true);
+        $detail = null;
+        if (isset($json['api_import'])) {
+            $detail = $json['api_import'];
+        } elseif (isset($json['paypal_api_data']['type'], $json['paypal_api_data']['data']) && $json['paypal_api_data']['type'] === 'reporting') {
+            $detail = $this->getMatchingReportingTransactionDetail($json['paypal_api_data']['data'], trim((string)$transaction['paypal_transaction_id']));
+        }
+        if ($detail !== null) {
+            $gross = $this->extractReportingFields($detail)['gross'];
+            if ($gross !== null) {
+                return MoneyCalculator::roundMoney($gross);
+            }
+        }
+        if (isset($json['body'])) {
+            $gross = $this->findAmount($json['body']);
+            if ($gross !== null) {
+                return $gross;
+            }
+        }
+        return MoneyCalculator::roundMoney($transaction['amount']);
     }
 
     /**
@@ -611,7 +646,7 @@ class PaypalTransactionManager
                 }
 
                 // A deposit staff entered by hand for this payment ("PayPal" in comment, ±14 days)
-                $existingDeposit = $this->findMatchingDeposit($matchedUserId, $amount, $row['received_at']);
+                $existingDeposit = $this->findMatchingDeposit($matchedUserId, $row);
 
                 if ($existingDeposit && !empty($existingDeposit['id'])) {
                     $this->linkToDeposit($paypalId, (int)$existingDeposit['id'], $matchedUserId);
@@ -620,7 +655,7 @@ class PaypalTransactionManager
                 }
 
                 // Same amount without a PayPal hint: leave for an admin instead of guessing
-                if ($this->hasAmbiguousDeposit($matchedUserId, $amount, $row['received_at'])) {
+                if ($this->hasAmbiguousDeposit($matchedUserId, $row)) {
                     $result['needs_review'][] = $paypalId;
                     $result['skipped']++;
                     continue;
@@ -631,7 +666,7 @@ class PaypalTransactionManager
                     continue;
                 }
 
-                $creditResult = $this->createDepositForTransaction($paypalId, $matchedUserId, $depositManager, $createdByUserId, true);
+                $creditResult = $this->createDepositForTransaction($paypalId, $matchedUserId, $depositManager, $createdByUserId);
                 if (empty($creditResult['success'])) {
                     $error = isset($creditResult['error']) ? $creditResult['error'] : 'unknown';
                     if ($error !== 'already_linked' && $error !== 'not_completed') {
@@ -815,8 +850,7 @@ class PaypalTransactionManager
             // Try to link a deposit staff entered by hand for this payment (see findMatchingDeposit)
             $depositLinked = false;
             if ($linkedDepositId <= 0 && !empty($row['received_at']) && !empty($row['amount'])) {
-                $amount = (float)$row['amount'];
-                $existingDeposit = $this->findMatchingDeposit($newUserId, $amount, $row['received_at']);
+                $existingDeposit = $this->findMatchingDeposit($newUserId, $row);
                 if ($existingDeposit && !empty($existingDeposit['id'])) {
                     $this->linkToDeposit($paypalId, (int)$existingDeposit['id'], $newUserId);
                     $depositLinked = true;
@@ -874,9 +908,10 @@ class PaypalTransactionManager
 
                     $transactionId = $this->findTransactionId($plainBody, $subject);
                     $amount = $this->findAmount($plainBody);
+                    $fee = $this->findFee($plainBody);
                     $payerEmail = $this->findPayerEmail($plainBody, $fromAddress['email']);
                     $payerName = $this->findPayerName($plainBody);
-                    $transactionNote = $this->normalizeTransactionNoteForStorage($this->findTransactionNote($body, $plainBody, $subject));
+                    $transactionNote = $this->appendFeeNote($this->normalizeTransactionNoteForStorage($this->findTransactionNote($body, $plainBody, $subject)), $fee);
                     $receivedAt = $this->findReceivedAt($plainBody, $header);
                     $sourceMailId = $this->findMessageId($header, $msgNo);
 
@@ -893,6 +928,8 @@ class PaypalTransactionManager
                         $result['skipped']++;
                         continue;
                     }
+                    // Credited amounts are net, as on the API paths: "Erhaltener Betrag" minus "Gebühr"
+                    $amount = MoneyCalculator::subtract($amount, $fee);
 
                     $existing = $this->dbAdapter->query('SELECT id FROM drinks_paypal WHERE paypal_transaction_id = ? LIMIT 1', [$transactionId])->current();
                     if ($existing) {
@@ -1484,10 +1521,27 @@ class PaypalTransactionManager
         return null;
     }
 
+    /**
+     * PayPal's fee stated in a payment email ("Gebühr 0,80 € EUR"), 0 without one.
+     */
+    private function findFee($body)
+    {
+        return preg_match('/(?:Gebühr|Fee)\s*:?\s*-?([0-9.,]+)\s*(?:€|EUR)/iu', $body, $matches)
+            ? abs($this->normalizeAmount($matches[1]))
+            : 0.0;
+    }
+
+    /**
+     * "1.234,50", "1234.50" or "12,5" as a number.
+     */
     private function normalizeAmount($amountString)
     {
-        $normalized = str_replace([',', ' '], ['.', ''], trim($amountString));
-        return round((float)$normalized, 2);
+        $normalized = str_replace(' ', '', trim($amountString));
+        if (strpos($normalized, ',') !== false) {
+            // German format: dots group thousands, the comma separates the cents
+            $normalized = str_replace(['.', ','], ['', '.'], $normalized);
+        }
+        return MoneyCalculator::roundMoney($normalized);
     }
 
     private function findPayerEmail($body, $defaultEmail)

@@ -1821,6 +1821,8 @@ class DrinksController extends AbstractActionController
             switch ($error) {
                 case 'already_linked':
                     return $this->jsonError(409, 'PayPal transaction already credited', ['deposit_id' => $creditResult['deposit_id']]);
+                case 'not_synced':
+                    return $this->jsonError(409, 'PayPal-Zahlung ist noch nicht mit dem PayPal-Konto abgeglichen. Bitte zuerst den PayPal-Abgleich ausführen.');
                 case 'not_completed':
                     $status = isset($creditResult['status']) ? (string)$creditResult['status'] : '';
                     return $this->jsonError(409, 'PayPal-Zahlung ist nicht abgeschlossen (Status: ' . ($status !== '' ? $status : 'unbekannt') . ')');
