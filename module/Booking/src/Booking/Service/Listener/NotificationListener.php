@@ -88,11 +88,22 @@ class NotificationListener extends AbstractListenerAggregate
             $playerNamesUnserialized = @unserialize($playerNames);
 
             if (is_iterable($playerNamesUnserialized)) {
-                $message .= "\n\nAngegebene Mitspieler:";
+                $names = [];
 
-                foreach ($playerNamesUnserialized as $i => $playerName) {
-                    $message .= sprintf("\n%s. %s",
-                        $i + 1, $playerName['value']);
+                foreach ($playerNamesUnserialized as $playerName) {
+                    $name = trim((string) ($playerName['value'] ?? ''));
+
+                    if ($name !== '') {
+                        $names[] = $name;
+                    }
+                }
+
+                if ($names) {
+                    $message .= "\n\nAngegebene Mitspieler:";
+
+                    foreach ($names as $i => $name) {
+                        $message .= sprintf("\n%s. %s", $i + 1, $name);
+                    }
                 }
             }
         }
