@@ -90,6 +90,20 @@ class BehaviourForm extends Form
         ));
 
         $this->add(array(
+            'name' => 'cf-user-default-max-active-bookings',
+            'type' => 'Text',
+            'attributes' => array(
+                'id' => 'cf-user-default-max-active-bookings',
+                'style' => 'width: 80px;',
+            ),
+            'options' => array(
+                'label' => 'Limit bookings',
+                'notes' => 'Auf 0 setzen, um beliebig viele Buchungen zu erlauben;<br />kann pro Platz und pro Benutzer überschrieben werden',
+                'postfix' => 'gleichzeitige Buchung(en) pro Benutzer',
+            ),
+        ));
+
+        $this->add(array(
             'name' => 'cf-calendar-days',
             'type' => 'Select',
             'attributes' => array(

@@ -1,6 +1,7 @@
 <?php
 
 $squareType = $this->option('subject.square.type');
+$square = $this->square;
 
 if ($this->notBookableReason) {
     $reason = $this->notBookableReason;
@@ -9,3 +10,18 @@ if ($this->notBookableReason) {
 }
 
 echo sprintf('<p><span class="red">' . $reason . '</span></p>', $squareType);
+
+if (count($this->bookings) == 1) {
+    $booking = current($this->bookings);
+    $customName = $booking->getMeta('custom-name');
+
+    $namesVisible = $square->getMeta('public_names', 'false') == 'true'
+        || ($square->getMeta('private_names', 'false') == 'true' && $this->user);
+
+    if ($customName && $namesVisible) {
+        $bookingTypeColor = $this->bookingTypeService->getTypeColor($booking->getMeta('type'));
+        $style = $bookingTypeColor ? ' style="color: ' . $bookingTypeColor . ';"' : '';
+
+        echo '<p' . $style . '>' . $this->escapeHtml($customName) . '</p>';
+    }
+}

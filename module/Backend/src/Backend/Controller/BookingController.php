@@ -141,14 +141,14 @@ class BookingController extends AbstractActionController
                     /* Update booking/reservation */
 
                     $savedBooking = $this->backendBookingUpdate($d['bf-rid'], $d['bf-user'], $d['bf-time-start'], $d['bf-time-end'], $d['bf-date-start'],
-                        $d['bf-sid'], $d['bf-status-billing'], $d['bf-quantity'], $d['bf-notes'], $params['editMode']);
+                        $d['bf-sid'], $d['bf-status-billing'], $d['bf-quantity'], $d['bf-notes'], $params['editMode'], $d['bf-type'], $d['bf-custom-name']);
 
                 } else {
 
                     /* Create booking/reservation */
 
                     $savedBooking = $this->backendBookingCreate($d['bf-user'], $d['bf-time-start'], $d['bf-time-end'], $d['bf-date-start'], $d['bf-date-end'],
-                        $d['bf-repeat'], $d['bf-sid'], $d['bf-status-billing'], $d['bf-quantity'], $d['bf-notes'], $sessionUser->get('alias'));
+                        $d['bf-repeat'], $d['bf-sid'], $d['bf-status-billing'], $d['bf-quantity'], $d['bf-notes'], $sessionUser->get('alias'), $d['bf-type'], $d['bf-custom-name']);
                 }
 
                 $this->flashMessenger()->addSuccessMessage('Booking has been saved');
@@ -170,6 +170,8 @@ class BookingController extends AbstractActionController
                     'bf-user' => $user->need('alias') . ' (' . $user->need('uid') . ')',
                     'bf-sid' => $booking->get('sid'),
                     'bf-status-billing' => $booking->get('status_billing'),
+                    'bf-type' => $booking->getMeta('type'),
+                    'bf-custom-name' => $booking->getMeta('custom-name'),
                     'bf-quantity' => $booking->get('quantity'),
                     'bf-notes' => $booking->getMeta('notes'),
                 ));
@@ -613,9 +615,8 @@ class BookingController extends AbstractActionController
         }
 
         $playerNames = @unserialize($playerNames);
-
         if (! $playerNames) {
-            throw new \RuntimeException('Invalid player names data stored in database');
+            $playerNames = [];
         }
 
         $players = array();

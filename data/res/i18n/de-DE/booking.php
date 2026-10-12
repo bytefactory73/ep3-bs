@@ -42,4 +42,5 @@ return [
     '%s\'s %s-booking for %s' => '%s\'s %s-Buchung am %s',
     '%s\'s %s-booking has been cancelled' => '%s\'s %s-Buchung wurde storniert',
 
+    'No other players specified' => 'Keine weiteren Spieler angegeben',
 ];

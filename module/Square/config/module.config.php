@@ -51,6 +51,15 @@ return array(
                                     ),
                                 ),
                             ),
+                            'reservation-cancellation' => array(
+                                'type' => 'Literal',
+                                'options' => array(
+                                    'route' => '/reservation-cancellation',
+                                    'defaults' => array(
+                                        'action' => 'reservationCancellation',
+                                    ),
+                                ),
+                            ),
                         ),
                     ),
                 ),

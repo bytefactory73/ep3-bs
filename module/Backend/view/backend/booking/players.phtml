@@ -22,6 +22,10 @@ $this->setup(array(
 
     echo '<div class="separator separator-line"></div>';
 
+    if (! $this->players) {
+        echo '<p><i>' . $this->translate('No other players specified') . '</i></p>';
+    }
+
     echo '<table class="default-table middle-table" style="margin-left: 0;">';
 
     $i = 1;

@@ -372,6 +372,15 @@ return array(
                                             ),
                                         ),
                                     ),
+                                    'type-colors' => array(
+                                        'type' => 'Literal',
+                                        'options' => array(
+                                            'route' => '/type-colors',
+                                            'defaults' => array(
+                                                'action' => 'behaviourTypeColors',
+                                            ),
+                                        ),
+                                    ),
                                 ),
                             ),
                         ),

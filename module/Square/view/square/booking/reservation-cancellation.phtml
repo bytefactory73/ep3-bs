@@ -1,0 +1,31 @@
+<?php
+
+$this->setup([
+    'title' => 'Cancel this reservation',
+    'panel' => 'centered-panel',
+    'back' => true,
+]);
+
+?>
+
+<div class="padded centered-text">
+    <p><span class="symbolic symbolic-warning"><?= $this->t('Are you sure you want to cancel this reservation?') ?></span></p>
+
+    <p class="no-wrap">
+        <a
+            href="<?= $this->url(
+                'square/booking/reservation-cancellation',
+                [],
+                [ 'query' => [ 'rid' => $this->rid, 'confirmed' => 'true' ] ],
+            ) ?>" class="default-button"
+        > <span class="symbolic symbolic-cross"><?= $this->t('Yes, cancel this reservation') ?></span> </a>
+
+        &nbsp;
+
+        <a href="<?= $this->origin ?>" class="default-button squarebox-close-link"><?= $this->t('No, go back') ?></a>
+    </p>
+
+    <p class="small-text gray">
+        <?= $this->t('The booking itself will not be changed. Only the reservation at this date will be cancelled.') ?>
+    </p>
+</div>
